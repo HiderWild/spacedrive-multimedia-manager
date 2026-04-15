@@ -1279,11 +1279,13 @@ impl Library {
 			};
 
 			// Check if this volume's mount point is a subpath of any already-counted volume on the SAME device
+			// Use path-aware comparison to avoid false positives like "/Volumes/Seagate" matching "/Volumes/Seagate 20TB"
+			let mount_path = std::path::Path::new(mount_point);
 			let is_subpath = counted_mount_points
 				.iter()
 				.any(|(parent_device, parent_mount)| {
 					vol.device_id == *parent_device
-						&& mount_point.starts_with(parent_mount)
+						&& mount_path.starts_with(std::path::Path::new(parent_mount))
 						&& mount_point != parent_mount
 				});
 
@@ -1690,11 +1692,13 @@ impl Library {
 			};
 
 			// Check if this volume's mount point is a subpath of any already-counted volume on the SAME device
+			// Use path-aware comparison to avoid false positives like "/Volumes/Seagate" matching "/Volumes/Seagate 20TB"
+			let mount_path = std::path::Path::new(mount_point);
 			let is_subpath = counted_mount_points
 				.iter()
 				.any(|(parent_device, parent_mount)| {
 					vol.device_id == *parent_device
-						&& mount_point.starts_with(parent_mount)
+						&& mount_path.starts_with(std::path::Path::new(parent_mount))
 						&& mount_point != parent_mount
 				});
 

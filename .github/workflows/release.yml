@@ -89,12 +89,12 @@ jobs:
       matrix:
         settings:
           # macOS builds
-          - host: self-hosted
+          - host: macos-26
             target: aarch64-apple-darwin
             bundles: dmg,app
             os: darwin
             arch: aarch64
-          - host: self-hosted
+          - host: macos-26
             target: x86_64-apple-darwin
             bundles: dmg,app
             os: darwin

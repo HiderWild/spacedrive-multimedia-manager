@@ -7,6 +7,13 @@ import {
 	PopoutInspector,
 	QuickPreview,
 	JobsScreen,
+	Settings,
+	PlatformProvider,
+	SpacedriveProvider,
+	ServerProvider,
+	JobsProvider,
+} from "@sd/interface";
+import {
 	SpacebotProvider,
 	SpacebotLayout,
 	ChatRoute,
@@ -15,13 +22,8 @@ import {
 	MemoriesRoute,
 	AutonomyRoute,
 	ScheduleRoute,
-	VoiceOverlay,
-	Settings,
-	PlatformProvider,
-	SpacedriveProvider,
-	ServerProvider,
-	JobsProvider,
-} from "@sd/interface";
+} from "@sd/interface/Spacebot";
+import { VoiceOverlay } from "@sd/interface/windows/VoiceOverlay";
 import {createMemoryRouter, Navigate, Outlet, RouterProvider} from "react-router-dom";
 import {
 	SpacedriveClient,

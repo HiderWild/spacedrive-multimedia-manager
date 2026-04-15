@@ -1,7 +1,13 @@
 import path from 'path';
+import fs from 'fs';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react-swc';
 import {defineConfig} from 'vite';
+
+const spaceui = path.resolve(__dirname, '../../../spaceui/packages');
+const hasSpaceui = fs.existsSync(spaceui);
+const spacebot = path.resolve(__dirname, '../../../spacebot/packages');
+const hasSpacebot = fs.existsSync(spacebot);
 
 export default defineConfig(() => ({
 	plugins: [react(), tailwindcss()],
@@ -51,41 +57,43 @@ export default defineConfig(() => ({
 					'../../packages/interface/node_modules/openapi-fetch/dist/index.mjs'
 				)
 			},
-			{
-				find: '@spacedrive/tokens/src/css',
-				replacement: path.resolve(
-					__dirname,
-					'../../../spaceui/packages/tokens/src/css'
-				)
-			},
-			{
-				find: '@spacedrive/tokens',
-				replacement: path.resolve(
-					__dirname,
-					'../../../spaceui/packages/tokens'
-				)
-			},
-			{
-				find: '@spacedrive/ai',
-				replacement: path.resolve(
-					__dirname,
-					'../../../spaceui/packages/ai/src/index.ts'
-				)
-			},
-			{
-				find: '@spacedrive/primitives',
-				replacement: path.resolve(
-					__dirname,
-					'../../../spaceui/packages/primitives/src/index.ts'
-				)
-			},
-			{
-				find: '@spacebot/api-client',
-				replacement: path.resolve(
-					__dirname,
-					'../../../spacebot/packages/api-client/src'
-				)
-			},
+			// SpaceUI — resolve to source for HMR when available locally
+			...(hasSpaceui
+				? [
+						{
+							find: /^@spacedrive\/tokens\/css\/themes\/(.+)$/,
+							replacement: `${spaceui}/tokens/src/css/themes/$1.css`,
+						},
+						{
+							find: /^@spacedrive\/tokens\/theme$/,
+							replacement: `${spaceui}/tokens/src/css/theme.css`,
+						},
+						{
+							find: /^@spacedrive\/tokens\/css$/,
+							replacement: `${spaceui}/tokens/src/css/base.css`,
+						},
+						{
+							find: /^@spacedrive\/tokens$/,
+							replacement: `${spaceui}/tokens`,
+						},
+						{
+							find: /^@spacedrive\/ai$/,
+							replacement: `${spaceui}/ai/src/index.ts`,
+						},
+						{
+							find: /^@spacedrive\/primitives$/,
+							replacement: `${spaceui}/primitives/src/index.ts`,
+						},
+					]
+				: []),
+			...(hasSpacebot
+				? [
+						{
+							find: /^@spacebot\/api-client$/,
+							replacement: `${spacebot}/api-client/src`,
+						},
+					]
+				: []),
 			{
 				find: '@sd/interface',
 				replacement: path.resolve(
@@ -114,7 +122,7 @@ export default defineConfig(() => ({
 		fs: {
 			allow: [
 				path.resolve(__dirname, '../../..'),
-				path.resolve(__dirname, '../../../spaceui')
+				...(hasSpaceui ? [spaceui] : []),
 			]
 		},
 		watch: {
@@ -125,6 +133,11 @@ export default defineConfig(() => ({
 	build: {
 		target: ['es2021', 'chrome100', 'safari13'],
 		minify: !process.env.TAURI_ENV_DEBUG ? ('esbuild' as const) : false,
-		sourcemap: !!process.env.TAURI_ENV_DEBUG
+		sourcemap: !!process.env.TAURI_ENV_DEBUG,
+		rollupOptions: {
+			external: [
+				...(!hasSpacebot ? ['@spacebot/api-client'] : []),
+			],
+		}
 	}
 }));

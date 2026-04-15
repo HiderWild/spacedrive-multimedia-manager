@@ -9,7 +9,9 @@
 	"exports": {
 		".": "./src/index.tsx",
 		"./app": "./src/App.tsx",
-		"./styles.css": "./src/styles.css"
+		"./styles.css": "./src/styles.css",
+		"./Spacebot": "./src/Spacebot/index.tsx",
+		"./windows/VoiceOverlay": "./src/windows/VoiceOverlay.tsx"
 	},
 	"scripts": {
 		"lint": "eslint src --cache",

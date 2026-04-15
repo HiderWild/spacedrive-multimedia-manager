@@ -68,7 +68,7 @@ spaceui-link:
     for pkg in primitives ai forms explorer tokens; do
         cd packages/$pkg && bun link && cd ../..
     done
-    cd "{{justfile_directory()}}/packages/interface"
+    cd "{{justfile_directory()}}"
     bun link @spacedrive/primitives @spacedrive/ai @spacedrive/forms @spacedrive/explorer @spacedrive/tokens
     echo "SpaceUI packages linked successfully."
 
