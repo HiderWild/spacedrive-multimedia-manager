@@ -1468,7 +1468,7 @@ export type FileSystem =
 /**
  * Indicates which filters are available for a given search type
  */
-export type FilterKind = "FileTypes" | "DateRange" | "SizeRange" | "ContentTypes" | "Tags" | "Locations" | "Hidden" | "Archived";
+export type FilterKind = "FileTypes" | "DateRange" | "SizeRange" | "ContentTypes" | "Tags" | "Locations" | "Hidden" | "Archived" | "AtRisk" | "OnVolumes" | "NotOnVolumes" | "VolumeCount";
 
 /**
  * Raw filesystem event kinds emitted by the watcher without DB resolution
@@ -2420,6 +2420,27 @@ name: string;
  */
 path: string };
 
+/**
+ * Library-wide redundancy totals
+ */
+export type LibraryRedundancyTotals = { 
+/**
+ * Total unique content bytes across the entire library (deduplicated)
+ */
+total_unique_content_bytes: number; 
+/**
+ * Content bytes that exist on only one volume
+ */
+total_at_risk_bytes: number; 
+/**
+ * Content bytes that exist on two or more volumes
+ */
+total_redundant_bytes: number; 
+/**
+ * Ratio of redundant to total content (0.0 = nothing replicated, 1.0 = everything replicated)
+ */
+replication_score: number };
+
 export type LibraryRenameInput = { library_id: string; new_name: string };
 
 export type LibraryRenameOutput = { library_id: string; old_name: string; new_name: string };
@@ -3318,6 +3339,28 @@ enabled: boolean;
  */
 regenerate: boolean };
 
+/**
+ * Input for the redundancy summary query
+ */
+export type RedundancySummaryInput = { 
+/**
+ * Optional: restrict summary to specific volumes. None = all volumes.
+ */
+volume_uuids?: string[] | null };
+
+/**
+ * Complete redundancy summary for the library
+ */
+export type RedundancySummaryOutput = { 
+/**
+ * Per-volume redundancy breakdown
+ */
+volumes: VolumeRedundancySummary[]; 
+/**
+ * Library-wide totals
+ */
+library_totals: LibraryRedundancyTotals };
+
 export type RegenerateThumbnailInput = { 
 /**
  * UUID of the entry to regenerate thumbnails for
@@ -3560,7 +3603,28 @@ export type SearchFacets = { file_types: { [key in string]: number }; tags: { [k
 /**
  * Container for all structured filters
  */
-export type SearchFilters = { file_types: string[] | null; tags: TagFilter | null; date_range: DateRangeFilter | null; size_range: SizeRangeFilter | null; locations: string[] | null; content_types: ContentKind[] | null; include_hidden: boolean | null; include_archived: boolean | null };
+export type SearchFilters = { file_types: string[] | null; tags: TagFilter | null; date_range: DateRangeFilter | null; size_range: SizeRangeFilter | null; locations: string[] | null; content_types: ContentKind[] | null; include_hidden: boolean | null; include_archived: boolean | null; 
+/**
+ * Only return files that are at risk (true) or redundant (false).
+ * At risk = content exists on exactly one volume.
+ */
+at_risk: boolean | null; 
+/**
+ * Only return files whose content is present on these volumes
+ */
+on_volumes: string[] | null; 
+/**
+ * Only return files whose content is NOT present on these volumes
+ */
+not_on_volumes: string[] | null; 
+/**
+ * Minimum number of distinct volumes the content must exist on
+ */
+min_volume_count: number | null; 
+/**
+ * Maximum number of distinct volumes the content can exist on
+ */
+max_volume_count: number | null };
 
 /**
  * Defines the search mode and performance characteristics
@@ -4746,6 +4810,43 @@ export type VolumeListQueryInput = {
  */
 filter?: VolumeFilter };
 
+/**
+ * Redundancy breakdown for a single volume
+ */
+export type VolumeRedundancySummary = { 
+/**
+ * Volume UUID
+ */
+volume_uuid: string; 
+/**
+ * Display name of the volume
+ */
+display_name: string | null; 
+/**
+ * Total bytes of file content on this volume (deduplicated within volume)
+ */
+total_bytes: number; 
+/**
+ * Bytes of content unique to this volume (at risk if volume is lost)
+ */
+at_risk_bytes: number; 
+/**
+ * Number of files whose content only exists on this volume
+ */
+at_risk_file_count: number; 
+/**
+ * Bytes of content that also exists on at least one other volume
+ */
+redundant_bytes: number; 
+/**
+ * Number of files whose content exists on other volumes too
+ */
+redundant_file_count: number; 
+/**
+ * Total number of files on this volume
+ */
+total_file_count: number };
+
 export type VolumeRefreshInput = { 
 /**
  * Optional: Set to true to force recalculation even if recently calculated
@@ -4995,6 +5096,7 @@ export type LibraryQuery =
   |  { type: 'locations.list'; input: LocationsListQueryInput; output: LocationsListOutput }
   |  { type: 'locations.suggested'; input: SuggestedLocationsQueryInput; output: SuggestedLocationsOutput }
   |  { type: 'locations.validate_path'; input: ValidateLocationPathInput; output: ValidateLocationPathOutput }
+  |  { type: 'redundancy.summary'; input: RedundancySummaryInput; output: RedundancySummaryOutput }
   |  { type: 'search.files'; input: FileSearchInput; output: FileSearchOutput }
   |  { type: 'sources.get'; input: GetSourceInput; output: SourceInfo }
   |  { type: 'sources.list'; input: ListSourcesInput; output: [SourceInfo] }
@@ -5126,6 +5228,7 @@ export const WIRE_METHODS = {
     'locations.list': 'query:locations.list',
     'locations.suggested': 'query:locations.suggested',
     'locations.validate_path': 'query:locations.validate_path',
+    'redundancy.summary': 'query:redundancy.summary',
     'search.files': 'query:search.files',
     'sources.get': 'query:sources.get',
     'sources.list': 'query:sources.list',

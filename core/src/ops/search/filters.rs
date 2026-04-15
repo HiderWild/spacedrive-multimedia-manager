@@ -3,7 +3,8 @@
 use super::input::*;
 use crate::domain::ContentKind;
 use crate::filetype::FileTypeRegistry;
-use sea_orm::{ColumnTrait, Condition};
+use sea_orm::{sea_query::Expr, ColumnTrait, Condition};
+use uuid::Uuid;
 
 /// Filter builder for search queries
 pub struct FilterBuilder {
@@ -109,6 +110,101 @@ impl FilterBuilder {
 				}
 				self.condition = self.condition.add(content_condition);
 			}
+		}
+		self
+	}
+
+	/// Filter by redundancy status: at_risk=true means content on exactly 1 volume
+	pub fn at_risk(mut self, at_risk: &Option<bool>) -> Self {
+		if let Some(is_at_risk) = at_risk {
+			let having = if *is_at_risk { "= 1" } else { "> 1" };
+			self.condition = self.condition.add(Expr::cust(format!(
+				"entries.content_id IN (\
+				    SELECT e2.content_id FROM entries e2 \
+				    WHERE e2.content_id IS NOT NULL AND e2.volume_id IS NOT NULL \
+				    GROUP BY e2.content_id \
+				    HAVING COUNT(DISTINCT e2.volume_id) {}\
+				)",
+				having
+			)));
+		}
+		self
+	}
+
+	/// Filter to files whose content is present on the specified volumes
+	pub fn on_volumes(mut self, on_volumes: &Option<Vec<Uuid>>) -> Self {
+		if let Some(uuids) = on_volumes {
+			if !uuids.is_empty() {
+				let uuid_list = uuids
+					.iter()
+					.map(|u| format!("'{}'", u))
+					.collect::<Vec<_>>()
+					.join(",");
+				self.condition = self.condition.add(Expr::cust(format!(
+					"entries.content_id IN (\
+					    SELECT e2.content_id FROM entries e2 \
+					    INNER JOIN volumes v ON e2.volume_id = v.id \
+					    WHERE e2.content_id IS NOT NULL \
+					    AND v.uuid IN ({})\
+					)",
+					uuid_list
+				)));
+			}
+		}
+		self
+	}
+
+	/// Filter to files whose content is NOT present on the specified volumes
+	pub fn not_on_volumes(mut self, not_on_volumes: &Option<Vec<Uuid>>) -> Self {
+		if let Some(uuids) = not_on_volumes {
+			if !uuids.is_empty() {
+				let uuid_list = uuids
+					.iter()
+					.map(|u| format!("'{}'", u))
+					.collect::<Vec<_>>()
+					.join(",");
+				self.condition = self.condition.add(Expr::cust(format!(
+					"entries.content_id NOT IN (\
+					    SELECT e2.content_id FROM entries e2 \
+					    INNER JOIN volumes v ON e2.volume_id = v.id \
+					    WHERE e2.content_id IS NOT NULL \
+					    AND v.uuid IN ({})\
+					)",
+					uuid_list
+				)));
+			}
+		}
+		self
+	}
+
+	/// Filter by minimum number of volumes content exists on
+	pub fn min_volume_count(mut self, min_count: &Option<u32>) -> Self {
+		if let Some(min) = min_count {
+			self.condition = self.condition.add(Expr::cust(format!(
+				"entries.content_id IN (\
+				    SELECT e2.content_id FROM entries e2 \
+				    WHERE e2.content_id IS NOT NULL AND e2.volume_id IS NOT NULL \
+				    GROUP BY e2.content_id \
+				    HAVING COUNT(DISTINCT e2.volume_id) >= {}\
+				)",
+				min
+			)));
+		}
+		self
+	}
+
+	/// Filter by maximum number of volumes content exists on
+	pub fn max_volume_count(mut self, max_count: &Option<u32>) -> Self {
+		if let Some(max) = max_count {
+			self.condition = self.condition.add(Expr::cust(format!(
+				"entries.content_id IN (\
+				    SELECT e2.content_id FROM entries e2 \
+				    WHERE e2.content_id IS NOT NULL AND e2.volume_id IS NOT NULL \
+				    GROUP BY e2.content_id \
+				    HAVING COUNT(DISTINCT e2.volume_id) <= {}\
+				)",
+				max
+			)));
 		}
 		self
 	}

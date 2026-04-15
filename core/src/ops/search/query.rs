@@ -924,7 +924,12 @@ impl FileSearchQuery {
 		let filter_builder = FilterBuilder::new()
 			.file_types(&self.input.filters.file_types)
 			.date_range(&self.input.filters.date_range)
-			.size_range(&self.input.filters.size_range);
+			.size_range(&self.input.filters.size_range)
+			.at_risk(&self.input.filters.at_risk)
+			.on_volumes(&self.input.filters.on_volumes)
+			.not_on_volumes(&self.input.filters.not_on_volumes)
+			.min_volume_count(&self.input.filters.min_volume_count)
+			.max_volume_count(&self.input.filters.max_volume_count);
 
 		query = query.filter(filter_builder.build());
 
