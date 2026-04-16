@@ -76,7 +76,7 @@ export function AtRiskFiles() {
 				<ShieldWarning
 					size={20}
 					weight="bold"
-					className="text-amber-400"
+					className="text-status-warning"
 				/>
 				<h1 className="text-xl font-bold text-ink">
 					{isAtRisk ? "At-Risk" : "Redundant"} Files

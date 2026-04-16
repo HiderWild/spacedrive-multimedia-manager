@@ -1245,6 +1245,7 @@ impl LibraryManager {
 			(ItemType::Recents, "Recents", 1),
 			(ItemType::Favorites, "Favorites", 2),
 			(ItemType::FileKinds, "File Kinds", 3),
+			(ItemType::Redundancy, "Redundancy", 4),
 		];
 
 		use crate::infra::db::entities::space_item::{Column as ItemColumn, Entity as ItemEntity};

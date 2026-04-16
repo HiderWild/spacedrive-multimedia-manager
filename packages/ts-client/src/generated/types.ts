@@ -2091,7 +2091,11 @@ export type ItemType =
 /**
  * Specific archive data source
  */
-{ Source: { source_id: string } };
+{ Source: { source_id: string } } | 
+/**
+ * Redundancy awareness dashboard
+ */
+"Redundancy";
 
 export type JobCancelInput = { job_id: string };
 

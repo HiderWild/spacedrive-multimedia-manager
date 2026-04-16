@@ -36,10 +36,10 @@ export function RedundancyDashboard() {
 
 	const scoreColor =
 		scorePercent >= 75
-			? "text-green-400"
+			? "text-status-success"
 			: scorePercent >= 40
-				? "text-amber-400"
-				: "text-red-400";
+				? "text-status-warning"
+				: "text-status-error";
 
 	const topBarTitle = useMemo(
 		() => (
@@ -142,12 +142,12 @@ export function RedundancyDashboard() {
 						{/* At-Risk Callout */}
 						<button
 							onClick={() => navigate("/redundancy/at-risk")}
-							className="flex items-center gap-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-left transition-colors hover:bg-amber-500/10"
+							className="flex items-center gap-4 rounded-lg border border-status-warning/30 bg-status-warning/5 p-4 text-left transition-colors hover:bg-status-warning/10"
 						>
 							<Warning
 								size={32}
 								weight="fill"
-								className="flex-shrink-0 text-amber-400"
+								className="flex-shrink-0 text-status-warning"
 							/>
 							<div className="flex-1">
 								<div className="text-sm font-medium text-ink">

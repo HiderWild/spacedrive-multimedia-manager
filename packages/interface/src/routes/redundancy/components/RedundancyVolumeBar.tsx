@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import { Tooltip } from "@spacedrive/primitives";
 import { useNavigate } from "react-router-dom";
 
 interface RedundancyVolumeBarProps {
@@ -59,42 +58,40 @@ export function RedundancyVolumeBar({
 			<div className="flex h-3 w-full overflow-hidden rounded-full bg-app-box">
 				{/* Redundant segment (safe) */}
 				{redundantPercent > 0 && (
-					<Tooltip label={`Redundant: ${formatBytes(redundantBytes)} (${redundantFileCount} files) — safely backed up on other volumes`}>
-						<motion.div
-							className="h-full cursor-pointer bg-green-500/70 hover:bg-green-500/90"
-							initial={{ width: 0 }}
-							animate={{ width: `${redundantPercent}%` }}
-							transition={{
-								duration: 0.6,
-								ease: [0.25, 1, 0.5, 1],
-							}}
-							onClick={() =>
-								navigate(
-									`/redundancy/at-risk?volume=${volumeUuid}&at_risk=false`,
-								)
-							}
-						/>
-					</Tooltip>
+					<motion.div
+						className="h-full cursor-pointer bg-status-success/70 hover:bg-status-success/90"
+						initial={{ width: 0 }}
+						animate={{ width: `${redundantPercent}%` }}
+						transition={{
+							duration: 0.6,
+							ease: [0.25, 1, 0.5, 1],
+						}}
+						title={`Redundant: ${formatBytes(redundantBytes)} (${redundantFileCount} files) — safely backed up on other volumes`}
+						onClick={() =>
+							navigate(
+								`/redundancy/at-risk?volume=${volumeUuid}&at_risk=false`,
+							)
+						}
+					/>
 				)}
 				{/* At-risk segment */}
 				{atRiskPercent > 0 && (
-					<Tooltip label={`At risk: ${formatBytes(atRiskBytes)} (${atRiskFileCount} files) — only copy, not backed up`}>
-						<motion.div
-							className="h-full cursor-pointer bg-amber-500/70 hover:bg-amber-500/90"
-							initial={{ width: 0 }}
-							animate={{ width: `${atRiskPercent}%` }}
-							transition={{
-								duration: 0.6,
-								ease: [0.25, 1, 0.5, 1],
-								delay: 0.1,
-							}}
-							onClick={() =>
-								navigate(
-									`/redundancy/at-risk?volume=${volumeUuid}&at_risk=true`,
-								)
-							}
-						/>
-					</Tooltip>
+					<motion.div
+						className="h-full cursor-pointer bg-status-warning/70 hover:bg-status-warning/90"
+						initial={{ width: 0 }}
+						animate={{ width: `${atRiskPercent}%` }}
+						transition={{
+							duration: 0.6,
+							ease: [0.25, 1, 0.5, 1],
+							delay: 0.1,
+						}}
+						title={`At risk: ${formatBytes(atRiskBytes)} (${atRiskFileCount} files) — only copy, not backed up`}
+						onClick={() =>
+							navigate(
+								`/redundancy/at-risk?volume=${volumeUuid}&at_risk=true`,
+							)
+						}
+					/>
 				)}
 				{/* Unindexed segment */}
 				{unindexedPercent > 0 && (
@@ -114,13 +111,13 @@ export function RedundancyVolumeBar({
 			{/* Legend */}
 			<div className="mt-2 flex gap-4 text-xs text-ink-dull">
 				<div className="flex items-center gap-1.5">
-					<div className="size-2 rounded-full bg-green-500/70" />
+					<div className="size-2 rounded-full bg-status-success/70" />
 					<span>
 						Redundant ({formatBytes(redundantBytes)})
 					</span>
 				</div>
 				<div className="flex items-center gap-1.5">
-					<div className="size-2 rounded-full bg-amber-500/70" />
+					<div className="size-2 rounded-full bg-status-warning/70" />
 					<span>
 						At Risk ({formatBytes(atRiskBytes)})
 					</span>

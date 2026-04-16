@@ -13,7 +13,6 @@ import {
 	GearSix,
 	ListBullets,
 	Palette,
-	ShieldCheck
 } from '@phosphor-icons/react';
 import {useSidebarStore} from '@sd/ts-client';
 import type {
@@ -556,11 +555,6 @@ export function SpacesSidebar({isPreviewActive = false}: SpacesSidebarProps) {
 								cancel={cancel}
 								getSpeedHistory={getSpeedHistory}
 								navigate={navigate}
-							/>
-							<CircleButton
-								icon={ShieldCheck}
-								title="Redundancy"
-								onClick={() => navigate('/redundancy')}
 							/>
 							<CircleButton
 								icon={Palette}

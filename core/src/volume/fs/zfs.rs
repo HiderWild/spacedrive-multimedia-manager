@@ -371,6 +371,51 @@ fn parse_zfs_size(size_str: &str) -> Option<u64> {
 	Some((number * multiplier as f64) as u64)
 }
 
+/// Fetch `zfs list` output once for reuse across multiple volumes
+pub async fn fetch_zfs_list_output() -> VolumeResult<String> {
+	task::spawn_blocking(|| {
+		let output = Command::new("zfs")
+			.args([
+				"list",
+				"-H",
+				"-o",
+				"name,mountpoint,used,available,type",
+				"-t",
+				"filesystem",
+			])
+			.output()
+			.map_err(|e| {
+				crate::volume::error::VolumeError::platform(format!(
+					"Failed to run zfs list: {}",
+					e
+				))
+			})?;
+
+		if !output.status.success() {
+			return Err(crate::volume::error::VolumeError::platform(
+				"zfs list command failed".to_string(),
+			));
+		}
+
+		Ok(String::from_utf8_lossy(&output.stdout).to_string())
+	})
+	.await
+	.map_err(|e| {
+		crate::volume::error::VolumeError::platform(format!("Task join error: {}", e))
+	})?
+}
+
+/// Enhance a volume using pre-fetched `zfs list` output (no subprocess call)
+pub fn enhance_volume_with_cached_output(volume: &mut Volume, zfs_list_output: &str) {
+	if let Some(mount_point) = volume.mount_point.to_str() {
+		if let Ok(dataset_info) =
+			find_dataset_for_path(zfs_list_output, Path::new(mount_point))
+		{
+			debug!("Enhanced ZFS volume with dataset info: {:?}", dataset_info);
+		}
+	}
+}
+
 /// Enhance volume with ZFS-specific information from mount point
 pub async fn enhance_volume_from_mount(volume: &mut Volume) -> VolumeResult<()> {
 	use super::FilesystemHandler;
