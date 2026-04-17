@@ -148,8 +148,9 @@ export function ExplorerView() {
 		[sortBy, setSortBy, viewMode]
 	);
 
-	// Allow rendering if either we have a currentPath or we're in a virtual view
-	if (!currentPath && !isVirtualView) {
+	// Allow rendering if we have a currentPath, a virtual view,
+	// or we're in filtered mode (e.g. redundancy views).
+	if (!currentPath && !isVirtualView && mode.type !== 'filtered') {
 		return <EmptyView />;
 	}
 

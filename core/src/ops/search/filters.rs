@@ -137,7 +137,7 @@ impl FilterBuilder {
 			if !uuids.is_empty() {
 				let uuid_list = uuids
 					.iter()
-					.map(|u| format!("'{}'", u))
+					.map(uuid_to_sqlite_blob_literal)
 					.collect::<Vec<_>>()
 					.join(",");
 				self.condition = self.condition.add(Expr::cust(format!(
@@ -160,7 +160,7 @@ impl FilterBuilder {
 			if !uuids.is_empty() {
 				let uuid_list = uuids
 					.iter()
-					.map(|u| format!("'{}'", u))
+					.map(uuid_to_sqlite_blob_literal)
 					.collect::<Vec<_>>()
 					.join(",");
 				self.condition = self.condition.add(Expr::cust(format!(
@@ -224,6 +224,22 @@ impl FilterBuilder {
 }
 
 // Removed hardcoded extension mapping - now using FileTypeRegistry
+
+/// Format a UUID as a SQLite BLOB literal (`X'...'`).
+///
+/// `volumes.uuid` is stored as a 16-byte BLOB (SeaORM default for `Uuid`
+/// on SQLite), so comparing against a quoted UUID string silently returns
+/// zero matches. A blob literal compares byte-for-byte.
+fn uuid_to_sqlite_blob_literal(uuid: &Uuid) -> String {
+	let mut out = String::with_capacity(36);
+	out.push_str("X'");
+	for byte in uuid.as_bytes() {
+		use std::fmt::Write;
+		let _ = write!(out, "{:02X}", byte);
+	}
+	out.push('\'');
+	out
+}
 
 impl Default for FilterBuilder {
 	fn default() -> Self {

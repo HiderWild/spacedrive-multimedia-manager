@@ -22,6 +22,7 @@ import type {
 	ListLibraryDevicesInput,
 	DirectorySortBy,
 	MediaSortBy,
+	SearchFilters as ApiSearchFilters,
 } from "@sd/ts-client";
 import {
 	useViewPreferencesStore,
@@ -61,7 +62,8 @@ export interface SearchFilters {
 export type ExplorerMode =
 	| { type: "browse" }
 	| { type: "search"; query: string; scope: SearchScope }
-	| { type: "recents" };
+	| { type: "recents" }
+	| { type: "filtered"; filters: ApiSearchFilters; label: string };
 
 export type NavigationTarget =
 	| { type: "path"; path: SdPath }
@@ -193,6 +195,8 @@ type UIAction =
 	| { type: "EXIT_SEARCH_MODE" }
 	| { type: "ENTER_RECENTS_MODE" }
 	| { type: "EXIT_RECENTS_MODE" }
+	| { type: "ENTER_FILTERED_MODE"; filters: ApiSearchFilters; label: string }
+	| { type: "EXIT_FILTERED_MODE" }
 	| { type: "SET_SEARCH_FILTERS"; filters: SearchFilters }
 	| {
 			type: "LOAD_PREFERENCES";
@@ -255,6 +259,22 @@ function uiReducer(state: UIState, action: UIAction): UIState {
 			};
 
 		case "EXIT_RECENTS_MODE":
+			return {
+				...state,
+				mode: { type: "browse" },
+			};
+
+		case "ENTER_FILTERED_MODE":
+			return {
+				...state,
+				mode: {
+					type: "filtered",
+					filters: action.filters,
+					label: action.label,
+				},
+			};
+
+		case "EXIT_FILTERED_MODE":
 			return {
 				...state,
 				mode: { type: "browse" },
@@ -412,6 +432,8 @@ interface ExplorerContextValue {
 	exitSearchMode: () => void;
 	enterRecentsMode: () => void;
 	exitRecentsMode: () => void;
+	enterFilteredMode: (filters: ApiSearchFilters, label: string) => void;
+	exitFilteredMode: () => void;
 	searchFilters: SearchFilters;
 	setSearchFilters: (filters: SearchFilters) => void;
 
@@ -737,6 +759,17 @@ export function ExplorerProvider({
 		uiDispatch({ type: "EXIT_RECENTS_MODE" });
 	}, []);
 
+	const enterFilteredMode = useCallback(
+		(filters: ApiSearchFilters, label: string) => {
+			uiDispatch({ type: "ENTER_FILTERED_MODE", filters, label });
+		},
+		[],
+	);
+
+	const exitFilteredMode = useCallback(() => {
+		uiDispatch({ type: "EXIT_FILTERED_MODE" });
+	}, []);
+
 	const setSearchFilters = useCallback((filters: SearchFilters) => {
 		uiDispatch({ type: "SET_SEARCH_FILTERS", filters });
 	}, []);
@@ -794,6 +827,8 @@ export function ExplorerProvider({
 			exitSearchMode,
 			enterRecentsMode,
 			exitRecentsMode,
+			enterFilteredMode,
+			exitFilteredMode,
 			searchFilters: uiState.searchFilters,
 			setSearchFilters,
 			devices,
@@ -837,6 +872,8 @@ export function ExplorerProvider({
 			exitSearchMode,
 			enterRecentsMode,
 			exitRecentsMode,
+			enterFilteredMode,
+			exitFilteredMode,
 			uiState.searchFilters,
 			setSearchFilters,
 			devices,

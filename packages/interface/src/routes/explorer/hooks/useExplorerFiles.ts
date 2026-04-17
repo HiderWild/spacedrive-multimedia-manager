@@ -4,7 +4,12 @@ import { useNormalizedQuery } from "../../../contexts/SpacedriveContext";
 import { useExplorer } from "../context";
 import { useVirtualListing } from "./useVirtualListing";
 
-export type FileSource = "search" | "virtual" | "directory" | "recents";
+export type FileSource =
+	| "search"
+	| "virtual"
+	| "directory"
+	| "recents"
+	| "filtered";
 
 export interface ExplorerFilesResult {
 	files: File[];
@@ -30,6 +35,7 @@ export function useExplorerFiles(): ExplorerFilesResult {
 	// Check for search mode
 	const isSearchMode = mode.type === "search";
 	const isRecentsMode = mode.type === "recents";
+	const isFilteredMode = mode.type === "filtered";
 
 	// Build search query input
 	const searchQueryInput = useMemo<FileSearchInput | null>(() => {
@@ -67,6 +73,11 @@ export function useExplorerFiles(): ExplorerFilesResult {
 				content_types: null,
 				include_hidden: null,
 				include_archived: null,
+				at_risk: null,
+				on_volumes: null,
+				not_on_volumes: null,
+				min_volume_count: null,
+				max_volume_count: null,
 			},
 			mode: "Normal",
 			sort: {
@@ -79,6 +90,40 @@ export function useExplorerFiles(): ExplorerFilesResult {
 			},
 		};
 	}, [isSearchMode, mode, currentPath, sortBy]);
+
+	// Build filtered query input (pre-applied SearchFilters, e.g. redundancy views)
+	const filteredQueryInput = useMemo<FileSearchInput | null>(() => {
+		if (!isFilteredMode || mode.type !== "filtered") return null;
+
+		const searchSortField = (() => {
+			if (!sortBy) return "Size" as const;
+			const sortMap: Record<
+				string,
+				"Relevance" | "Name" | "Size" | "ModifiedAt" | "CreatedAt"
+			> = {
+				name: "Name",
+				size: "Size",
+				modified: "ModifiedAt",
+				type: "Size",
+			};
+			return sortMap[sortBy] || "Size";
+		})();
+
+		return {
+			query: "",
+			scope: "Library",
+			filters: mode.filters,
+			mode: "Fast",
+			sort: {
+				field: searchSortField,
+				direction: "Desc",
+			},
+			pagination: {
+				limit: 1000,
+				offset: 0,
+			},
+		};
+	}, [isFilteredMode, mode, sortBy]);
 
 	// Build recents query input
 	const recentsQueryInput = useMemo<FileSearchInput | null>(() => {
@@ -96,6 +141,11 @@ export function useExplorerFiles(): ExplorerFilesResult {
 				content_types: null,
 				include_hidden: null,
 				include_archived: null,
+				at_risk: null,
+				on_volumes: null,
+				not_on_volumes: null,
+				min_volume_count: null,
+				max_volume_count: null,
 			},
 			mode: "Fast", // Fast mode since we're just sorting by indexed_at
 			sort: {
@@ -129,6 +179,14 @@ export function useExplorerFiles(): ExplorerFilesResult {
 		enabled: isRecentsMode && !!recentsQueryInput,
 	});
 
+	// Filtered query (pre-applied SearchFilters)
+	const filteredQuery = useNormalizedQuery<FileSearchInput, FileSearchOutput>({
+		query: "search.files",
+		input: filteredQueryInput!,
+		resourceType: "file",
+		enabled: isFilteredMode && !!filteredQueryInput,
+	});
+
 	// Directory query
 	const directoryQuery = useNormalizedQuery({
 		query: "files.directory_listing",
@@ -142,20 +200,32 @@ export function useExplorerFiles(): ExplorerFilesResult {
 				}
 			: null!,
 		resourceType: "file",
-		enabled: !!currentPath && !isVirtualView && !isSearchMode && !isRecentsMode,
+		enabled:
+			!!currentPath &&
+			!isVirtualView &&
+			!isSearchMode &&
+			!isRecentsMode &&
+			!isFilteredMode,
 		pathScope: currentPath ?? undefined,
 	});
 
-	// Determine source and files with priority: recents > search > virtual > directory
-	const source: FileSource = isRecentsMode
-		? "recents"
-		: isSearchMode
-			? "search"
-			: isVirtualView
-				? "virtual"
-				: "directory";
+	// Priority: filtered > recents > search > virtual > directory
+	const source: FileSource = isFilteredMode
+		? "filtered"
+		: isRecentsMode
+			? "recents"
+			: isSearchMode
+				? "search"
+				: isVirtualView
+					? "virtual"
+					: "directory";
 
 	const files = useMemo(() => {
+		if (isFilteredMode) {
+			return (
+				(filteredQuery.data as FileSearchOutput | undefined)?.files || []
+			);
+		}
 		if (isRecentsMode) {
 			return (recentsQuery.data as FileSearchOutput | undefined)?.files || [];
 		}
@@ -166,15 +236,27 @@ export function useExplorerFiles(): ExplorerFilesResult {
 			return virtualFiles || [];
 		}
 		return (directoryQuery.data as any)?.files || [];
-	}, [isRecentsMode, isSearchMode, isVirtualView, recentsQuery.data, searchQuery.data, virtualFiles, directoryQuery.data]);
+	}, [
+		isFilteredMode,
+		isRecentsMode,
+		isSearchMode,
+		isVirtualView,
+		filteredQuery.data,
+		recentsQuery.data,
+		searchQuery.data,
+		virtualFiles,
+		directoryQuery.data,
+	]);
 
-	const isLoading = isRecentsMode
-		? recentsQuery.isLoading
-		: isSearchMode
-			? searchQuery.isLoading
-			: isVirtualView
-				? false
-				: directoryQuery.isLoading;
+	const isLoading = isFilteredMode
+		? filteredQuery.isLoading
+		: isRecentsMode
+			? recentsQuery.isLoading
+			: isSearchMode
+				? searchQuery.isLoading
+				: isVirtualView
+					? false
+					: directoryQuery.isLoading;
 
 	return { files, isLoading, source };
 }

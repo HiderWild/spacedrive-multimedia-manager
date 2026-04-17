@@ -1,28 +1,24 @@
 /**
  * Volume Comparison View
  *
- * Select two volumes to see what's unique to each and what's shared.
+ * Pick two volumes and see which files are unique to each or shared.
+ * Once both volumes are selected, switches the Explorer into filtered mode
+ * with the appropriate SearchFilters — the real ExplorerView renders the
+ * results so users keep selection, QuickPreview, context menus, drag-drop, etc.
  */
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowsLeftRight, ShieldCheck } from "@phosphor-icons/react";
-import { TopBarPortal, TopBarItem } from "../../TopBar";
 import { CircleButton } from "@spacedrive/primitives";
+import type { SearchFilters } from "@sd/ts-client";
+import { TopBarPortal, TopBarItem } from "../../TopBar";
 import { useLibraryQuery } from "../../contexts/SpacedriveContext";
-import type { SearchFilters, File as SdFile } from "@sd/ts-client";
+import { ExplorerView, useExplorer } from "../explorer";
 
-function formatBytes(bytes: number): string {
-	if (bytes === 0) return "0 B";
-	const k = 1024;
-	const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
-	const i = Math.floor(Math.log(bytes) / Math.log(k));
-	return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
+type CompareMode = "unique_a" | "shared" | "unique_b";
 
-type CompareMode = "unique_a" | "unique_b" | "shared";
-
-const NULL_FILTERS: SearchFilters = {
+const EMPTY_FILTERS: SearchFilters = {
 	file_types: null,
 	tags: null,
 	date_range: null,
@@ -38,52 +34,28 @@ const NULL_FILTERS: SearchFilters = {
 	max_volume_count: null,
 };
 
+function formatBytes(bytes: number): string {
+	if (bytes === 0) return "0 B";
+	const k = 1024;
+	const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
+	const i = Math.floor(Math.log(bytes) / Math.log(k));
+	return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
 export function CompareVolumes() {
 	const navigate = useNavigate();
 	const [volumeA, setVolumeA] = useState<string | null>(null);
 	const [volumeB, setVolumeB] = useState<string | null>(null);
 	const [mode, setMode] = useState<CompareMode>("unique_a");
 
-	// Fetch volume list for the picker
+	const { enterFilteredMode, exitFilteredMode, setSortBy } = useExplorer();
+
 	const { data: summaryData } = useLibraryQuery({
 		type: "redundancy.summary",
 		input: {},
 	});
 
 	const volumes = summaryData?.volumes ?? [];
-
-	// Build search filters based on compare mode
-	const filters: SearchFilters | null = useMemo(() => {
-		if (!volumeA || !volumeB) return null;
-
-		switch (mode) {
-			case "unique_a":
-				return { ...NULL_FILTERS, on_volumes: [volumeA], not_on_volumes: [volumeB] };
-			case "unique_b":
-				return { ...NULL_FILTERS, on_volumes: [volumeB], not_on_volumes: [volumeA] };
-			case "shared":
-				return { ...NULL_FILTERS, on_volumes: [volumeA, volumeB], min_volume_count: 2 };
-		}
-	}, [volumeA, volumeB, mode]);
-
-	// Search with redundancy filters
-	const { data: searchData, isLoading: searchLoading } = useLibraryQuery(
-		{
-			type: "search.files",
-			input: {
-				query: "",
-				scope: "Library",
-				mode: "Fast",
-				filters: filters ?? NULL_FILTERS,
-				sort: { field: "Size", direction: "Desc" },
-				pagination: { limit: 50, offset: 0 },
-			},
-		},
-		{ enabled: !!filters },
-	);
-
-	const files = searchData?.files ?? [];
-	const totalCount = searchData?.total_found ?? 0;
 
 	const volumeAName =
 		volumes.find((v) => v.volume_uuid === volumeA)?.display_name ??
@@ -92,7 +64,69 @@ export function CompareVolumes() {
 		volumes.find((v) => v.volume_uuid === volumeB)?.display_name ??
 		"Volume B";
 
-	const topBarContent = useMemo(
+	const hasBoth = !!volumeA && !!volumeB;
+
+	const filters = useMemo<SearchFilters | null>(() => {
+		if (!hasBoth) return null;
+		switch (mode) {
+			case "unique_a":
+				return {
+					...EMPTY_FILTERS,
+					on_volumes: [volumeA!],
+					not_on_volumes: [volumeB!],
+				};
+			case "unique_b":
+				return {
+					...EMPTY_FILTERS,
+					on_volumes: [volumeB!],
+					not_on_volumes: [volumeA!],
+				};
+			case "shared":
+				return {
+					...EMPTY_FILTERS,
+					on_volumes: [volumeA!, volumeB!],
+					min_volume_count: 2,
+				};
+		}
+	}, [hasBoth, mode, volumeA, volumeB]);
+
+	const label = useMemo(() => {
+		if (!hasBoth) return "Compare Volumes";
+		switch (mode) {
+			case "unique_a":
+				return `Unique to ${volumeAName}`;
+			case "unique_b":
+				return `Unique to ${volumeBName}`;
+			case "shared":
+				return `Shared between ${volumeAName} & ${volumeBName}`;
+		}
+	}, [hasBoth, mode, volumeAName, volumeBName]);
+
+	// Sync filtered mode whenever selection changes (only when both selected)
+	useEffect(() => {
+		if (filters) {
+			enterFilteredMode(filters, label);
+		} else {
+			// Ensure we're not stuck in an old filtered state if user clears a picker
+			exitFilteredMode();
+		}
+	}, [enterFilteredMode, exitFilteredMode, filters, label]);
+
+	// Default sort to size (largest first) on mount. Guarded with a ref
+	// because setSortBy's identity churns when context deps update.
+	const didSetSort = useRef(false);
+	useEffect(() => {
+		if (didSetSort.current) return;
+		didSetSort.current = true;
+		setSortBy("size");
+	}, [setSortBy]);
+
+	// Exit filtered mode when leaving the route
+	useEffect(() => {
+		return () => exitFilteredMode();
+	}, [exitFilteredMode]);
+
+	const titleItem = useMemo(
 		() => (
 			<div className="flex items-center gap-2">
 				<CircleButton
@@ -100,41 +134,35 @@ export function CompareVolumes() {
 					title="Back to Redundancy"
 					onClick={() => navigate("/redundancy")}
 				/>
-				<ArrowsLeftRight
-					size={20}
-					weight="bold"
-					className="text-ink"
-				/>
-				<h1 className="text-xl font-bold text-ink">Compare Volumes</h1>
+				<ArrowsLeftRight size={18} weight="bold" className="text-ink" />
+				<span className="text-sm font-semibold text-ink">{label}</span>
 			</div>
 		),
-		[navigate],
+		[navigate, label],
 	);
 
 	return (
 		<>
 			<TopBarPortal
-				left={
+				center={
 					<TopBarItem
-						id="compare-title"
+						id="redundancy-compare-title"
 						label="Compare Volumes"
 						priority="high"
 					>
-						{topBarContent}
+						{titleItem}
 					</TopBarItem>
 				}
 			/>
 
 			<div className="flex h-full flex-col overflow-hidden">
-				<div className="flex-1 overflow-auto p-4 space-y-4">
-					{/* Volume Pickers */}
-					<div className="flex items-center gap-3">
+				{/* Picker + mode toggle */}
+				<div className="border-b border-app-line bg-app-box/30 p-3 space-y-2">
+					<div className="flex items-center gap-2">
 						<select
 							value={volumeA ?? ""}
-							onChange={(e) =>
-								setVolumeA(e.target.value || null)
-							}
-							className="flex-1 rounded-lg border border-app-line bg-app-box/50 px-3 py-2 text-sm text-ink"
+							onChange={(e) => setVolumeA(e.target.value || null)}
+							className="flex-1 rounded-lg border border-app-line bg-app-box/50 px-3 py-1.5 text-sm text-ink"
 						>
 							<option value="">Select Volume A</option>
 							{volumes.map((v) => (
@@ -148,18 +176,14 @@ export function CompareVolumes() {
 								</option>
 							))}
 						</select>
-
 						<ArrowsLeftRight
-							size={20}
+							size={16}
 							className="flex-shrink-0 text-ink-dull"
 						/>
-
 						<select
 							value={volumeB ?? ""}
-							onChange={(e) =>
-								setVolumeB(e.target.value || null)
-							}
-							className="flex-1 rounded-lg border border-app-line bg-app-box/50 px-3 py-2 text-sm text-ink"
+							onChange={(e) => setVolumeB(e.target.value || null)}
+							className="flex-1 rounded-lg border border-app-line bg-app-box/50 px-3 py-1.5 text-sm text-ink"
 						>
 							<option value="">Select Volume B</option>
 							{volumes.map((v) => (
@@ -175,8 +199,7 @@ export function CompareVolumes() {
 						</select>
 					</div>
 
-					{/* Mode Toggle */}
-					{volumeA && volumeB && (
+					{hasBoth && (
 						<div className="flex gap-1 rounded-lg border border-app-line bg-app-box/50 p-1">
 							<ModeButton
 								active={mode === "unique_a"}
@@ -195,69 +218,19 @@ export function CompareVolumes() {
 							/>
 						</div>
 					)}
+				</div>
 
-					{/* Results */}
-					{!volumeA || !volumeB ? (
+				{/* Results */}
+				<div className="flex-1 overflow-hidden">
+					{!hasBoth ? (
 						<div className="flex flex-col items-center justify-center gap-2 py-16 text-ink-dull">
 							<ShieldCheck size={48} weight="thin" />
 							<span className="text-sm">
 								Select two volumes to compare their contents
 							</span>
 						</div>
-					) : searchLoading ? (
-						<div className="flex items-center justify-center py-16 text-ink-dull">
-							Loading comparison...
-						</div>
-					) : files.length === 0 ? (
-						<div className="flex flex-col items-center justify-center gap-2 py-16 text-ink-dull">
-							<ShieldCheck size={48} weight="thin" />
-							<span className="text-sm">
-								{mode === "shared"
-									? "No shared files found between these volumes"
-									: `No unique files found on ${mode === "unique_a" ? volumeAName : volumeBName}`}
-							</span>
-						</div>
 					) : (
-						<div>
-							<div className="mb-2 text-xs text-ink-dull">
-								{totalCount.toLocaleString()} files found
-							</div>
-							<div className="rounded-lg border border-app-line">
-								<table className="w-full text-sm">
-									<thead className="bg-app text-left text-xs text-ink-dull">
-										<tr>
-											<th className="px-4 py-2 font-medium">
-												Name
-											</th>
-											<th className="px-4 py-2 font-medium">
-												Size
-											</th>
-											<th className="px-4 py-2 font-medium">
-												Extension
-											</th>
-										</tr>
-									</thead>
-									<tbody>
-										{files.map((file: SdFile) => (
-											<tr
-												key={file.id}
-												className="border-t border-app-line/50 text-ink transition-colors hover:bg-app-hover/50"
-											>
-												<td className="max-w-[400px] truncate px-4 py-2 font-medium">
-													{file.name}
-												</td>
-												<td className="px-4 py-2 text-ink-dull">
-													{formatBytes(file.size)}
-												</td>
-												<td className="px-4 py-2 text-ink-dull">
-													{file.extension || "\u2014"}
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
-							</div>
-						</div>
+						<ExplorerView />
 					)}
 				</div>
 			</div>
@@ -278,9 +251,7 @@ function ModeButton({
 		<button
 			onClick={onClick}
 			className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-				active
-					? "bg-accent text-white"
-					: "text-ink-dull hover:text-ink"
+				active ? "bg-accent text-white" : "text-ink-dull hover:text-ink"
 			}`}
 		>
 			{label}

@@ -956,10 +956,122 @@ impl FileSearchQuery {
 
 		tracing::info!("Fast search without FTS returned {} entries", entries.len());
 
-		// Convert entries to FileSearchResult using helper
+		// Batch-hydrate content_identity + content_kind + sidecars so the
+		// frontend gets real file metadata (mime, thumbs, dedup UUID) instead
+		// of "Unknown" placeholders. This mirrors the FTS path's hydration.
+		let content_ids: Vec<i32> = entries
+			.iter()
+			.filter_map(|e| e.content_id)
+			.collect::<std::collections::HashSet<_>>()
+			.into_iter()
+			.collect();
+
+		let content_identities = if !content_ids.is_empty() {
+			content_identity::Entity::find()
+				.filter(content_identity::Column::Id.is_in(content_ids.clone()))
+				.all(db)
+				.await?
+		} else {
+			Vec::new()
+		};
+
+		// Build id -> ContentIdentity (with mapped ContentKind) lookup
+		let kind_ids: Vec<i32> = content_identities
+			.iter()
+			.map(|ci| ci.kind_id)
+			.collect::<std::collections::HashSet<_>>()
+			.into_iter()
+			.collect();
+
+		let kinds_by_id: std::collections::HashMap<i32, String> = if !kind_ids.is_empty() {
+			crate::infra::db::entities::content_kind::Entity::find()
+				.filter(crate::infra::db::entities::content_kind::Column::Id.is_in(kind_ids))
+				.all(db)
+				.await?
+				.into_iter()
+				.map(|k| (k.id, k.name))
+				.collect()
+		} else {
+			std::collections::HashMap::new()
+		};
+
+		// Batch sidecars by content UUID
+		let content_uuids: Vec<Uuid> = content_identities
+			.iter()
+			.filter_map(|ci| ci.uuid)
+			.collect();
+
+		let all_sidecars = if !content_uuids.is_empty() {
+			sidecar::Entity::find()
+				.filter(sidecar::Column::ContentUuid.is_in(content_uuids.clone()))
+				.all(db)
+				.await?
+		} else {
+			Vec::new()
+		};
+
+		let mut sidecars_by_content: std::collections::HashMap<
+			Uuid,
+			Vec<crate::domain::file::Sidecar>,
+		> = std::collections::HashMap::new();
+		for s in all_sidecars {
+			sidecars_by_content
+				.entry(s.content_uuid)
+				.or_insert_with(Vec::new)
+				.push(crate::domain::file::Sidecar {
+					id: s.id,
+					content_uuid: s.content_uuid,
+					kind: s.kind,
+					variant: s.variant,
+					format: s.format,
+					status: s.status,
+					size: s.size,
+					created_at: s.created_at,
+					updated_at: s.updated_at,
+				});
+		}
+
+		// Index content identities by entry content_id for per-entry lookup
+		let identities_by_content_id: std::collections::HashMap<
+			i32,
+			&content_identity::Model,
+		> = content_identities.iter().map(|ci| (ci.id, ci)).collect();
+
+		// Convert entries to FileSearchResult, hydrating each with content_identity
 		let mut results = Vec::new();
 		for entry_model in entries {
-			if let Some(result) = self.entry_to_search_result(entry_model, db, 1.0).await? {
+			let content_id = entry_model.content_id;
+			if let Some(mut result) =
+				self.entry_to_search_result(entry_model, db, 1.0).await?
+			{
+				if let Some(cid) = content_id {
+					if let Some(ci) = identities_by_content_id.get(&cid) {
+						let kind = kinds_by_id
+							.get(&ci.kind_id)
+							.map(|name| crate::domain::ContentKind::from(name.as_str()))
+							.unwrap_or(crate::domain::ContentKind::Unknown);
+
+						if let Some(ci_uuid) = ci.uuid {
+							result.file.content_identity =
+								Some(crate::domain::content_identity::ContentIdentity {
+									uuid: ci_uuid,
+									kind,
+									content_hash: ci.content_hash.clone(),
+									integrity_hash: ci.integrity_hash.clone(),
+									mime_type_id: ci.mime_type_id,
+									text_content: ci.text_content.clone(),
+									total_size: ci.total_size,
+									entry_count: ci.entry_count,
+									first_seen_at: ci.first_seen_at,
+									last_verified_at: ci.last_verified_at,
+								});
+							if let Some(sidecars) = sidecars_by_content.get(&ci_uuid) {
+								result.file.sidecars = sidecars.clone();
+							}
+						}
+						result.file.content_kind = kind;
+					}
+				}
 				results.push(result);
 			}
 		}
