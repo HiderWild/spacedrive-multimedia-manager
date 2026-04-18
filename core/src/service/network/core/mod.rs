@@ -1493,32 +1493,43 @@ impl NetworkingService {
 				}
 			}
 		} else {
-			// Normal mode with node_id: race mDNS and relay
-			tokio::select! {
-				result = self.try_mdns_discovery(session_id, force_relay) => {
-					match result {
-						Ok(()) => {
-							self.logger.info("Connected via mDNS (local network)").await;
-							Ok(())
-						}
-						Err(e) => {
-							self.logger.warn(&format!("mDNS discovery failed: {}", e)).await;
-							Err(e)
-						}
+			// Normal mode with node_id: race mDNS and relay, but only fail if
+			// BOTH fail. `tokio::select!` resolves on the first completed branch
+			// including errors, which means a host that can't bind mDNS (e.g.
+			// where avahi owns :5353) would have its instant mDNS failure abort
+			// pairing before relay discovery gets a chance. `select_ok` picks
+			// the first Ok and only returns an error when every branch errors.
+			use futures::future::{select_ok, FutureExt};
+
+			let logger_mdns = self.logger.clone();
+			let logger_relay = self.logger.clone();
+			let mdns_fut = self
+				.try_mdns_discovery(session_id, force_relay)
+				.inspect(move |r| {
+					let logger = logger_mdns.clone();
+					if let Err(e) = r {
+						let msg = format!("mDNS discovery failed: {}", e);
+						tokio::spawn(async move { logger.warn(&msg).await });
 					}
-				}
-				result = self.try_relay_discovery(&pairing_code_clone) => {
-					match result {
-						Ok(()) => {
-							self.logger.info("Connected via relay (remote network)").await;
-							Ok(())
-						}
-						Err(e) => {
-							self.logger.warn(&format!("Relay discovery failed: {}", e)).await;
-							Err(e)
-						}
+				})
+				.boxed();
+			let relay_fut = self
+				.try_relay_discovery(&pairing_code_clone)
+				.inspect(move |r| {
+					let logger = logger_relay.clone();
+					if let Err(e) = r {
+						let msg = format!("Relay discovery failed: {}", e);
+						tokio::spawn(async move { logger.warn(&msg).await });
 					}
+				})
+				.boxed();
+
+			match select_ok([mdns_fut, relay_fut]).await {
+				Ok(((), _)) => {
+					self.logger.info("Connected (dual-path discovery)").await;
+					Ok(())
 				}
+				Err(e) => Err(e),
 			}
 		};
 
