@@ -1,0 +1,41 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+
+:root {
+	--color-fd-primary: hsl(209, 100%, 61%);
+	--color-fd-primary-foreground: hsl(0, 0%, 100%);
+	--color-fd-ring: hsl(209, 100%, 61%);
+}
+
+.dark {
+	--color-fd-primary: hsl(209, 100%, 65%);
+	--color-fd-primary-foreground: hsl(222, 47%, 11%);
+	--color-fd-ring: hsl(209, 100%, 65%);
+}
+
+::selection {
+	background-color: hsla(209, 100%, 61%, 0.3);
+}
+
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+::-webkit-scrollbar-track {
+	background: var(--color-fd-background);
+}
+::-webkit-scrollbar-thumb {
+	background: var(--color-fd-border);
+	border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: var(--color-fd-ring);
+}
+
+#nd-sidebar a,
+#nd-sidebar button {
+	transition: none !important;
+}

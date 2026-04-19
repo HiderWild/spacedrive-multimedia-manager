@@ -1,0 +1,355 @@
+---
+title: Back Up Photos from iPhone
+description: Automatically back up your iPhone photos to any Mac, PC, or NAS you own.
+---
+
+Spacedrive provides automatic photo backup from your iPhone to any Mac, PC, or NAS you own. Your photos transfer directly between devices using encrypted peer-to-peer connections, keeping them private and under your control.
+
+This guide covers setting up photo backup, configuring automatic transfers, and managing your photo library across devices.
+
+## Requirements
+
+Before starting, ensure you have:
+
+- iPhone running iOS 16 or later
+- Mac, Windows PC, or Linux machine as backup destination
+- Both devices on the same WiFi network (for initial setup)
+- Spacedrive installed on both devices
+- Sufficient storage space on destination device
+
+<Callout type="info">
+	Photo backup works completely offline after initial pairing. No internet
+	connection required for transfers.
+</Callout>
+
+## Install Spacedrive on iPhone
+
+<Steps>
+<Step>
+
+### Download from App Store
+
+Search for "Spacedrive" on the App Store or visit [spacedrive.com/ios](https://spacedrive.com/ios) for a direct link.
+
+</Step>
+<Step>
+
+### Open the app
+
+Launch Spacedrive and grant necessary permissions:
+
+- **Photos access** to read your photo library
+- **Local network** to find and connect to your devices
+- **Notifications** for backup status updates (optional)
+
+</Step>
+<Step>
+
+### Create mobile library
+
+Follow the setup wizard to create your library. Choose "Mobile Library" when prompted for library type.
+
+</Step>
+</Steps>
+
+<Callout type="warn">
+	Without photo access permission, Spacedrive cannot back up your photos. iOS
+	requires explicit permission for privacy protection.
+</Callout>
+
+## Set up your backup destination
+
+Configure the computer where photos will be stored:
+
+<Steps>
+<Step>
+
+### Open Spacedrive Desktop
+
+Launch Spacedrive on your Mac, Windows, or Linux machine. Ensure the daemon is running (check status bar).
+
+</Step>
+<Step>
+
+### Create backup location
+
+Navigate to Settings → Locations and add a folder for photo backups. Name it clearly like "iPhone Photos" or "Mobile Backup".
+
+</Step>
+<Step>
+
+### Enable network discovery
+
+In Settings → Network, ensure "Device Discovery" is enabled. This allows your iPhone to find this computer.
+
+</Step>
+</Steps>
+
+<Callout type="info">
+	Create a dedicated folder structure like `/Photos/iPhone/[Year]` for better
+	organization.
+</Callout>
+
+## Pair your devices
+
+Connect your iPhone and computer for secure transfers:
+
+<Steps>
+<Step>
+
+### Start pairing on iPhone
+
+In Spacedrive iOS, tap the devices icon and select "Add Device". Your phone begins scanning for nearby Spacedrive instances.
+
+</Step>
+<Step>
+
+### Select your computer
+
+Choose your computer from the discovered devices list. If not visible, ensure both devices are on the same network.
+
+</Step>
+<Step>
+
+### Verify security code
+
+Confirm the 6-digit code matches on both devices. This ensures you're connecting to the right computer.
+
+</Step>
+<Step>
+
+### Name the connection
+
+Give this pairing a friendly name like "John's MacBook" for easy identification.
+
+</Step>
+</Steps>
+
+<Callout type="info">
+	Pairing uses end-to-end encryption. Even on the same network, your photos
+	remain private during transfer.
+</Callout>
+
+## Configure backup settings
+
+Customize how and when photos back up:
+
+<Steps>
+<Step>
+
+### Open backup settings
+
+On iPhone, go to Settings → Photo Backup. Toggle "Enable Photo Backup" to on.
+
+</Step>
+<Step>
+
+### Choose backup destination
+
+Select your paired computer and choose the specific folder created earlier.
+
+</Step>
+<Step>
+
+### Set transfer conditions
+
+Configure when backups occur:
+
+- **WiFi only**: prevents cellular data usage (recommended)
+- **While charging**: runs backups only when plugged in
+- **Background backup**: allows transfers when app is closed
+
+</Step>
+<Step>
+
+### Select photo types
+
+Choose what to back up:
+
+- Photos (HEIC/JPEG)
+- Videos
+- Live Photos
+- RAW files (if shooting ProRAW)
+
+</Step>
+</Steps>
+
+## Start your first backup
+
+<Steps>
+<Step>
+
+### Initiate backup
+
+Tap "Start Backup Now" for immediate transfer or wait for automatic backup based on your conditions.
+
+</Step>
+<Step>
+
+### Monitor progress
+
+View real-time progress showing:
+
+- Photos queued
+- Transfer speed
+- Estimated time remaining
+- Individual file status
+
+</Step>
+<Step>
+
+### Keep app active
+
+For initial backup, keep Spacedrive open. Subsequent backups run in background.
+
+</Step>
+</Steps>
+
+<Callout type="info">
+	First backup may take hours depending on library size. A 10,000 photo
+	library typically transfers in 2–4 hours on WiFi.
+</Callout>
+
+## Manage ongoing backups
+
+Spacedrive handles incremental backups intelligently:
+
+### Automatic detection
+
+The app identifies new photos since last backup. Only new items transfer, saving time and bandwidth.
+
+### Duplicate prevention
+
+Content-based deduplication ensures the same photo never backs up twice, even if edited or renamed.
+
+### Conflict resolution
+
+If you organize photos on computer, Spacedrive preserves both versions without overwriting.
+
+### Storage management
+
+Monitor backup status and storage usage:
+
+```
+Settings → Photo Backup → Storage
+
+Backed up: 15,234 photos
+Storage used: 45.2 GB
+Last backup: 2 hours ago
+Next backup: When charging
+```
+
+## Advanced configuration
+
+### Multiple backup destinations
+
+Back up to multiple computers for redundancy:
+
+<Steps>
+<Step>
+
+### Pair additional devices
+
+Repeat pairing process with other computers or NAS devices.
+
+</Step>
+<Step>
+
+### Configure destinations
+
+In Photo Backup settings, enable multiple destinations and set priorities.
+
+</Step>
+<Step>
+
+### Choose sync strategy
+
+Select between:
+
+- **Mirror**: same photos on all destinations
+- **Distribute**: split photos across devices
+- **Archive**: move older photos to specific devices
+
+</Step>
+</Steps>
+
+### Network optimization
+
+Improve transfer speeds:
+
+- **5GHz WiFi**: use 5GHz networks when available for faster speeds
+- **Direct connection**: create device-to-device network for maximum speed
+- **Quality settings**: adjust compression for faster transfers (preserves originals)
+
+<Callout type="info">
+	For fastest initial backup, connect devices to ethernet on same network
+	switch.
+</Callout>
+
+### Backup rules
+
+Create smart backup rules:
+
+```
+Only backup:
+- Photos from last 30 days
+- Favorites marked in Photos app
+- Photos with faces detected
+- Media larger than 1MB
+```
+
+## Troubleshooting
+
+### iPhone can't find computer
+
+- Verify both devices on same WiFi network
+- Disable VPNs temporarily
+- Check firewall allows Spacedrive
+- Restart both devices
+
+### Backup seems stuck
+
+- Check available storage on destination
+- Verify WiFi connection stable
+- Force quit and reopen app
+- Check job manager for errors
+
+### Photos missing after backup
+
+- Confirm backup completed (check status)
+- Verify correct destination folder
+- Check if filters excluded some photos
+- Look in Spacedrive's trash for accidents
+
+### Battery draining quickly
+
+- Enable "While Charging Only" option
+- Reduce backup frequency
+- Lower transfer quality setting
+- Disable background backup
+
+## Best practices
+
+**Regular backups**: enable automatic daily backups while charging overnight.
+
+**Verify backups**: periodically check destination folder to confirm photos transferred correctly.
+
+**Organize early**: set up folder structure before accumulating thousands of photos.
+
+**Monitor storage**: keep 20% free space on destination for smooth operations.
+
+**Test recovery**: occasionally verify you can access backed-up photos from another device.
+
+<Callout type="warn">
+	Photo backup is not a sync service. Deleting photos from iPhone doesn't
+	remove backups. Manage storage separately on each device.
+</Callout>
+
+## Next steps
+
+With photo backup configured, explore these features:
+
+- [Manage your libraries](/overview/manage-libraries) — organize across devices.
+- [Add and index locations](/overview/add-index-locations) — include existing photos.
+
+Your photos now back up automatically and securely to devices you control. No subscriptions, no privacy concerns — just your memories safely preserved.

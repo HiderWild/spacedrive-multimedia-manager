@@ -1,0 +1,565 @@
+---
+title: Add and Index Locations
+description: Connect folders to Spacedrive and tune indexing for different content types.
+---
+
+Locations connect your existing folders to Spacedrive, making files searchable and organized without moving them. This guide covers adding locations, configuring indexing options, and optimizing performance for different use cases.
+
+You'll learn to index everything from small document folders to massive media libraries efficiently.
+
+## Understand locations
+
+A location represents a folder on your device that Spacedrive monitors. Key concepts:
+
+**Non-destructive**: Spacedrive never moves or modifies your original files. It only reads and indexes.
+
+**Device-specific**: each location belongs to one device. Other devices see the files but can't access the physical path.
+
+**Real-time monitoring**: Spacedrive watches for changes and updates the index automatically.
+
+**Flexible depth**: control how deeply Spacedrive analyzes files, from basic names to full content extraction.
+
+<Callout type="info">
+	Locations can be local folders, external drives, or network mounts.
+	Spacedrive treats them equally once indexed.
+</Callout>
+
+## Add your first location
+
+<Steps>
+<Step>
+
+### Open location manager
+
+Click the + button next to "Locations" in sidebar or navigate to Settings → Locations.
+
+</Step>
+<Step>
+
+### Select folder
+
+Click "Add Location" and browse to the folder you want to index. Start with something manageable.
+
+</Step>
+<Step>
+
+### Configure basic settings
+
+Set initial options:
+
+- **Display name**: friendly name shown in sidebar
+- **Index mode**: how deeply to analyze (see below)
+- **Hidden files**: include or exclude dot files
+
+</Step>
+<Step>
+
+### Start indexing
+
+Click "Add" to begin. Monitor progress in the job manager (bottom status bar).
+
+</Step>
+</Steps>
+
+<Callout type="info">
+	For testing, start with a folder containing less than 1,000 files. This
+	indexes quickly and helps you understand the process.
+</Callout>
+
+## Indexing modes explained
+
+Choose the right mode for your needs:
+
+### Shallow indexing
+
+Fastest option capturing basic metadata:
+
+- File names and extensions
+- Size and timestamps
+- Directory structure
+- Basic file type detection
+
+Use for:
+
+- Quick overviews
+- Temporary folders
+- Network drives
+- Initial exploration
+
+### Deep indexing (recommended)
+
+Comprehensive analysis including:
+
+- Everything from shallow mode
+- Content-based hashing
+- Thumbnail generation
+- Media metadata (EXIF, duration)
+- Text extraction (coming soon)
+
+Use for:
+
+- Photo libraries
+- Document archives
+- Media collections
+- Permanent storage
+
+### Content indexing
+
+Full text and analysis (future release):
+
+- Everything from deep mode
+- OCR for images
+- Full text search
+- AI-powered tagging
+- Semantic relationships
+
+<Callout type="info">
+	Indexing mode affects initial scan only. You can re-index with different
+	settings later.
+</Callout>
+
+## Configure location settings
+
+Fine-tune each location after adding:
+
+<Steps>
+<Step>
+
+### Access location settings
+
+Right-click location in sidebar and select "Settings" or click gear icon.
+
+</Step>
+<Step>
+
+### Indexing rules
+
+Customize what gets indexed:
+
+- **File extensions**: include/exclude specific types
+- **Size limits**: skip files over certain size
+- **Path patterns**: ignore folders matching patterns
+- **Date ranges**: only index recent files
+
+</Step>
+<Step>
+
+### Watching options
+
+Control real-time monitoring:
+
+- **Watch for changes**: enable filesystem monitoring
+- **Watch frequency**: how often to check (default: instant)
+- **Process immediately**: index new files right away
+
+</Step>
+<Step>
+
+### Advanced settings
+
+Performance and behavior:
+
+- **Priority**: processing order vs other locations
+- **Parallelism**: concurrent file processing
+- **Thumbnail size**: quality vs storage tradeoff
+
+</Step>
+</Steps>
+
+## Index different content types
+
+### Photo libraries
+
+Optimize for image collections:
+
+```
+Settings for Photo Location:
+- Indexing: Deep
+- Thumbnails: High Quality
+- Include: *.jpg, *.raw, *.heic
+- Extract: EXIF metadata
+- Watch: Enabled
+```
+
+<Callout type="info">
+	Enable "Generate Previews" for instant photo browsing without opening files.
+</Callout>
+
+### Document archives
+
+Best practices for documents:
+
+```
+Settings for Documents:
+- Indexing: Deep
+- Include: *.pdf, *.docx, *.txt
+- OCR: Enabled (when available)
+- Versioning: Track changes
+```
+
+### Media collections
+
+Handle video and audio efficiently:
+
+```
+Settings for Media:
+- Indexing: Deep
+- Thumbnails: First frame
+- Extract: Duration, codec, resolution
+- Exclude: *.tmp, *.partial
+```
+
+### Development projects
+
+Index code intelligently:
+
+```
+Settings for Code:
+- Indexing: Shallow
+- Exclude: node_modules/, .git/, build/
+- Include: Source files only
+- Watch: Enabled for hot reload
+```
+
+<Callout type="warn">
+	Avoid indexing package directories like `node_modules`. They contain
+	thousands of files that change frequently.
+</Callout>
+
+## Add external drives
+
+Index removable storage:
+
+<Steps>
+<Step>
+
+### Connect drive
+
+Attach external drive and ensure it mounts properly.
+
+</Step>
+<Step>
+
+### Add as location
+
+Select the drive root or specific folders. Name clearly like "Backup Drive - 4TB".
+
+</Step>
+<Step>
+
+### Configure offline behavior
+
+In settings, enable "Offline Mode":
+
+- Preserves index when disconnected
+- Shows files as unavailable
+- Re-syncs on reconnection
+
+</Step>
+<Step>
+
+### Set auto-mount
+
+Optional: configure system to auto-mount and index when connected.
+
+</Step>
+</Steps>
+
+<Callout type="info">
+	Spacedrive remembers external drives. Reconnecting automatically updates the
+	index for changes made elsewhere.
+</Callout>
+
+## Add network locations
+
+Index NAS and network shares:
+
+<Steps>
+<Step>
+
+### Mount network share
+
+Ensure share mounted at OS level:
+
+- macOS: Finder → Go → Connect to Server
+- Windows: map network drive
+- Linux: mount via fstab or GUI
+
+</Step>
+<Step>
+
+### Add location
+
+Browse to mounted path and add like any folder.
+
+</Step>
+<Step>
+
+### Optimize for network
+
+Adjust settings for network performance:
+
+- Reduce parallelism
+- Enable caching
+- Increase timeouts
+- Shallow index initially
+
+</Step>
+<Step>
+
+### Handle disconnections
+
+Enable offline mode to prevent errors when network unavailable.
+
+</Step>
+</Steps>
+
+## Monitor indexing progress
+
+Track indexing status effectively:
+
+### Job manager
+
+Access via status bar or `⌘J` / `Ctrl+J`:
+
+- Current file being processed
+- Files completed vs total
+- Processing speed
+- Time remaining estimate
+- Pause/resume controls
+
+### Location statistics
+
+Right-click location → Statistics:
+
+```
+Files indexed: 45,234
+Total size: 127 GB
+Last indexed: 2 mins ago
+Index health: 98%
+Thumbnails: 12,453
+```
+
+### System resources
+
+Monitor impact during indexing:
+
+- CPU usage (adjustable)
+- Disk I/O
+- Memory consumption
+- Network bandwidth (for remote)
+
+<Callout type="info">
+	Initial indexing runs at full speed. Subsequent updates throttle to avoid
+	system impact.
+</Callout>
+
+## Optimize performance
+
+### Large libraries (>100k files)
+
+Handle massive collections:
+
+<Steps>
+<Step>
+
+### Index in phases
+
+Add subfolders separately rather than entire directory tree at once.
+
+</Step>
+<Step>
+
+### Schedule indexing
+
+Run initial index during off-hours:
+
+```bash
+sd location add /large/library --schedule "02:00"
+```
+
+</Step>
+<Step>
+
+### Adjust parallelism
+
+Reduce concurrent processing for stability:
+
+Settings → Location → Advanced → Max Workers: 2
+
+</Step>
+<Step>
+
+### Disable previews initially
+
+Generate thumbnails after initial index completes.
+
+</Step>
+</Steps>
+
+### Slow storage
+
+Optimize for external/network drives:
+
+- Enable read caching
+- Increase batch sizes
+- Reduce random access
+- Use shallow indexing
+- Process sequentially
+
+### System impact
+
+Minimize resource usage:
+
+**CPU management**
+
+- Set process priority to low
+- Limit worker threads
+- Enable thermal throttling
+
+**Disk I/O**
+
+- Reduce concurrent reads
+- Increase buffer sizes
+- Schedule during idle
+
+**Memory usage**
+
+- Lower thumbnail cache
+- Reduce preview quality
+- Clear cache regularly
+
+## Troubleshooting
+
+### Indexing stuck or slow
+
+Common causes and solutions:
+
+**Corrupted files**
+
+- Check logs for problem files
+- Exclude problematic paths
+- Run filesystem check
+
+**Permission issues**
+
+- Verify read access
+- Run as appropriate user
+- Check security software
+
+**Resource constraints**
+
+- Free up disk space
+- Close other applications
+- Increase system limits
+
+### Files not appearing
+
+Verify files indexed correctly:
+
+1. Check location statistics
+2. Confirm indexing completed
+3. Try manual rescan
+4. Check exclusion rules
+5. Verify file permissions
+
+### Duplicates or missing files
+
+Fix index inconsistencies:
+
+<Steps>
+<Step>
+
+### Stop watching
+
+Disable location watching temporarily.
+
+</Step>
+<Step>
+
+### Clear index
+
+Right-click → Advanced → Clear Index (keeps settings).
+
+</Step>
+<Step>
+
+### Re-index
+
+Start fresh index with same settings.
+
+</Step>
+<Step>
+
+### Verify results
+
+Check file count matches filesystem.
+
+</Step>
+</Steps>
+
+## Advanced location management
+
+### Location templates
+
+Save configurations for reuse:
+
+```
+Photo Import Template:
+- Deep indexing
+- High quality thumbs
+- EXIF extraction
+- Auto-organization rules
+```
+
+Apply templates when adding similar locations.
+
+### Conditional indexing
+
+Index based on rules:
+
+```
+Only index if:
+- Free space > 10GB
+- System idle > 5 min
+- On AC power
+- Network connected
+```
+
+### Location hierarchies
+
+Organize nested locations:
+
+```
+Media Library/
+├── Photos/          (Deep index)
+├── RAW Files/       (Shallow index)
+└── Exports/         (Watch only)
+```
+
+Each sublocation can have different settings.
+
+### Cross-device locations
+
+Share location references:
+
+<Callout type="info">
+	While files stay on original device, location metadata syncs so other
+	devices know what exists where.
+</Callout>
+
+## Best practices
+
+**Start small**: test with small folders before indexing everything.
+
+**Name clearly**: use descriptive names indicating content and device.
+
+**Regular maintenance**: re-scan locations monthly to catch any missed changes.
+
+**Exclude wisely**: prevent indexing temporary files, caches, and system folders.
+
+**Monitor health**: check location statistics regularly for issues.
+
+**Document settings**: note why specific settings chosen for future reference.
+
+Your locations now integrate seamlessly with Spacedrive, making all your files searchable and organized while preserving your existing structure. Add locations strategically and tune settings for optimal performance.

@@ -1,0 +1,15 @@
+{
+	"title": "Spacedrive",
+	"pages": [
+		"---Overview---",
+		"...overview",
+		"---Developer---",
+		"...core",
+		"---SDK---",
+		"...extensions",
+		"---CLI---",
+		"...cli",
+		"---Interface---",
+		"...react"
+	]
+}

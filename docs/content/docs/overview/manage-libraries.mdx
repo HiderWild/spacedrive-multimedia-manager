@@ -1,0 +1,468 @@
+---
+title: Manage Your Libraries
+description: Create, switch, sync, and back up libraries across devices.
+---
+
+Libraries in Spacedrive organize your digital life into separate, manageable collections. Create libraries for different purposes, sync settings between devices, and maintain clean separation between personal and work files.
+
+This guide explains library management from basic operations to advanced multi-library workflows.
+
+## Understand libraries
+
+A library is your personal file database containing:
+
+- Indexed file metadata and thumbnails
+- Tags, comments, and custom organization
+- Location mappings and folder relationships
+- Device pairings and sync settings
+- Job history and statistics
+
+<Callout type="info">
+	Libraries exist independently. Files in one library remain completely
+	separate from others, ensuring privacy and organization.
+</Callout>
+
+## Create additional libraries
+
+Beyond your first library, create specialized collections:
+
+<Steps>
+<Step>
+
+### Open library switcher
+
+Click the library name in the top bar or press `⌘L` (Mac) / `Ctrl+L` (Windows/Linux).
+
+</Step>
+<Step>
+
+### Select create library
+
+Choose "Create New Library" from the dropdown menu.
+
+</Step>
+<Step>
+
+### Configure library
+
+Name your library and optionally:
+
+- Set custom storage location
+- Choose encryption settings
+- Configure default indexing rules
+
+</Step>
+<Step>
+
+### Initialize library
+
+Click "Create" to build the database structure. Spacedrive switches to the new library automatically.
+
+</Step>
+</Steps>
+
+<Callout type="info">
+	Each library maintains its own database file. Default location: `~/Library/Application Support/spacedrive/libraries/` on macOS.
+</Callout>
+
+## Switch between libraries
+
+Navigate multiple libraries efficiently:
+
+### Quick switch
+
+Press `⌘L` / `Ctrl+L` to open the library switcher. Recent libraries appear at top.
+
+### Keyboard navigation
+
+Use number keys `1–9` to switch to libraries by position in the list.
+
+### Set default library
+
+Right-click a library in the switcher and select "Set as Default". This library opens on app launch.
+
+<Callout type="info">
+	Pin frequently used libraries to the top of the switcher for faster access.
+</Callout>
+
+## Library settings
+
+Customize each library independently:
+
+<Steps>
+<Step>
+
+### Open library settings
+
+Navigate to Settings → Library or press `⌘,` / `Ctrl+,` then select Library tab.
+
+</Step>
+<Step>
+
+### General settings
+
+Configure basic options:
+
+- **Name**: update library display name
+- **Description**: add notes about library purpose
+- **Storage path**: view database location
+- **Statistics**: see total files, size, and devices
+
+</Step>
+<Step>
+
+### Privacy settings
+
+Control library privacy:
+
+- **Encryption**: enable database encryption
+- **Network visibility**: hide from network discovery
+- **Sync permissions**: limit which devices can sync
+
+</Step>
+<Step>
+
+### Advanced options
+
+Fine-tune behavior:
+
+- **Indexing rules**: default settings for new locations
+- **Thumbnail quality**: balance quality vs storage
+- **Job concurrency**: parallel processing limits
+
+</Step>
+</Steps>
+
+## Common library patterns
+
+### Work/personal separation
+
+Create distinct libraries for different aspects of life:
+
+**Work library**
+
+- Project files and documents
+- Client assets
+- Meeting recordings
+- Professional photos
+
+**Personal library**
+
+- Family photos and videos
+- Personal documents
+- Entertainment media
+- Hobby projects
+
+<Callout type="warn">
+	Libraries cannot share files directly. Use separate locations if you need
+	files accessible from multiple libraries.
+</Callout>
+
+### Project-based libraries
+
+Organize major projects independently:
+
+```
+Film Project Library
+├── Raw Footage (Location)
+├── Audio Files (Location)
+├── Project Files (Location)
+└── Exports (Location)
+```
+
+Benefits:
+
+- Archive entire project when complete
+- Share library with collaborators
+- Prevent accidental cross-contamination
+
+### Device-specific libraries
+
+Optimize for different device types:
+
+**Mobile library** — lightweight for phones/tablets
+
+- Photos and screenshots only
+- Minimal processing rules
+- Reduced thumbnail sizes
+
+**Desktop library** — full features for computers
+
+- All file types indexed
+- Maximum quality thumbnails
+- Advanced processing enabled
+
+## Sync libraries between devices
+
+Share organizational data across your devices:
+
+<Steps>
+<Step>
+
+### Enable library sync
+
+In Library Settings, toggle "Enable Sync" and note the Library ID displayed.
+
+</Step>
+<Step>
+
+### Add library on second device
+
+On another device, choose "Join Existing Library" and enter the Library ID.
+
+</Step>
+<Step>
+
+### Verify connection
+
+Confirm device pairing using the security code shown on both screens.
+
+</Step>
+<Step>
+
+### Configure sync options
+
+Choose what syncs:
+
+- **Metadata only**: tags, comments (default)
+- **Organization**: folder structures
+- **Settings**: library preferences
+- **Locations**: folder mappings (advanced)
+
+</Step>
+</Steps>
+
+<Callout type="info">
+	Sync only shares organizational data. Actual files remain on their original
+	devices unless explicitly transferred.
+</Callout>
+
+### Sync behavior
+
+Understanding sync helps avoid confusion:
+
+**Immediate sync**
+
+- Tags and labels
+- File relationships
+- Custom metadata
+
+**Device-specific**
+
+- Location paths
+- Indexing progress
+- Local preferences
+
+**Never synced**
+
+- Actual file contents
+- Temporary data
+- Job history
+
+## Back up libraries
+
+Protect your organizational work:
+
+<Steps>
+<Step>
+
+### Locate library database
+
+Find your library file:
+
+- macOS: `~/Library/Application Support/spacedrive/libraries/[id]/library.db`
+- Windows: `%APPDATA%\spacedrive\libraries\[id]\library.db`
+- Linux: `~/.config/spacedrive/libraries/[id]/library.db`
+
+</Step>
+<Step>
+
+### Create backup
+
+Copy the entire library folder to backup location. Include all `.db` files and thumbnails directory.
+
+</Step>
+<Step>
+
+### Automate backups
+
+Set up automated backups using:
+
+- Time Machine (macOS)
+- File History (Windows)
+- rsync scripts (Linux)
+- Cloud backup services
+
+</Step>
+</Steps>
+
+<Callout type="info">
+	Name backup files with date stamps: `library-personal-2024-01-15.db`.
+</Callout>
+
+## Restore libraries
+
+Recover from backups when needed:
+
+<Steps>
+<Step>
+
+### Close Spacedrive
+
+Quit the app completely. Ensure daemon stops.
+
+</Step>
+<Step>
+
+### Replace library files
+
+Copy backup files to the library directory, overwriting existing files.
+
+</Step>
+<Step>
+
+### Restart Spacedrive
+
+Launch app. The restored library appears in the switcher.
+
+</Step>
+<Step>
+
+### Verify restoration
+
+Check recent files and tags to confirm successful restore.
+
+</Step>
+</Steps>
+
+## Delete libraries
+
+Remove unwanted libraries cleanly:
+
+<Steps>
+<Step>
+
+### Switch to different library
+
+Ensure you're not currently using the library to delete.
+
+</Step>
+<Step>
+
+### Open library manager
+
+Access via Settings → Libraries → Manage.
+
+</Step>
+<Step>
+
+### Select library
+
+Choose the library and click "Delete Library".
+
+</Step>
+<Step>
+
+### Confirm deletion
+
+Type the library name to confirm. This permanently removes:
+
+- Database files
+- Thumbnails
+- Organizational data
+- Sync relationships
+
+</Step>
+</Steps>
+
+<Callout type="error">
+	Library deletion cannot be undone. Back up important libraries before
+	deleting.
+</Callout>
+
+## Troubleshooting
+
+### Library won't open
+
+- Check disk space for database
+- Verify file permissions
+- Try recovery mode (hold Shift on launch)
+- Restore from backup if corrupted
+
+### Sync not working
+
+- Confirm both devices online
+- Check Library IDs match
+- Verify network connectivity
+- Re-pair devices if needed
+
+### Performance issues
+
+- Reduce thumbnail quality
+- Limit concurrent jobs
+- Archive old data
+- Split large libraries
+
+### Missing locations
+
+- Locations are device-specific
+- Re-add locations after sync
+- Check paths still exist
+- Verify permissions
+
+## Advanced library management
+
+### Library templates
+
+Create template libraries for repeated setups:
+
+```
+Photo Workshop Template
+├── RAW Import (Location preset)
+├── Working Files (Location preset)
+├── Client Delivery (Location preset)
+└── Archive (Location preset)
+```
+
+Export and import library configurations without data.
+
+### Multi-user libraries
+
+Share libraries safely:
+
+**Read-only access** — others can view but not modify.
+
+**Contributor access** — add files and tags.
+
+**Admin access** — full control including settings.
+
+<Callout type="info">
+	Multi-user features require Spacedrive Cloud (coming soon) or self-hosted
+	server.
+</Callout>
+
+### Library analytics
+
+Monitor library usage:
+
+- File type distribution
+- Growth over time
+- Most active locations
+- Tag usage patterns
+- Device contribution
+
+Access analytics in Settings → Library → Statistics.
+
+## Best practices
+
+**Name clearly**: use descriptive names indicating purpose or content type.
+
+**Regular backups**: automate weekly backups of important libraries.
+
+**Prune regularly**: remove unused locations and clean up old jobs.
+
+**Document purpose**: add descriptions explaining library organization.
+
+**Test sync**: verify sync works before relying on it.
+
+Your libraries now provide organized, separate spaces for different aspects of your digital life. Each library maintains its independence while enabling powerful organization features.

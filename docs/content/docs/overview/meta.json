@@ -1,0 +1,16 @@
+{
+	"title": "Overview",
+	"defaultOpen": true,
+	"pages": [
+		"introduction",
+		"whitepaper",
+		"philosophy",
+		"history",
+		"---User Guides---",
+		"get-started",
+		"self-hosting",
+		"backup-photos-ios",
+		"manage-libraries",
+		"add-index-locations"
+	]
+}

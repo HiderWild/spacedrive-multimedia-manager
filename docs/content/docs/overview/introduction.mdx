@@ -1,0 +1,185 @@
+---
+title: Welcome to Spacedrive
+description: Infrastructure for multi-device computing.
+---
+
+<Callout type="info">
+	**v2.0.0-alpha.1 released December 26, 2025.** The complete ground-up rewrite
+	is here. This is an alpha for testing and feedback. macOS and Linux are
+	supported now; Windows lands in alpha.2. See the [full release
+	notes](https://github.com/spacedriveapp/spacedrive/releases) for details.
+</Callout>
+
+## What is Spacedrive?
+
+Spacedrive is a local-first file manager that unifies data across devices without centralized cloud services. Files stay where they are. Spacedrive creates a content-aware index that makes them searchable, syncable, and manageable from anywhere.
+
+<img src="/screenshots/SDColumnView.webp" alt="Spacedrive column view file explorer" />
+
+## Why Spacedrive exists
+
+Computing was designed for single devices. File managers like Finder and Explorer assume your data lives on the computer in front of you. The shift to multi-device forced us into cloud ecosystems. Convenience required giving up data ownership.
+
+AI is accelerating this trend. Cloud services offer semantic search and intelligent analysis, but only if you upload your files to their infrastructure. Spacedrive is building the architecture for local AI on hardware you already own, on data that never leaves your control.
+
+This is infrastructure for the next era of computing.
+
+## Current state
+
+### What works now (v2.0.0-alpha.1)
+
+**Core infrastructure**
+
+- Daemon-client architecture with persistent background operations
+- Tauri desktop app with working interface
+- CLI with full library, location, job, and network management
+- Resumable job system with checkpointing and progress tracking
+
+**Multi-device sync**
+
+- Peer-to-peer library sync via Iroh/QUIC with NAT traversal
+- Device pairing with BIP39 mnemonic codes
+- Local network discovery (mDNS) and relay fallback
+- Leaderless sync using Hybrid Logical Clocks (no central server)
+- Device-owned data (locations, files) and shared resources (tags, collections)
+- Incremental sync with watermarks for offline periods
+
+**File management**
+
+- File indexing with shallow, content, and deep modes
+- Content identity and deduplication across devices
+- Unified addressing: `local://`, `s3://`, `content://` URIs
+- Copy/move operations with atomic and streaming strategies
+- Checksum verification and progress tracking
+
+**Cloud storage**
+
+- Integration via OpenDAL (40+ services supported)
+- S3, Google Drive, OneDrive, Dropbox, Azure Blob, GCS
+- Cloud files indexed and searchable like local files
+- Cross-storage operations (local to cloud, cloud to cloud)
+
+**Media & analysis**
+
+- Thumbnail generation
+- OCR text extraction
+- Speech transcription
+- Sampled content hashing (58KB identifies any file size)
+
+**Organization**
+
+- Semantic tagging with hierarchies and polymorphic naming
+- Spaces for custom workspace layouts
+- Collections for grouping files
+
+**Security**
+
+- Ed25519 device identity with session key derivation
+- XChaCha20-Poly1305 credential encryption
+- OS keyring integration (Keychain, Credential Manager, Secret Service)
+
+**Platform support**
+
+- macOS: fully supported
+- Linux: fully supported
+- Windows: coming in alpha.2
+- iOS & Android: coming soon
+
+### Coming soon
+
+- **alpha.2**: Windows support
+- **Future releases**:
+  - iOS app
+  - Android app
+  - Server edition for headless deployments
+  - Extension SDK (stable API)
+  - AI integration with local models
+
+### Prototypes (not public)
+
+Native Swift apps (iOS, macOS) and a GPUI media viewer exist as private prototypes. These demonstrate type-safe native integration and platform-specific optimizations. They may become production apps if performance demands it.
+
+## How it works
+
+Spacedrive treats files as first-class objects with content identity. A photo on your laptop and the same photo on your NAS are recognized as one piece of content.
+
+**Core capabilities:**
+
+- Search millions of files in under 100ms
+- Preview operations before execution (conflicts, space savings, outcomes)
+- Sync peer-to-peer without servers or consensus protocols
+- Track redundancy across devices
+- Full offline functionality
+
+Files stay in place. Spacedrive makes them universally addressable with rich metadata.
+
+## Testing & feedback
+
+This is an alpha release. We need community help validating:
+
+- macOS and Linux stability
+- v1 to v2 library migration
+- Multi-device sync scenarios
+- Performance at scale
+
+<Callout type="info">
+	macOS and Linux users: test indexing, multi-device sync, and cloud
+	integration. Report bugs on GitHub or Discord. All feedback helps improve
+	stability for the beta release.
+</Callout>
+
+## For developers
+
+<Callout type="warn">
+	Most architecture docs live under [Architecture](/core/architecture), not in
+	the overview guides.
+</Callout>
+
+Key technical docs:
+
+- [Architecture overview](/core/architecture) — system design and principles
+- [Data model](/core/data-model) — how data is structured
+- [Content addressing](/core/addressing) — content identity system
+- [Library sync](/core/library-sync) — multi-device synchronization
+- [Testing guide](/core/testing) — test framework and patterns
+
+## Roadmap
+
+The `.tasks` folder in the repo tracks core development work. Check the [releases page](https://github.com/spacedriveapp/spacedrive/releases) for the public roadmap. These docs provide detailed technical reference.
+
+<Callout type="info">
+	Some guides document planned features that aren't in alpha.1 yet. When
+	features aren't ready, you'll see callouts indicating their status.
+</Callout>
+
+## Project timeline
+
+Spacedrive v2 development began in June 2025. This is a ground-up rewrite addressing lessons from the v1 alpha. The architecture is designed for long-term sustainability, not quick feature delivery.
+
+v2.0.0-alpha.1 released December 26, 2025 after six months of development. This alpha provides the core infrastructure for multi-device file management. Additional platforms and features will roll out in subsequent releases.
+
+## Screenshots
+
+<img src="/screenshots/SDColumnView.webp" alt="Column view — file explorer interface" />
+
+<img src="/screenshots/SDVideoPlayer.webp" alt="Video player" />
+
+<img src="/screenshots/SDGridView.webp" alt="Grid view — browse files in a grid layout" />
+
+<img src="/screenshots/SDMediaView.webp" alt="Media view — gallery and media browsing" />
+
+<img src="/screenshots/SDSizeView.webp" alt="Size view — visualize storage usage" />
+
+<img src="/screenshots/SDSplatView.webp" alt="3D Gaussian Splat viewer" />
+
+## Get involved
+
+- **Test the code** — build from source, report bugs, validate cross-platform.
+- **Join Discord** — [discord.gg/gTaF2Z44f5](https://discord.gg/gTaF2Z44f5).
+- **Read the whitepaper** — [whitepaper/spacedrive.pdf](https://github.com/spacedriveapp/spacedrive/blob/main/whitepaper/spacedrive.pdf) (work in progress).
+- **Explore architecture docs** — start with [core/architecture](/core/architecture).
+
+<Callout type="info">
+	This is a living document. As development progresses through alpha and beta
+	releases, this page will be updated to reflect current status.
+</Callout>

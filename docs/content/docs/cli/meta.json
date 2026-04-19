@@ -1,0 +1,11 @@
+{
+	"title": "CLI",
+	"defaultOpen": true,
+	"pages": [
+		"overview",
+		"linux-deployment",
+		"library-sync-setup",
+		"multi-instance",
+		"index-verify"
+	]
+}
