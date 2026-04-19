@@ -1,0 +1,202 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+
+env:
+  SPACEDRIVE_CUSTOM_APT_FLAGS: --no-install-recommends
+  # From: https://github.com/rust-lang/rust-analyzer/blob/master/.github/workflows/ci.yaml
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: short
+  RUSTUP_MAX_RETRIES: 10
+  SD_AUTH: disabled
+
+# Cancel previous runs of the same workflow on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rustfmt:
+    name: Rust Formatting
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Maximize build space
+        if: ${{ runner.os == 'Linux' }}
+        uses: easimon/maximize-build-space@master
+        with:
+          swap-size-mb: 3072
+          root-reserve-mb: 6144
+          remove-dotnet: "true"
+          remove-codeql: "true"
+          remove-haskell: "true"
+          remove-docker-images: "true"
+
+      - name: Symlink target to C:\
+        if: ${{ runner.os == 'Windows' }}
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\spacedrive_target
+      - name: Symlink target to C:\
+        if: ${{ runner.os == 'Windows' }}
+        shell: powershell
+        run: |
+          New-Item -Path target -ItemType Junction -Value C:\spacedrive_target
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        # TODO: Re-enable when submodule repos are public
+        # with:
+        #   submodules: recursive
+
+      - name: Check if files have changed
+        uses: dorny/paths-filter@v3
+        continue-on-error: true
+        id: filter
+        with:
+          filters: |
+            changes:
+              - 'apps/cli/**'
+              - 'apps/desktop/crates/**'
+              - 'apps/desktop/src-tauri/**'
+              - 'apps/mobile/crates/**'
+              - 'apps/server/**'
+              - 'core/**'
+              - 'crates/**'
+              - 'extensions/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/setup-rust/**'
+              - '.github/actions/setup-system/**'
+
+      - name: Setup Rust
+        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        uses: ./.github/actions/setup-rust
+        with:
+          restore-cache: "false"
+
+      - name: Run rustfmt
+        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        run: cargo fmt --all -- --check
+
+  clippy:
+    strategy:
+      fail-fast: false # Don't cancel other platforms if one fails
+      matrix:
+        settings:
+          - host: ubuntu-22.04
+            target: blacksmith-4vcpu-ubuntu-2404
+    name: Clippy (${{ matrix.settings.host }})
+    runs-on: ${{ matrix.settings.host }}
+    permissions:
+      contents: read
+    timeout-minutes: 45
+    steps:
+      - name: Maximize build space
+        if: ${{ runner.os == 'Linux' }}
+        uses: easimon/maximize-build-space@master
+        with:
+          swap-size-mb: 3072
+          root-reserve-mb: 6144
+          remove-dotnet: "true"
+          remove-codeql: "true"
+          remove-haskell: "true"
+          remove-docker-images: "true"
+
+      - name: Symlink target to C:\
+        if: ${{ runner.os == 'Windows' }}
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\spacedrive_target
+          New-Item -Path target -ItemType Junction -Value C:\spacedrive_target
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        # TODO: Re-enable when submodule repos are public
+        # with:
+        #   submodules: recursive
+
+      - name: Find files that have changed
+        uses: dorny/paths-filter@v3
+        continue-on-error: true
+        id: filter
+        with:
+          filters: |
+            changes:
+              - ${{ runner.os == 'Windows' && 'scripts/setup.ps1' || 'scripts/setup.sh' }}
+              - 'scripts/preprep.mjs'
+              - 'apps/cli/**'
+              - 'apps/desktop/crates/**'
+              - 'apps/desktop/src-tauri/**'
+              - 'apps/mobile/crates/**'
+              - 'apps/server/**'
+              - 'core/**'
+              - 'crates/**'
+              - 'extensions/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/setup-rust/**'
+              - '.github/actions/setup-system/**'
+
+      - name: Setup System and Rust
+        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        uses: ./.github/actions/setup-system
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Clippy
+        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        run: cargo clippy --workspace --locked -- -D warnings
+
+      # - name: Run tests
+      #   if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+      #   run: cargo test --workspace --all-features --locked --target ${{ matrix.settings.target }}
+
+  typescript:
+    name: TypeScript
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if files have changed
+        uses: dorny/paths-filter@v3
+        continue-on-error: true
+        id: filter
+        with:
+          filters: |
+            changes:
+              - 'apps/tauri/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'bun.lockb'
+              - 'tsconfig.json'
+              - '.github/workflows/ci.yml'
+
+      - name: Setup Bun
+        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: "1.3.4"
+
+      - name: Install dependencies
+        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        run: bun install
+
+      - name: TypeScript typecheck
+        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        run: bun run typecheck
+        working-directory: apps/tauri

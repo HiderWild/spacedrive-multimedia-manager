@@ -1,0 +1,78 @@
+name: 🐞 Bug report
+description: Report a bug affecting Spacedrive's functionality.
+labels: [kind/bug, status/needs-triage]
+
+body:
+  - type: checkboxes
+    attributes:
+      label: Check for other issues
+      description: Please search existing issues for other reports of this same bug before submitting.
+      options:
+        - label: I've checked for other issues, and none exist.
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Issue description
+      description: Please include a clear description of the issue you're having. Attach screenshots, if applicable.
+      placeholder: |
+        When I ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: If possible, please include any steps we'd need in order to reproduce the issue.
+      placeholder: |
+        1. Go to ...
+        2. Click on ...
+        3. See error
+
+  - type: textarea
+    id: platform-info
+    attributes:
+      label: Platform and versions
+      description: |
+        Please tell us about your operating system and Spacedrive versions. If on Linux, please provide information about the distribution you are using.
+
+        **If you are developing Spacedrive or building it yourself, please include the output of the following command:**
+
+        ```
+        pnpm --version && cargo --version && rustc --version
+        ```
+      value: |
+        - OS:
+        - Spacedrive:
+
+        <details><summary> Development tool versions (optional) </summary><pre>
+
+        <!-- Please replace this line with the command's output -->
+
+        </pre></details>
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Stack trace
+      description: If this bug resulted in a crash, please attach a stack trace here.
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add any extra information about the problem here.
+
+  - type: checkboxes
+    id: code-of-conduct
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow Spacedrive's [Code of Conduct](https://github.com/spacedriveapp/spacedrive/blob/main/CODE_OF_CONDUCT.md).
+      options:
+        - label: I agree to follow the Code of Conduct.
+          required: true
