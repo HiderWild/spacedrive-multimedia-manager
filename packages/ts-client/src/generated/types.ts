@@ -27,6 +27,36 @@ export type AddItemInput = { space_id: string; group_id: string | null; item_typ
 export type AddItemOutput = { item: SpaceItem };
 
 /**
+ * Add a parent implication: `child_tag_id` implies `parent_tag_id`.
+ */
+export type AddParentTagInput = { 
+/**
+ * Tag UUID that implies the parent.
+ */
+child_tag_id: string; 
+/**
+ * Tag UUID implied by the child.
+ */
+parent_tag_id: string };
+
+export type AddParentTagOutput = { child_tag_id: string; parent_tag_id: string; message: string };
+
+/**
+ * Add a sibling alias: `tag_id` is an alias of the canonical `ideal_tag_id`.
+ */
+export type AddSiblingTagInput = { 
+/**
+ * Alias tag UUID that collapses to the ideal.
+ */
+tag_id: string; 
+/**
+ * Canonical tag UUID the alias resolves to.
+ */
+ideal_tag_id: string };
+
+export type AddSiblingTagOutput = { tag_id: string; ideal_tag_id: string; message: string };
+
+/**
  * Input for alternate instances query
  */
 export type AlternateInstancesInput = { 
@@ -163,15 +193,15 @@ message: string };
 /**
  * Targets for immediately applying a newly created tag
  */
-export type ApplyToTargets =
+export type ApplyToTargets = 
 /**
  * Apply to content identities (all instances)
  */
-{ type: "Content"; ids: string[] } |
+{ type: "Content"; ids: string[] } | 
 /**
  * Apply to specific entries by database ID (internal use)
  */
-{ type: "Entry"; ids: number[] } |
+{ type: "Entry"; ids: number[] } | 
 /**
  * Apply to specific entries by UUID (from frontend File.id)
  */
@@ -574,14 +604,6 @@ namespace: string | null;
  */
 message: string };
 
-export type DeleteTagInput = { tag_id: string };
-
-export type DeleteTagOutput = { deleted: boolean };
-
-export type UnapplyTagsInput = { entry_ids: string[]; tag_ids: string[] };
-
-export type UnapplyTagsOutput = { entries_affected: number; tags_removed: number; warnings: string[] };
-
 /**
  * Data volume metrics snapshot
  */
@@ -608,6 +630,10 @@ export type DeleteItemOutput = { success: boolean };
 export type DeleteSourceInput = { source_id: string };
 
 export type DeleteSourceOutput = { deleted: boolean };
+
+export type DeleteTagInput = { tag_id: string };
+
+export type DeleteTagOutput = { deleted: boolean };
 
 export type DeleteWhisperModelInput = { model: string };
 
@@ -915,6 +941,28 @@ export type DownloadWhisperModelOutput = {
  * Job ID for tracking download progress
  */
 job_id: string };
+
+/**
+ * A tag effective on an entry, with provenance describing how it resolved.
+ */
+export type EffectiveTag = { 
+/**
+ * The resolved tag.
+ */
+tag: Tag; 
+/**
+ * Whether the tag is applied directly on the entry or inherited from an ancestor.
+ */
+source: TagInheritanceSource; 
+/**
+ * UUID of the entry the tag resolves from: the queried entry for `Direct`,
+ * or the ancestor folder it is inherited from for `Inherited`.
+ */
+source_entry_id: string | null; 
+/**
+ * Distance from the queried entry: 0 = on the entry itself, 1 = parent, etc.
+ */
+depth: number };
 
 export type EnableIndexingInput = { 
 /**
@@ -1593,6 +1641,10 @@ export type GetAdapterConfigInput = { adapter_id: string };
  */
 export type GetAppConfigQueryInput = null;
 
+export type GetFilesByTagInput = { tag_id: string; include_children: boolean; min_confidence: number };
+
+export type GetFilesByTagOutput = { files: File[] };
+
 /**
  * Input for getting library configuration
  */
@@ -1694,6 +1746,18 @@ export type GetSyncPartnersInput = Record<string, never>;
 
 export type GetSyncPartnersOutput = { partners: SyncPartnerInfo[]; debug_info: SyncPartnersDebugInfo };
 
+export type GetTagAncestorsInput = { tag_id: string };
+
+export type GetTagAncestorsOutput = { ancestors: Tag[] };
+
+export type GetTagByIdInput = { tag_id: string };
+
+export type GetTagByIdOutput = { tag: Tag | null };
+
+export type GetTagChildrenInput = { tag_id: string };
+
+export type GetTagChildrenOutput = { children: Tag[] };
+
 /**
  * Types of groups that can appear in a space
  */
@@ -1734,6 +1798,43 @@ export type GroupType =
  * User-defined custom group
  */
 "Custom";
+
+/**
+ * Requested hardware acceleration backend.
+ * 
+ * `Auto` (the default) picks the best available accelerator for the codec and
+ * silently falls back to CPU when none is present. `None` forces the CPU
+ * encoder. A specific family forces that backend and errors when it is not
+ * available (see [`resolve_hw_encoder`]).
+ * 
+ * Serialized lowercase (`none|nvenc|qsv|amf|videotoolbox|auto`) so the generated
+ * TypeScript stays free of serde digit-mangling.
+ */
+export type HwAccel = 
+/**
+ * Force the CPU encoder.
+ */
+"none" | 
+/**
+ * NVIDIA NVENC (`*_nvenc`).
+ */
+"nvenc" | 
+/**
+ * Intel QuickSync (`*_qsv`).
+ */
+"qsv" | 
+/**
+ * AMD AMF (`*_amf`).
+ */
+"amf" | 
+/**
+ * Apple VideoToolbox (`*_videotoolbox`).
+ */
+"videotoolbox" | 
+/**
+ * Pick the best available accelerator, else CPU.
+ */
+"auto";
 
 /**
  * Image metadata extracted from EXIF
@@ -3170,6 +3271,39 @@ export type OperatingSystem = "MacOS" | "Windows" | "Linux" | "IOs" | "Android" 
 export type OperationSnapshot = { broadcasts_sent: number; state_changes_broadcast: number; shared_changes_broadcast: number; broadcast_batches_sent: number; failed_broadcasts: number; changes_received: number; changes_applied: number; changes_rejected: number; buffer_queue_depth: number; active_backfill_sessions: number; backfill_sessions_completed: number; backfill_pagination_rounds: number; retry_queue_depth: number; retry_attempts: number; retry_successes: number };
 
 /**
+ * Mark a tag as overridden (suppressed) on a specific entry so that the entry
+ * stops inheriting that tag from its ancestor folders.
+ */
+export type OverrideTagInput = { 
+/**
+ * Entry UUID (File.id) to override the tag on.
+ */
+entry_id: string; 
+/**
+ * Tag UUID to suppress on this entry.
+ */
+tag_id: string; 
+/**
+ * Optional ancestor entry UUID whose inherited tag is being overridden.
+ * Stored for provenance; resolution does not require it.
+ */
+source_ancestor_id: string | null };
+
+export type OverrideTagOutput = { 
+/**
+ * Entry the override was written to.
+ */
+entry_id: string; 
+/**
+ * Tag that is now suppressed on the entry.
+ */
+tag_id: string; 
+/**
+ * Ancestor recorded as the override source, if one was provided and resolved.
+ */
+overridden_from: string | null; message: string };
+
+/**
  * Pagination information
  */
 export type PaginationInfo = { current_page: number; total_pages: number; has_next: boolean; has_previous: boolean; limit: number; offset: number };
@@ -3358,7 +3492,7 @@ regenerate: boolean };
 /**
  * Input for the redundancy summary query
  */
-export type RedundancySummaryInput = {
+export type RedundancySummaryInput = { 
 /**
  * Optional: restrict summary to specific volumes. None = all volumes.
  */
@@ -3367,39 +3501,31 @@ volume_uuids?: string[] | null };
 /**
  * Complete redundancy summary for the library
  */
-export type RedundancySummaryOutput = {
+export type RedundancySummaryOutput = { 
 /**
  * Per-volume redundancy breakdown
  */
-volumes: VolumeRedundancySummary[];
+volumes: VolumeRedundancySummary[]; 
 /**
  * Library-wide totals
  */
 library_totals: LibraryRedundancyTotals };
 
-export type RegenerateThumbnailInput = {
+export type RegenerateThumbnailInput = { 
 /**
  * UUID of the entry to regenerate thumbnails for
  */
-entry_uuid: string;
+entry_uuid: string; 
 /**
  * Optional variant names (defaults to grid@1x, grid@2x, detail@1x)
  */
-variants: string[] | null;
+variants: string[] | null; 
 /**
  * Force regeneration even if thumbnails exist
  */
 force: boolean };
 
-export type RegenerateThumbnailOutput = { 
-/**
- * Number of thumbnails generated
- */
-generated_count: number; 
-/**
- * Variant names that were generated
- */
-variants: string[] };
+export type RegenerateThumbnailOutput = { generated_count: number; variants: string[] };
 
 /**
  * State of a job running on a remote device
@@ -3445,6 +3571,77 @@ createdAt: string;
  */
 statistics: LibraryStatistics };
 
+/**
+ * Remove a parent implication edge.
+ */
+export type RemoveParentTagInput = { child_tag_id: string; parent_tag_id: string };
+
+export type RemoveParentTagOutput = { child_tag_id: string; parent_tag_id: string; 
+/**
+ * Number of edges removed (0 if none existed).
+ */
+removed: number; message: string };
+
+/**
+ * Remove a sibling alias for a tag, restoring it to a standalone tag.
+ */
+export type RemoveSiblingTagInput = { tag_id: string };
+
+export type RemoveSiblingTagOutput = { tag_id: string; 
+/**
+ * Number of alias rows removed (0 if none existed).
+ */
+removed: number; message: string };
+
+/**
+ * Remove an existing override on an entry so the tag is inherited again.
+ */
+export type RemoveTagOverrideInput = { 
+/**
+ * Entry UUID (File.id) to restore inheritance on.
+ */
+entry_id: string; 
+/**
+ * Tag UUID whose override should be cleared.
+ */
+tag_id: string };
+
+export type RemoveTagOverrideOutput = { 
+/**
+ * Entry the override was cleared from.
+ */
+entry_id: string; 
+/**
+ * Tag whose inheritance was restored.
+ */
+tag_id: string; 
+/**
+ * Number of override rows removed (0 if none existed).
+ */
+overrides_removed: number; message: string };
+
+/**
+ * One rung of the adaptive bitrate ladder.
+ * 
+ * The width is derived from the source aspect ratio at encode time (the scale
+ * filter uses `-2` for width) so only the target `height` and the video
+ * `bitrate_kbps` need to be specified. `name` is a human label used for the
+ * per-rendition output file stem (e.g. `1080p`).
+ */
+export type Rendition = { 
+/**
+ * Human label and output-file stem, e.g. `720p`.
+ */
+name: string; 
+/**
+ * Target output height in pixels; width preserves the source aspect ratio.
+ */
+height: number; 
+/**
+ * Target average video bitrate in kilobits per second.
+ */
+bitrate_kbps: number };
+
 export type ReorderGroupsInput = { space_id: string; group_ids: string[] };
 
 export type ReorderItemsInput = { group_id: string | null; item_ids: string[] };
@@ -3466,6 +3663,29 @@ success: boolean;
  * Message describing the result
  */
 message: string };
+
+export type ResolveEffectiveTagsInput = { 
+/**
+ * UUID of the entry (file or folder) to resolve effective tags for.
+ */
+entry_id: string };
+
+export type ResolveEffectiveTagsOutput = { tags: EffectiveTag[] };
+
+/**
+ * Resolve the implied, canonicalized tag set for a set of applied tags.
+ */
+export type ResolveImpliedTagsInput = { 
+/**
+ * Applied tag UUIDs to expand via parents and canonicalize via siblings.
+ */
+tag_ids: string[] };
+
+export type ResolveImpliedTagsOutput = { 
+/**
+ * The expanded, canonicalized set of implied tags.
+ */
+tags: Tag[] };
 
 /**
  * Metadata for resource cache updates
@@ -3500,6 +3720,81 @@ export type RiskLevel =
  * Warning - system directory or root-level path (e.g., /, /System)
  */
 "high";
+
+/**
+ * Rotate a single image entry in place.
+ */
+export type RotateInput = { 
+/**
+ * UUID of the entry to rotate.
+ */
+entry_uuid: string; 
+/**
+ * Transform to apply.
+ */
+op: RotateOp; 
+/**
+ * Regenerate the file's thumbnail after rotating (requires the `ffmpeg`
+ * feature; ignored otherwise).
+ */
+regenerate_thumbnail: boolean };
+
+/**
+ * A single pixel transform to apply to an image.
+ * 
+ * Variant names carry digits, which serde's `snake_case`/`lowercase` renaming
+ * mangles into ugly TypeScript (`Cw90` → `cw_90`). Each variant is therefore
+ * pinned with an explicit `#[serde(rename = ...)]` so the generated TS union is
+ * exactly `"cw90" | "ccw90" | "rotate180" | "flip_h" | "flip_v"`. Specta reads
+ * these serde attributes, so the Rust and TypeScript spellings stay in sync.
+ */
+export type RotateOp = 
+/**
+ * Rotate 90° clockwise. Swaps width and height.
+ */
+"cw90" | 
+/**
+ * Rotate 90° counter-clockwise. Swaps width and height.
+ */
+"ccw90" | 
+/**
+ * Rotate 180°. Dimensions are unchanged.
+ */
+"rotate180" | 
+/**
+ * Mirror horizontally (left↔right).
+ */
+"flip_h" | 
+/**
+ * Mirror vertically (top↔bottom).
+ */
+"flip_v";
+
+export type RotateOutput = { 
+/**
+ * Absolute path of the rewritten file.
+ */
+path: string; 
+/**
+ * Output width after rotation.
+ */
+width: number; 
+/**
+ * Output height after rotation.
+ */
+height: number; 
+/**
+ * Output size in bytes.
+ */
+size_bytes: number; 
+/**
+ * Whether an ICC profile was carried through to the output.
+ */
+icc_preserved: boolean; 
+/**
+ * Whether the EXIF orientation was normalized to Top-Left.
+ */
+orientation_normalized: boolean };
 
 /**
  * Current scanning state of a location
@@ -3727,6 +4022,22 @@ query: string;
  * Applied filters
  */
 filters: TagSearchFilters };
+
+/**
+ * HLS media-segment container.
+ * 
+ * Serialized lowercase (`ts|fmp4`) to keep the TypeScript union clean. DASH
+ * always uses fragmented MP4 segments regardless of this setting.
+ */
+export type SegmentType = 
+/**
+ * MPEG-TS segments (`.ts`). The most broadly compatible HLS container.
+ */
+"ts" | 
+/**
+ * Fragmented MP4 segments (`.m4s`).
+ */
+"fmp4";
 
 export type SerializablePairingState = "Idle" | "GeneratingCode" | "Broadcasting" | "Scanning" | "WaitingForConnection" | "Connecting" | "Authenticating" | "ExchangingKeys" | "AwaitingConfirmation" | "EstablishingSession" | "ChallengeReceived" | "ResponsePending" | "ResponseSent" | "Completed" | { Failed: { reason: string } };
 
@@ -4008,6 +4319,78 @@ reprocess: boolean };
  */
 export type StateTransition = { from: DeviceSyncState; to: DeviceSyncState; timestamp: string; reason: string | null };
 
+/**
+ * Package a single video entry for adaptive streaming.
+ */
+export type StreamInput = { 
+/**
+ * UUID of the entry to package.
+ */
+entry_uuid: string; 
+/**
+ * Streaming protocol to emit; defaults to HLS.
+ */
+protocol?: StreamProtocol | null; 
+/**
+ * Target media-segment duration in seconds; defaults to 6.
+ */
+segment_duration: number | null; 
+/**
+ * Adaptive bitrate ladder; defaults to 1080p/720p/480p.
+ */
+ladder: Rendition[] | null; 
+/**
+ * HLS segment container; defaults to MPEG-TS.
+ */
+segment_type?: SegmentType | null; 
+/**
+ * libx264 speed preset; defaults to `veryfast`.
+ */
+preset: string | null; 
+/**
+ * Re-package even when a manifest already exists.
+ */
+force: boolean };
+
+export type StreamOutput = { 
+/**
+ * Absolute path of the produced manifest (`master.m3u8` or `manifest.mpd`).
+ */
+manifest_path: string; 
+/**
+ * Absolute path of the package directory.
+ */
+package_dir: string; 
+/**
+ * Number of renditions in the package.
+ */
+rendition_count: number; 
+/**
+ * Number of media segment files produced.
+ */
+segment_count: number; 
+/**
+ * Total package size in bytes.
+ */
+total_size_bytes: number };
+
+/**
+ * Adaptive-streaming protocol to emit.
+ * 
+ * Serialized lowercase (`hls|dash`) so the generated TypeScript union stays
+ * free of serde digit/word mangling.
+ */
+export type StreamProtocol = 
+/**
+ * HTTP Live Streaming: a master `.m3u8`, per-rendition variant playlists,
+ * and media segments.
+ */
+"hls" | 
+/**
+ * MPEG-DASH: an `.mpd` manifest plus templated segment files.
+ */
+"dash";
+
 export type SuggestedLocation = { name: string; path: string; sd_path: SdPath };
 
 export type SuggestedLocationsOutput = { locations: SuggestedLocation[] };
@@ -4173,6 +4556,28 @@ include: string[];
  */
 exclude: string[] };
 
+/**
+ * Inheritance state of a tag application on a specific item.
+ * 
+ * Folder tags propagate to descendants, but inherited tags are not
+ * materialized per file. Only `Direct` and `Overridden` rows are stored;
+ * `Inherited` is computed at query time (task A-02) and exists here so the
+ * resolver and APIs can label an effective tag's origin uniformly.
+ */
+export type TagInheritanceSource = 
+/**
+ * Tag explicitly applied to this item.
+ */
+"Direct" | 
+/**
+ * Tag effective via an ancestor folder, computed at query time (not stored).
+ */
+"Inherited" | 
+/**
+ * Explicit suppression of an otherwise-inherited tag on this item.
+ */
+"Overridden";
+
 export type TagSearchFilters = { namespace: string | null; tag_type: string | null; include_archived: boolean; limit: number | null };
 
 export type TagSearchResult = { 
@@ -4222,13 +4627,13 @@ export type TagTargets =
  * Tag by content identity (applies to ALL instances of this content across devices)
  * This is the preferred/default approach
  */
-{ type: "Content"; ids: string[] } |
+{ type: "Content"; ids: string[] } | 
 /**
- * Tag by entry database ID (internal use)
+ * Tag by entry database ID (internal use only)
  */
-{ type: "Entry"; ids: number[] } |
+{ type: "Entry"; ids: number[] } | 
 /**
- * Tag by entry UUID (from frontend File.id)
+ * Tag by entry UUID (use from frontend — File.id is a UUID)
  */
 { type: "EntryUuid"; ids: string[] };
 
@@ -4294,6 +4699,90 @@ enabled: boolean;
  */
 regenerate: boolean };
 
+/**
+ * Target video codec.
+ * 
+ * CPU encoder selection lives in [`crate::ops::media::transcode::encoder`] so a
+ * hardware branch (task B-02) can be added without touching call sites.
+ */
+export type TranscodeCodec = 
+/**
+ * H.264 / AVC (`libx264`). Most compatible.
+ */
+"h264" | 
+/**
+ * H.265 / HEVC (`libx265`). Better compression than H.264.
+ */
+"hevc" | 
+/**
+ * VP9 (`libvpx-vp9`). Royalty-free, pairs with WebM.
+ */
+"vp9" | 
+/**
+ * AV1 (`libsvtav1`). Best compression, slowest to encode.
+ */
+"av1";
+
+/**
+ * Output container format.
+ */
+export type TranscodeContainer = "mp4" | "mkv" | "webm";
+
+/**
+ * Transcode a single video entry to a target codec.
+ */
+export type TranscodeInput = { 
+/**
+ * UUID of the entry to transcode.
+ */
+entry_uuid: string; 
+/**
+ * Target codec.
+ */
+codec: TranscodeCodec; 
+/**
+ * Output container; defaults to the codec's preferred container.
+ */
+container: TranscodeContainer | null; 
+/**
+ * Scale longest side to at most this many pixels; `None` keeps the source.
+ */
+max_dimension: number | null; 
+/**
+ * CRF quality (takes precedence over `bitrate_kbps` when both are set).
+ */
+crf: number | null; 
+/**
+ * Target bitrate in kbps.
+ */
+bitrate_kbps: number | null; 
+/**
+ * Encoder speed preset.
+ */
+preset: string | null; 
+/**
+ * Hardware acceleration backend; defaults to `Auto` (best available, else CPU).
+ */
+hw_accel?: HwAccel | null; 
+/**
+ * Re-encode even when the output already exists.
+ */
+force: boolean };
+
+export type TranscodeOutput = { 
+/**
+ * Absolute path of the produced file.
+ */
+output_path: string; 
+/**
+ * Output size in bytes.
+ */
+size_bytes: number; 
+/**
+ * Encoding wall-clock time in seconds.
+ */
+encoding_time_secs: number };
+
 export type TranscribeAudioInput = { entry_uuid: string; model: string | null; language: string | null };
 
 export type TranscribeAudioOutput = { 
@@ -4301,6 +4790,21 @@ export type TranscribeAudioOutput = {
  * Job ID for tracking transcription progress
  */
 job_id: string };
+
+/**
+ * What to untag — uses entry UUIDs (matching the File.id exposed to frontend)
+ */
+export type UnapplyTagsInput = { 
+/**
+ * Entry UUIDs (File.id) to remove tags from
+ */
+entry_ids: string[]; 
+/**
+ * Tag UUIDs to remove
+ */
+tag_ids: string[] };
+
+export type UnapplyTagsOutput = { entries_affected: number; tags_removed: number; warnings: string[] };
 
 /**
  * Statistics for the unified ephemeral index
@@ -5049,11 +5553,14 @@ export type LibraryAction =
   |  { type: 'locations.update'; input: LocationUpdateInput; output: LocationUpdateOutput }
   |  { type: 'media.ocr.extract'; input: ExtractTextInput; output: ExtractTextOutput }
   |  { type: 'media.proxy.generate'; input: GenerateProxyInput; output: GenerateProxyOutput }
+  |  { type: 'media.rotate'; input: RotateInput; output: RotateOutput }
   |  { type: 'media.speech.transcribe'; input: TranscribeAudioInput; output: TranscribeAudioOutput }
   |  { type: 'media.splat.generate'; input: GenerateSplatInput; output: GenerateSplatOutput }
+  |  { type: 'media.stream'; input: StreamInput; output: StreamOutput }
   |  { type: 'media.thumbnail'; input: ThumbnailInput; output: JobReceipt }
   |  { type: 'media.thumbnail.regenerate'; input: RegenerateThumbnailInput; output: RegenerateThumbnailOutput }
   |  { type: 'media.thumbstrip.generate'; input: GenerateThumbstripInput; output: GenerateThumbstripOutput }
+  |  { type: 'media.transcode'; input: TranscodeInput; output: TranscodeOutput }
   |  { type: 'sources.create'; input: CreateSourceInput; output: CreateSourceOutput }
   |  { type: 'sources.delete'; input: DeleteSourceInput; output: DeleteSourceOutput }
   |  { type: 'sources.sync'; input: SyncSourceInput; output: JobReceipt }
@@ -5067,9 +5574,15 @@ export type LibraryAction =
   |  { type: 'spaces.reorder_items'; input: ReorderItemsInput; output: ReorderOutput }
   |  { type: 'spaces.update'; input: SpaceUpdateInput; output: SpaceUpdateOutput }
   |  { type: 'spaces.update_group'; input: UpdateGroupInput; output: UpdateGroupOutput }
+  |  { type: 'tags.add_parent'; input: AddParentTagInput; output: AddParentTagOutput }
+  |  { type: 'tags.add_sibling'; input: AddSiblingTagInput; output: AddSiblingTagOutput }
   |  { type: 'tags.apply'; input: ApplyTagsInput; output: ApplyTagsOutput }
   |  { type: 'tags.create'; input: CreateTagInput; output: CreateTagOutput }
   |  { type: 'tags.delete'; input: DeleteTagInput; output: DeleteTagOutput }
+  |  { type: 'tags.override'; input: OverrideTagInput; output: OverrideTagOutput }
+  |  { type: 'tags.remove_override'; input: RemoveTagOverrideInput; output: RemoveTagOverrideOutput }
+  |  { type: 'tags.remove_parent'; input: RemoveParentTagInput; output: RemoveParentTagOutput }
+  |  { type: 'tags.remove_sibling'; input: RemoveSiblingTagInput; output: RemoveSiblingTagOutput }
   |  { type: 'tags.unapply'; input: UnapplyTagsInput; output: UnapplyTagsOutput }
   |  { type: 'volumes.add_cloud'; input: VolumeAddCloudInput; output: VolumeAddCloudOutput }
   |  { type: 'volumes.eject'; input: VolumeEjectInput; output: VolumeEjectOutput }
@@ -5105,6 +5618,7 @@ export type LibraryQuery =
   |  { type: 'files.alternate_instances'; input: AlternateInstancesInput; output: AlternateInstancesOutput }
   |  { type: 'files.by_id'; input: FileByIdQuery; output: File }
   |  { type: 'files.by_path'; input: FileByPathQuery; output: File }
+  |  { type: 'files.by_tag'; input: GetFilesByTagInput; output: GetFilesByTagOutput }
   |  { type: 'files.content_kind_stats'; input: ContentKindStatsInput; output: ContentKindStatsOutput }
   |  { type: 'files.directory_listing'; input: DirectoryListingInput; output: DirectoryListingOutput }
   |  { type: 'files.media_listing'; input: MediaListingInput; output: MediaListingOutput }
@@ -5129,6 +5643,11 @@ export type LibraryQuery =
   |  { type: 'sync.eventLog'; input: GetSyncEventLogInput; output: GetSyncEventLogOutput }
   |  { type: 'sync.metrics'; input: GetSyncMetricsInput; output: GetSyncMetricsOutput }
   |  { type: 'sync.partners'; input: GetSyncPartnersInput; output: GetSyncPartnersOutput }
+  |  { type: 'tags.ancestors'; input: GetTagAncestorsInput; output: GetTagAncestorsOutput }
+  |  { type: 'tags.by_id'; input: GetTagByIdInput; output: GetTagByIdOutput }
+  |  { type: 'tags.children'; input: GetTagChildrenInput; output: GetTagChildrenOutput }
+  |  { type: 'tags.effective'; input: ResolveEffectiveTagsInput; output: ResolveEffectiveTagsOutput }
+  |  { type: 'tags.implied'; input: ResolveImpliedTagsInput; output: ResolveImpliedTagsOutput }
   |  { type: 'tags.search'; input: SearchTagsInput; output: SearchTagsOutput }
   |  { type: 'test.ping'; input: PingInput; output: PingOutput }
   |  { type: 'volumes.list'; input: VolumeListQueryInput; output: VolumeListOutput }
@@ -5183,11 +5702,14 @@ export const WIRE_METHODS = {
     'locations.update': 'action:locations.update.input',
     'media.ocr.extract': 'action:media.ocr.extract.input',
     'media.proxy.generate': 'action:media.proxy.generate.input',
+    'media.rotate': 'action:media.rotate.input',
     'media.speech.transcribe': 'action:media.speech.transcribe.input',
     'media.splat.generate': 'action:media.splat.generate.input',
+    'media.stream': 'action:media.stream.input',
     'media.thumbnail': 'action:media.thumbnail.input',
     'media.thumbnail.regenerate': 'action:media.thumbnail.regenerate.input',
     'media.thumbstrip.generate': 'action:media.thumbstrip.generate.input',
+    'media.transcode': 'action:media.transcode.input',
     'sources.create': 'action:sources.create.input',
     'sources.delete': 'action:sources.delete.input',
     'sources.sync': 'action:sources.sync.input',
@@ -5201,9 +5723,15 @@ export const WIRE_METHODS = {
     'spaces.reorder_items': 'action:spaces.reorder_items.input',
     'spaces.update': 'action:spaces.update.input',
     'spaces.update_group': 'action:spaces.update_group.input',
+    'tags.add_parent': 'action:tags.add_parent.input',
+    'tags.add_sibling': 'action:tags.add_sibling.input',
     'tags.apply': 'action:tags.apply.input',
     'tags.create': 'action:tags.create.input',
     'tags.delete': 'action:tags.delete.input',
+    'tags.override': 'action:tags.override.input',
+    'tags.remove_override': 'action:tags.remove_override.input',
+    'tags.remove_parent': 'action:tags.remove_parent.input',
+    'tags.remove_sibling': 'action:tags.remove_sibling.input',
     'tags.unapply': 'action:tags.unapply.input',
     'volumes.add_cloud': 'action:volumes.add_cloud.input',
     'volumes.eject': 'action:volumes.eject.input',
@@ -5239,6 +5767,7 @@ export const WIRE_METHODS = {
     'files.alternate_instances': 'query:files.alternate_instances',
     'files.by_id': 'query:files.by_id',
     'files.by_path': 'query:files.by_path',
+    'files.by_tag': 'query:files.by_tag',
     'files.content_kind_stats': 'query:files.content_kind_stats',
     'files.directory_listing': 'query:files.directory_listing',
     'files.media_listing': 'query:files.media_listing',
@@ -5263,6 +5792,11 @@ export const WIRE_METHODS = {
     'sync.eventLog': 'query:sync.eventLog',
     'sync.metrics': 'query:sync.metrics',
     'sync.partners': 'query:sync.partners',
+    'tags.ancestors': 'query:tags.ancestors',
+    'tags.by_id': 'query:tags.by_id',
+    'tags.children': 'query:tags.children',
+    'tags.effective': 'query:tags.effective',
+    'tags.implied': 'query:tags.implied',
     'tags.search': 'query:tags.search',
     'test.ping': 'query:test.ping',
     'volumes.list': 'query:volumes.list',
