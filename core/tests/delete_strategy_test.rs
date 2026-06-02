@@ -10,6 +10,8 @@ use sd_core::{
 	volume::backend::{CloudBackend, CloudServiceType, VolumeBackend},
 };
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "windows")]
+use std::sync::{Mutex, OnceLock};
 use tempfile::TempDir;
 use tokio::fs;
 
@@ -31,6 +33,67 @@ async fn create_test_directory(path: &Path) -> Result<(), std::io::Error> {
 	create_test_file(&path.join("subdir").join("file3.txt"), "Content 3").await?;
 
 	Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn trash_helper_test_lock() -> &'static Mutex<()> {
+	static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+	LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[cfg(target_os = "windows")]
+struct TrashHelperTestEnv {
+	_lock: std::sync::MutexGuard<'static, ()>,
+	bypass: Option<std::ffi::OsString>,
+	helper_path: Option<std::ffi::OsString>,
+}
+
+#[cfg(target_os = "windows")]
+impl TrashHelperTestEnv {
+	fn bypass() -> Self {
+		let lock = trash_helper_test_lock()
+			.lock()
+			.expect("trash helper env lock should not be poisoned");
+		let bypass = std::env::var_os("SD_TRASH_HELPER_BYPASS");
+		let helper_path = std::env::var_os("SD_TRASH_HELPER_PATH");
+		std::env::set_var("SD_TRASH_HELPER_BYPASS", "1");
+		std::env::remove_var("SD_TRASH_HELPER_PATH");
+		Self {
+			_lock: lock,
+			bypass,
+			helper_path,
+		}
+	}
+
+	fn helper_path(path: &Path) -> Self {
+		let lock = trash_helper_test_lock()
+			.lock()
+			.expect("trash helper env lock should not be poisoned");
+		let bypass = std::env::var_os("SD_TRASH_HELPER_BYPASS");
+		let helper_path = std::env::var_os("SD_TRASH_HELPER_PATH");
+		std::env::remove_var("SD_TRASH_HELPER_BYPASS");
+		std::env::set_var("SD_TRASH_HELPER_PATH", path);
+		Self {
+			_lock: lock,
+			bypass,
+			helper_path,
+		}
+	}
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for TrashHelperTestEnv {
+	fn drop(&mut self) {
+		match &self.bypass {
+			Some(value) => std::env::set_var("SD_TRASH_HELPER_BYPASS", value),
+			None => std::env::remove_var("SD_TRASH_HELPER_BYPASS"),
+		}
+
+		match &self.helper_path {
+			Some(value) => std::env::set_var("SD_TRASH_HELPER_PATH", value),
+			None => std::env::remove_var("SD_TRASH_HELPER_PATH"),
+		}
+	}
 }
 
 #[tokio::test]
@@ -76,6 +139,9 @@ async fn test_local_delete_strategy_trash() {
 	let temp_dir = TempDir::new().unwrap();
 	let test_root = temp_dir.path();
 
+	#[cfg(target_os = "windows")]
+	let _env = TrashHelperTestEnv::bypass();
+
 	// Create test file
 	let test_file = test_root.join("trash_test.txt");
 	create_test_file(&test_file, "Trash me!").await.unwrap();
@@ -99,6 +165,34 @@ async fn test_local_delete_strategy_trash() {
 	// platform-specific logic, but we verified it's no longer in the original location
 
 	println!("test_local_delete_strategy_trash passed!");
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn test_local_delete_strategy_trash_helper_non_zero_exit_returns_error() {
+	let _env = TrashHelperTestEnv::helper_path(
+		&std::env::current_exe().expect("current test executable path should resolve"),
+	);
+
+	let temp_dir = TempDir::new().unwrap();
+	let test_file = temp_dir.path().join("trash_helper_failure.txt");
+	create_test_file(&test_file, "Trash helper should fail")
+		.await
+		.unwrap();
+
+	let strategy = LocalDeleteStrategy;
+	let result = strategy.move_to_trash(&test_file).await;
+
+	assert!(result.is_err(), "helper path should fail in the test process");
+	let error = result.err().unwrap().to_string();
+	assert!(
+		error.contains("Trash helper failed"),
+		"unexpected error: {error}"
+	);
+	assert!(
+		test_file.exists(),
+		"failed helper should not remove the original path"
+	);
 }
 
 #[tokio::test]
@@ -181,6 +275,9 @@ async fn test_delete_modes_all_types() {
 	assert!(!perm_file.exists());
 
 	// Test 2: Trash delete
+	#[cfg(target_os = "windows")]
+	let _env = TrashHelperTestEnv::bypass();
+
 	let trash_file = test_root.join("trash.txt");
 	create_test_file(&trash_file, "Trash").await.unwrap();
 	let result = strategy.move_to_trash(&trash_file).await;
