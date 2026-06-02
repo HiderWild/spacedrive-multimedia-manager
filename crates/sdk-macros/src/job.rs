@@ -52,7 +52,7 @@ pub fn job_impl(args: TokenStream, input: TokenStream) -> TokenStream {
 	// Extract function info
 	let fn_name = &input_fn.sig.ident;
 	let fn_attrs = &input_fn.attrs;
-	let is_async = input_fn.sig.asyncness.is_some();
+	let _is_async = input_fn.sig.asyncness.is_some();
 
 	// Generate FFI export name
 	let export_name = syn::Ident::new(&format!("execute_{}", fn_name), fn_name.span());
@@ -132,15 +132,19 @@ pub fn job_impl(args: TokenStream, input: TokenStream) -> TokenStream {
 				<#state_type>::default()
 			};
 
-			// Execute user's function
-			// STUB: Real implementation needs proper async/await support in WASM FFI boundary
-			// For now, just return success as this is demonstration code
-			let _ = &#fn_name; // Keep function reference to avoid unused warnings
-			let result: ::std::result::Result<(), ::spacedrive_sdk::Error> = Ok(());
+			// Execute the user's job function with the live context and state.
+			// The function drives its own loop, calling host functions for
+			// progress, checkpoints and interrupt checks. WASM jobs use the
+			// synchronous ABI, so async job bodies are not yet supported here.
+			let result: ::std::result::Result<(), ::spacedrive_sdk::Error> =
+				#fn_name(&job_ctx, &mut state);
 
 			// Handle result
 			match result {
 				Ok(_) => {
+					// Persist the final state so the host can observe the
+					// completed result and resume-safe checkpoints are coherent.
+					let _ = job_ctx.checkpoint(&state);
 					job_ctx.log(&format!("Job {} completed successfully", stringify!(#fn_name)));
 					::spacedrive_sdk::job_context::JobResult::Completed.to_exit_code()
 				}

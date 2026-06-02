@@ -35,7 +35,7 @@ function Get-RepoProcessCandidates {
     $webDirEscaped = [Regex]::Escape((Join-Path $ProjectPath "apps\web"))
     $daemonNamePatterns = @("sd-daemon.exe", "sd-daemon", "Spacedrive.exe", "Spacedrive", "sd-desktop.exe", "sd-desktop")
     $scriptRunnerNames = @("bun.exe", "node.exe", "cargo.exe", "rustc.exe", "pnpm.exe")
-    $cliPattern = "bun run tauri:dev|bun run dev:with-daemon|bun run tauri|@tauri-apps\\cli\\tauri|tauri dev|sd-daemon|cargo run --bin sd-daemon|cargo build .*--bin sd-daemon|cargo build .* --bin sd-daemon|vite dev|bun run dev"
+    $cliPattern = 'bun run tauri:dev|bun run dev:with-daemon|bun run tauri|@tauri-apps\\cli\\tauri|tauri dev|sd-daemon|cargo run --bin sd-daemon|cargo build .*--bin sd-daemon|cargo build .* --bin sd-daemon|vite dev|bun run dev'
 
     $results = @()
 

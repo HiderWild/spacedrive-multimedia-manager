@@ -87,6 +87,7 @@ struct DaemonState {
 	#[allow(dead_code)]
 	server_shutdown: Option<tokio::sync::mpsc::Sender<()>>,
 	daemon_process: Option<std::sync::Arc<tokio::sync::Mutex<Option<std::process::Child>>>>,
+	watchdog_started: bool,
 }
 
 /// Daemon connection pool - maintains ONE persistent connection for all subscriptions
@@ -144,7 +145,11 @@ impl DaemonConnectionPool {
 		let _ = app.emit("daemon-connected", ());
 
 		// Spawn persistent reader task that broadcasts to all listeners
+		let writer = self.writer.clone();
+		let subscriptions = self.subscriptions.clone();
 		let app_clone = app.clone();
+		let initialized_inner = self.initialized.clone();
+		drop(initialized); // release lock before spawn
 		tokio::spawn(async move {
 			let mut reader = BufReader::new(reader);
 			let mut buffer = String::new();
@@ -154,6 +159,9 @@ impl DaemonConnectionPool {
 				match reader.read_line(&mut buffer).await {
 					Ok(0) => {
 						tracing::warn!("Daemon connection closed");
+						*initialized_inner.lock().await = false;
+						*writer.lock().await = None;
+						subscriptions.write().await.clear();
 						let _ = app_clone.emit("daemon-disconnected", ());
 						break;
 					}
@@ -177,6 +185,9 @@ impl DaemonConnectionPool {
 					}
 					Err(e) => {
 						tracing::error!("Failed to read from daemon: {}", e);
+						*initialized_inner.lock().await = false;
+						*writer.lock().await = None;
+						subscriptions.write().await.clear();
 						let _ = app_clone.emit("daemon-disconnected", ());
 						break;
 					}
@@ -186,7 +197,7 @@ impl DaemonConnectionPool {
 			tracing::warn!("Daemon connection reader ended");
 		});
 
-		*initialized = true;
+		*self.initialized.lock().await = true;
 		tracing::info!("Persistent daemon connection ready");
 		Ok(())
 	}
@@ -332,6 +343,209 @@ struct DaemonStatusResponse {
 	socket_addr: String,
 	server_url: Option<String>,
 	started_by_us: bool,
+}
+
+const DAEMON_RESTART_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+const DAEMON_RESTART_DELAYS: [std::time::Duration; 3] = [
+	std::time::Duration::from_secs(1),
+	std::time::Duration::from_secs(3),
+	std::time::Duration::from_secs(10),
+];
+
+fn record_daemon_failure_and_get_restart_delay(
+	recent_failures: &mut std::collections::VecDeque<std::time::Duration>,
+	now: std::time::Duration,
+) -> Option<std::time::Duration> {
+	while let Some(first_failure) = recent_failures.front() {
+		if now.saturating_sub(*first_failure) > DAEMON_RESTART_WINDOW {
+			recent_failures.pop_front();
+		} else {
+			break;
+		}
+	}
+
+	if recent_failures.len() >= DAEMON_RESTART_DELAYS.len() {
+		return None;
+	}
+
+	let delay = DAEMON_RESTART_DELAYS[recent_failures.len()];
+	recent_failures.push_back(now);
+	Some(delay)
+}
+
+#[cfg(target_os = "windows")]
+fn build_windows_daemon_task_xml(daemon_path: &std::path::Path, data_dir: &std::path::Path) -> String {
+	format!(
+		r#"<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Spacedrive Daemon Background Service</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+		<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+		<RestartOnFailure>
+			<Interval>PT10S</Interval>
+			<Count>3</Count>
+		</RestartOnFailure>
+    <Priority>7</Priority>
+    <RestartOnFailure>
+      <Interval>PT10S</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions>
+    <Exec>
+      <Command>{}</Command>
+      <Arguments>--data-dir "{}"</Arguments>
+    </Exec>
+  </Actions>
+</Task>"#,
+		daemon_path.display(),
+		data_dir.display()
+	)
+}
+
+async fn ensure_daemon_watchdog_started(
+	app: AppHandle,
+	daemon_state: Arc<RwLock<DaemonState>>,
+	connection_pool: Arc<DaemonConnectionPool>,
+) {
+	let should_start = {
+		let mut state = daemon_state.write().await;
+		if state.watchdog_started {
+			false
+		} else {
+			state.watchdog_started = true;
+			true
+		}
+	};
+
+	if !should_start {
+		return;
+	}
+
+	tauri::async_runtime::spawn(async move {
+		let started_at = std::time::Instant::now();
+		let mut recent_failures = std::collections::VecDeque::new();
+
+		loop {
+			tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+			let Some((data_dir, socket_addr, process_arc)) = ({
+				let state = daemon_state.read().await;
+				if !state.started_by_us {
+					None
+				} else {
+					state
+						.daemon_process
+						.clone()
+						.map(|process_arc| (state.data_dir.clone(), state.socket_addr.clone(), process_arc))
+				}
+			}) else {
+				continue;
+			};
+
+			let exit_result = {
+				let mut process_lock = process_arc.lock().await;
+				match process_lock.as_mut() {
+					Some(child) => match child.try_wait() {
+						Ok(Some(status)) => {
+							*process_lock = None;
+							Some(Ok(status))
+						}
+						Ok(None) => None,
+						Err(error) => {
+							*process_lock = None;
+							Some(Err(error))
+						}
+					},
+					None => None,
+				}
+			};
+
+			let Some(exit_result) = exit_result else {
+				continue;
+			};
+
+			{
+				let mut state = daemon_state.write().await;
+				state.started_by_us = false;
+				state.daemon_process = None;
+			}
+
+			connection_pool.reset().await;
+			let _ = app.emit("daemon-disconnected", ());
+
+			let failure_detail = match exit_result {
+				Ok(status) => format!("status {:?}", status.code()),
+				Err(error) => format!("wait error: {}", error),
+			};
+
+			let now = started_at.elapsed();
+			let Some(delay) =
+				record_daemon_failure_and_get_restart_delay(&mut recent_failures, now)
+			else {
+				tracing::error!(
+					failure = %failure_detail,
+					"Daemon restart watchdog stopped after repeated failures"
+				);
+				continue;
+			};
+
+			tracing::warn!(
+				failure = %failure_detail,
+				restart_delay_secs = delay.as_secs(),
+				"Daemon exited unexpectedly, scheduling restart"
+			);
+			let _ = app.emit("daemon-starting", ());
+			tokio::time::sleep(delay).await;
+
+			match start_daemon(&data_dir, &socket_addr).await {
+				Ok(child) => {
+					{
+						let mut state = daemon_state.write().await;
+						state.started_by_us = true;
+						state.daemon_process = Some(std::sync::Arc::new(
+							tokio::sync::Mutex::new(Some(child)),
+						));
+					}
+
+					connection_pool.reset().await;
+					if let Err(error) = connection_pool.ensure_connected(&app).await {
+						tracing::error!(
+							error = %error,
+							"Restarted daemon but failed to re-establish connection"
+						);
+					}
+				}
+				Err(error) => {
+					tracing::error!(error = %error, "Failed to restart daemon from watchdog");
+				}
+			}
+		}
+	});
 }
 
 /// Menu item state from frontend
@@ -938,6 +1152,18 @@ async fn start_daemon_process(
 	let mut daemon_state = state.write().await;
 	daemon_state.started_by_us = true;
 	daemon_state.daemon_process = Some(std::sync::Arc::new(tokio::sync::Mutex::new(Some(child))));
+	drop(daemon_state);
+
+	if let Some(app_state) = app.try_state::<AppState>() {
+		ensure_daemon_watchdog_started(
+			app.clone(),
+			state.inner().clone(),
+			app_state.connection_pool.clone(),
+		)
+		.await;
+		app_state.connection_pool.reset().await;
+		app_state.connection_pool.ensure_connected(&app).await?;
+	}
 
 	Ok(())
 }
@@ -1324,6 +1550,8 @@ WantedBy=default.target
 			daemon_path.display(),
 			data_dir.display()
 		);
+
+		let task_xml = build_windows_daemon_task_xml(&daemon_path, &data_dir);
 
 		// Write XML to temp file
 		let temp_dir = std::env::temp_dir();
@@ -2092,6 +2320,7 @@ fn main() {
 				server_url: None,
 				server_shutdown: None,
 				daemon_process: None,
+				watchdog_started: false,
 			}));
 
 			// Initialize app state for library ID (shared across all windows)
@@ -2173,11 +2402,21 @@ fn main() {
 				};
 
 				// Update daemon state
-				let mut state = daemon_state.write().await;
-				state.started_by_us = started_by_us;
-				state.daemon_process = child_process;
+	let mut state = daemon_state.write().await;
+	state.started_by_us = started_by_us;
+	state.daemon_process = child_process;
+	drop(state);
 
-				tracing::info!("Daemon connection established");
+	if let Some(app_state) = app_handle.try_state::<AppState>() {
+		ensure_daemon_watchdog_started(
+			app_handle.clone(),
+			daemon_state.clone(),
+			app_state.connection_pool.clone(),
+		)
+		.await;
+	}
+
+	tracing::info!("Daemon connection established");
 
 				// Validate persisted library ID in background (non-blocking)
 				// If library no longer exists, reset the state
@@ -2248,4 +2487,86 @@ fn main() {
 		})
 		.run(tauri::generate_context!())
 		.expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{
+		record_daemon_failure_and_get_restart_delay, DAEMON_RESTART_DELAYS,
+		DAEMON_RESTART_WINDOW,
+	};
+	use std::collections::VecDeque;
+	use std::time::Duration;
+
+	#[test]
+	fn record_daemon_failure_returns_first_delay() {
+		let mut recent_failures = VecDeque::new();
+
+		let delay =
+			record_daemon_failure_and_get_restart_delay(&mut recent_failures, Duration::ZERO);
+
+		assert_eq!(delay, Some(DAEMON_RESTART_DELAYS[0]));
+		assert_eq!(recent_failures.len(), 1);
+	}
+
+	#[test]
+	fn record_daemon_failure_stops_after_three_recent_failures() {
+		let mut recent_failures = VecDeque::new();
+
+		assert_eq!(
+			record_daemon_failure_and_get_restart_delay(&mut recent_failures, Duration::ZERO),
+			Some(DAEMON_RESTART_DELAYS[0])
+		);
+		assert_eq!(
+			record_daemon_failure_and_get_restart_delay(
+				&mut recent_failures,
+				Duration::from_secs(1)
+			),
+			Some(DAEMON_RESTART_DELAYS[1])
+		);
+		assert_eq!(
+			record_daemon_failure_and_get_restart_delay(
+				&mut recent_failures,
+				Duration::from_secs(2)
+			),
+			Some(DAEMON_RESTART_DELAYS[2])
+		);
+		assert_eq!(
+			record_daemon_failure_and_get_restart_delay(
+				&mut recent_failures,
+				Duration::from_secs(3)
+			),
+			None
+		);
+	}
+
+	#[test]
+	fn record_daemon_failure_forgets_old_failures_outside_window() {
+		let mut recent_failures = VecDeque::from([
+			Duration::ZERO,
+			Duration::from_secs(1),
+			Duration::from_secs(2),
+		]);
+
+		let delay = record_daemon_failure_and_get_restart_delay(
+			&mut recent_failures,
+			DAEMON_RESTART_WINDOW + Duration::from_secs(3),
+		);
+
+		assert_eq!(delay, Some(DAEMON_RESTART_DELAYS[0]));
+		assert_eq!(recent_failures.len(), 1);
+	}
+
+	#[cfg(target_os = "windows")]
+	#[test]
+	fn build_windows_daemon_task_xml_includes_restart_policy() {
+		let xml = super::build_windows_daemon_task_xml(
+			std::path::Path::new(r"C:\Spacedrive\sd-daemon.exe"),
+			std::path::Path::new(r"C:\Users\Test\.spacedrive"),
+		);
+
+		assert!(xml.contains("<RestartOnFailure>"));
+		assert!(xml.contains("<Interval>PT10S</Interval>"));
+		assert!(xml.contains("<Count>3</Count>"));
+	}
 }

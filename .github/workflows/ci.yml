@@ -158,6 +158,10 @@ jobs:
         if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
         run: cargo clippy --workspace --locked -- -D warnings
 
+      - name: Check TypeScript types are in sync with Rust
+        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        run: ./scripts/check-ts-types.sh
+
       # - name: Run tests
       #   if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
       #   run: cargo test --workspace --all-features --locked --target ${{ matrix.settings.target }}

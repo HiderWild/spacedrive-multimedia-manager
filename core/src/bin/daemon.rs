@@ -29,11 +29,73 @@ struct Args {
 	/// Daemon instance name
 	#[arg(long)]
 	instance: Option<String>,
+
+	/// Internal helper mode for isolated Windows recycle-bin operations.
+	#[arg(long, hide = true)]
+	internal_trash_helper: bool,
+
+	/// Target path for the internal trash helper mode.
+	#[arg(long, hide = true, requires = "internal_trash_helper")]
+	internal_trash_path: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum RequestedMode {
+	Server,
+	InternalTrashHelper(PathBuf),
+}
+
+impl Args {
+	fn requested_mode(&self) -> Result<RequestedMode, String> {
+		if self.internal_trash_helper {
+			let path = self
+				.internal_trash_path
+				.clone()
+				.ok_or_else(|| "internal trash helper requires --internal-trash-path".to_string())?;
+			return Ok(RequestedMode::InternalTrashHelper(path));
+		}
+
+		Ok(RequestedMode::Server)
+	}
+}
+
+#[cfg(target_os = "windows")]
+fn run_internal_trash_helper(path: PathBuf) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+	trash::delete(&path).map_err(|error| {
+		let message = format!("Failed to move to trash '{}': {}", path.display(), error);
+		Box::<dyn std::error::Error + Send + Sync>::from(std::io::Error::new(
+			std::io::ErrorKind::Other,
+			message,
+		))
+	})
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_internal_trash_helper(
+	_path: PathBuf,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+	Err(Box::new(std::io::Error::new(
+		std::io::ErrorKind::Unsupported,
+		"internal trash helper is only supported on Windows",
+	)))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 	let args = Args::parse();
+
+	match args.requested_mode().map_err(|error| {
+		Box::<dyn std::error::Error + Send + Sync>::from(std::io::Error::new(
+			std::io::ErrorKind::InvalidInput,
+			error,
+		))
+	})? {
+		RequestedMode::InternalTrashHelper(path) => {
+			run_internal_trash_helper(path)?;
+			return Ok(());
+		}
+		RequestedMode::Server => {}
+	}
 
 	// Resolve base data directory
 	let base_data_dir = args
@@ -94,5 +156,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 			println!("Received SIGTERM, shutting down gracefully...");
 			Ok(())
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{Args, RequestedMode};
+	use clap::Parser;
+	use std::path::PathBuf;
+
+	#[test]
+	fn parses_internal_trash_helper_mode() {
+		let args = Args::try_parse_from([
+			"sd-daemon",
+			"--internal-trash-helper",
+			"--internal-trash-path",
+			"D:\\AI",
+		])
+		.expect("helper args should parse");
+
+		assert_eq!(
+			args.requested_mode().expect("helper mode should resolve"),
+			RequestedMode::InternalTrashHelper(PathBuf::from("D:\\AI"))
+		);
+	}
+
+	#[test]
+	fn defaults_to_server_mode() {
+		let args = Args::try_parse_from(["sd-daemon"]).expect("default args should parse");
+
+		assert_eq!(
+			args.requested_mode().expect("default mode should resolve"),
+			RequestedMode::Server
+		);
 	}
 }

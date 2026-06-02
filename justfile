@@ -54,6 +54,14 @@ check:
 fmt:
     cargo fmt
 
+# Regenerate the TypeScript client types from Rust `Type`-deriving structs
+generate-types:
+    cargo run --bin generate_typescript_types --manifest-path core/Cargo.toml
+
+# Fail if committed TS types have drifted from Rust (used in CI)
+check-types:
+    ./scripts/check-ts-types.sh
+
 # Link SpaceUI packages for local development.
 spaceui-link:
     #!/usr/bin/env bash
