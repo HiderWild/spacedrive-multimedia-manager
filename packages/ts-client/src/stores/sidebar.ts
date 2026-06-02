@@ -12,8 +12,10 @@ interface SidebarStore {
 	setCurrentSpace: (id: string | null) => void;
 
 	// Ephemeral state
-	collapsedGroups: Set<string>;
-	toggleGroup: (groupId: string) => void;
+	collapsedGroupOverrides: Record<string, boolean>;
+	setGroupCollapsedOverride: (groupId: string, collapsed: boolean) => void;
+	clearGroupCollapsedOverride: (groupId: string) => void;
+	clearGroupCollapsedOverrides: () => void;
 	collapseAll: (groupIds: string[]) => void;
 	expandAll: () => void;
 
@@ -27,25 +29,35 @@ export const useSidebarStore = create<SidebarStore>()(
 		(set) => ({
 			// Persisted
 			currentSpaceId: null,
-			setCurrentSpace: (id) => set({ currentSpaceId: id }),
+			setCurrentSpace: (id) =>
+				set((state) => ({
+					currentSpaceId: id,
+					collapsedGroupOverrides:
+						state.currentSpaceId === id ? state.collapsedGroupOverrides : {},
+				})),
 
 			// Ephemeral
-			collapsedGroups: new Set(),
-			toggleGroup: (groupId) =>
+			collapsedGroupOverrides: {},
+			setGroupCollapsedOverride: (groupId, collapsed) =>
+				set((state) => ({
+					collapsedGroupOverrides: {
+						...state.collapsedGroupOverrides,
+						[groupId]: collapsed,
+					},
+				})),
+			clearGroupCollapsedOverride: (groupId) =>
 				set((state) => {
-					const newSet = new Set(state.collapsedGroups);
-					if (newSet.has(groupId)) {
-						newSet.delete(groupId);
-					} else {
-						newSet.add(groupId);
-					}
-					return { collapsedGroups: newSet };
+					const { [groupId]: _, ...rest } = state.collapsedGroupOverrides;
+					return { collapsedGroupOverrides: rest };
 				}),
+			clearGroupCollapsedOverrides: () => set({ collapsedGroupOverrides: {} }),
 			collapseAll: (groupIds) =>
 				set({
-					collapsedGroups: new Set(groupIds),
+					collapsedGroupOverrides: Object.fromEntries(
+						groupIds.map((groupId) => [groupId, true]),
+					),
 				}),
-			expandAll: () => set({ collapsedGroups: new Set() }),
+			expandAll: () => set({ collapsedGroupOverrides: {} }),
 
 			// Drag
 			draggedItem: null,

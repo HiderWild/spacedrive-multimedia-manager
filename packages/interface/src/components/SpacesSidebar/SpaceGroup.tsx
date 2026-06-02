@@ -1,8 +1,11 @@
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type {
 	SpaceGroup as SpaceGroupType,
 	SpaceItem as SpaceItemType,
 } from "@sd/ts-client";
 import { useSidebarStore, useLibraryMutation } from "@sd/ts-client";
+import { useSpacedriveClient } from "../../contexts/SpacedriveContext";
 import { SpaceItem } from "./SpaceItem";
 import { DevicesGroup } from "./DevicesGroup";
 import { LocationsGroup } from "./LocationsGroup";
@@ -27,29 +30,76 @@ export function SpaceGroup({
 	sortableAttributes,
 	sortableListeners,
 }: SpaceGroupProps) {
-	const { collapsedGroups, toggleGroup: toggleGroupLocal } = useSidebarStore();
+	const {
+		collapsedGroupOverrides,
+		setGroupCollapsedOverride,
+		clearGroupCollapsedOverride,
+	} = useSidebarStore();
 	const { active } = useDndContext();
+	const client = useSpacedriveClient();
+	const queryClient = useQueryClient();
 	const updateGroup = useLibraryMutation("spaces.update_group");
-	
-	// Use backend's is_collapsed value as the source of truth, fallback to local state
-	const isCollapsed = group.is_collapsed ?? collapsedGroups.has(group.id);
-	
-	// Toggle handler that updates both local and backend state
+
+	const localCollapsedOverride = collapsedGroupOverrides[group.id];
+	const isCollapsed = localCollapsedOverride ?? group.is_collapsed;
+
+	useEffect(() => {
+		if (
+			localCollapsedOverride !== undefined &&
+			localCollapsedOverride === group.is_collapsed
+		) {
+			clearGroupCollapsedOverride(group.id);
+		}
+	}, [
+		clearGroupCollapsedOverride,
+		group.id,
+		group.is_collapsed,
+		localCollapsedOverride,
+	]);
+
 	const handleToggle = async () => {
-		// Optimistically update local state for immediate UI feedback
-		toggleGroupLocal(group.id);
-		
-		// Update backend
+		const nextCollapsed = !isCollapsed;
+		setGroupCollapsedOverride(group.id, nextCollapsed);
+
 		try {
-			await updateGroup.mutateAsync({
+			const result = await updateGroup.mutateAsync({
 				group_id: group.id,
 				name: null,
-				is_collapsed: !isCollapsed,
+				is_collapsed: nextCollapsed,
 			});
+
+			const libraryId = client.getCurrentLibraryId();
+			const layoutSpaceId = spaceId ?? group.space_id;
+
+			if (libraryId && layoutSpaceId) {
+				queryClient.setQueryData(
+					["query:spaces.get_layout", libraryId, { space_id: layoutSpaceId }],
+					(oldData: any) => {
+						if (!oldData?.groups) return oldData;
+
+						return {
+							...oldData,
+							groups: oldData.groups.map((entry: any) =>
+								entry.group?.id === group.id
+									? {
+											...entry,
+											group: {
+												...entry.group,
+												is_collapsed:
+													result.group?.is_collapsed ?? nextCollapsed,
+											},
+										}
+									: entry,
+							),
+						};
+					},
+				);
+			}
+
+			clearGroupCollapsedOverride(group.id);
 		} catch (error) {
 			console.error("Failed to update group collapse state:", error);
-			// Revert local state on error
-			toggleGroupLocal(group.id);
+			clearGroupCollapsedOverride(group.id);
 		}
 	};
 
@@ -174,9 +224,9 @@ export function SpaceGroup({
 							ref={setEmptyRef}
 							className="absolute inset-0 z-10"
 						>
-					{isOverEmpty && !isDraggingSortableItem && (
-						<div className="absolute top-1/2 -translate-y-1/2 left-2 right-2 h-[2px] bg-accent rounded-full" />
-					)}
+							{isOverEmpty && !isDraggingSortableItem && (
+								<div className="absolute top-1/2 -translate-y-1/2 left-2 right-2 h-[2px] bg-accent rounded-full" />
+							)}
 						</div>
 					)}
 				</div>
