@@ -22,6 +22,13 @@ pub struct Model {
 	pub confidence: f32,
 	pub source: String, // TagSource enum as string
 
+	// Inheritance dimension (TagInheritanceSource enum as string): "direct" for
+	// explicit applications, "overridden" to suppress an otherwise-inherited tag.
+	// "inherited" rows are never stored (computed at query time).
+	pub inheritance_source: String,
+	// Ancestor entry whose inherited tag an override row suppresses; null otherwise.
+	pub overridden_from_entry_id: Option<i32>,
+
 	// Instance-specific attributes
 	pub instance_attributes: Option<Json>, // HashMap<String, serde_json::Value> as JSON
 
@@ -80,6 +87,7 @@ impl ActiveModelBehavior for ActiveModel {
 		Self {
 			confidence: Set(1.0),
 			source: Set("user".to_owned()),
+			inheritance_source: Set("direct".to_owned()),
 			created_at: Set(chrono::Utc::now()),
 			updated_at: Set(chrono::Utc::now()),
 			..ActiveModelTrait::default()
@@ -360,6 +368,20 @@ impl Syncable for Model {
 				)
 				.unwrap();
 
+				let inheritance_source: String = serde_json::from_value(
+					data.get("inheritance_source")
+						.cloned()
+						.unwrap_or(serde_json::Value::String("direct".to_string())),
+				)
+				.unwrap();
+
+				let overridden_from_entry_id: Option<i32> = serde_json::from_value(
+					data.get("overridden_from_entry_id")
+						.cloned()
+						.unwrap_or(serde_json::Value::Null),
+				)
+				.unwrap();
+
 				let instance_attributes: Option<Json> = serde_json::from_value(
 					data.get("instance_attributes")
 						.cloned()
@@ -382,6 +404,8 @@ impl Syncable for Model {
 					applied_variant: Set(applied_variant),
 					confidence: Set(confidence),
 					source: Set(source),
+					inheritance_source: Set(inheritance_source),
+					overridden_from_entry_id: Set(overridden_from_entry_id),
 					instance_attributes: Set(instance_attributes),
 					device_uuid: Set(device_uuid),
 					uuid: Set(uuid),
@@ -400,6 +424,8 @@ impl Syncable for Model {
 								Column::AppliedVariant,
 								Column::Confidence,
 								Column::Source,
+								Column::InheritanceSource,
+								Column::OverriddenFromEntryId,
 								Column::InstanceAttributes,
 								Column::DeviceUuid,
 								Column::Version,

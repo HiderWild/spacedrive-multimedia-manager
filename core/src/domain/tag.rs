@@ -208,6 +208,47 @@ pub enum TagSource {
 	Sync,
 }
 
+/// Inheritance state of a tag application on a specific item.
+///
+/// Folder tags propagate to descendants, but inherited tags are not
+/// materialized per file. Only `Direct` and `Overridden` rows are stored;
+/// `Inherited` is computed at query time (task A-02) and exists here so the
+/// resolver and APIs can label an effective tag's origin uniformly.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+pub enum TagInheritanceSource {
+	/// Tag explicitly applied to this item.
+	Direct,
+	/// Tag effective via an ancestor folder, computed at query time (not stored).
+	Inherited,
+	/// Explicit suppression of an otherwise-inherited tag on this item.
+	Overridden,
+}
+
+impl Default for TagInheritanceSource {
+	fn default() -> Self {
+		Self::Direct
+	}
+}
+
+impl TagInheritanceSource {
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			TagInheritanceSource::Direct => "direct",
+			TagInheritanceSource::Inherited => "inherited",
+			TagInheritanceSource::Overridden => "overridden",
+		}
+	}
+
+	pub fn from_str(s: &str) -> Option<Self> {
+		match s {
+			"direct" => Some(TagInheritanceSource::Direct),
+			"inherited" => Some(TagInheritanceSource::Inherited),
+			"overridden" => Some(TagInheritanceSource::Overridden),
+			_ => None,
+		}
+	}
+}
+
 /// Result of merging tag applications during sync
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct TagMergeResult {
