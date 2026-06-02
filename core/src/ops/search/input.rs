@@ -84,6 +84,11 @@ pub struct TagFilter {
 	pub include: Vec<Uuid>,
 	/// Must not have any of these tag IDs
 	pub exclude: Vec<Uuid>,
+	/// When true, a file also matches a tag it inherits from an ancestor folder
+	/// through the entry hierarchy, not just tags applied directly to it.
+	/// Defaults to false so existing queries keep direct-only matching.
+	#[serde(default)]
+	pub include_inherited: bool,
 }
 
 /// Filter for a time-based field

@@ -9,9 +9,7 @@ use crate::{
 	context::CoreContext,
 	domain::{addressing::SdPath, File},
 	filetype::FileTypeRegistry,
-	infra::db::entities::{
-		content_identity, directory_paths, entry, sidecar, tag, user_metadata, user_metadata_tag,
-	},
+	infra::db::entities::{content_identity, directory_paths, entry, sidecar},
 	infra::query::LibraryQuery,
 };
 use chrono::{DateTime, Utc};
@@ -216,12 +214,10 @@ impl FileSearchQuery {
 		// Apply tag filter on FTS results
 		if let Some(tag_filter) = &self.input.filters.tags {
 			let (include_ids, exclude_ids) = self.resolve_tag_filter(db, tag_filter).await?;
-			let include_set: Option<HashSet<i32>> =
-				include_ids.map(|v| v.into_iter().collect());
+			let include_set: Option<HashSet<i32>> = include_ids.map(|v| v.into_iter().collect());
 			let exclude_set: HashSet<i32> = exclude_ids.into_iter().collect();
 			fts_results.retain(|(id, _)| {
-				include_set.as_ref().map_or(true, |s| s.contains(id))
-					&& !exclude_set.contains(id)
+				include_set.as_ref().map_or(true, |s| s.contains(id)) && !exclude_set.contains(id)
 			});
 			if fts_results.is_empty() {
 				return Ok(Vec::new());
@@ -1024,10 +1020,7 @@ impl FileSearchQuery {
 		};
 
 		// Batch sidecars by content UUID
-		let content_uuids: Vec<Uuid> = content_identities
-			.iter()
-			.filter_map(|ci| ci.uuid)
-			.collect();
+		let content_uuids: Vec<Uuid> = content_identities.iter().filter_map(|ci| ci.uuid).collect();
 
 		let all_sidecars = if !content_uuids.is_empty() {
 			sidecar::Entity::find()
@@ -1060,18 +1053,14 @@ impl FileSearchQuery {
 		}
 
 		// Index content identities by entry content_id for per-entry lookup
-		let identities_by_content_id: std::collections::HashMap<
-			i32,
-			&content_identity::Model,
-		> = content_identities.iter().map(|ci| (ci.id, ci)).collect();
+		let identities_by_content_id: std::collections::HashMap<i32, &content_identity::Model> =
+			content_identities.iter().map(|ci| (ci.id, ci)).collect();
 
 		// Convert entries to FileSearchResult, hydrating each with content_identity
 		let mut results = Vec::new();
 		for entry_model in entries {
 			let content_id = entry_model.content_id;
-			if let Some(mut result) =
-				self.entry_to_search_result(entry_model, db, 1.0).await?
-			{
+			if let Some(mut result) = self.entry_to_search_result(entry_model, db, 1.0).await? {
 				if let Some(cid) = content_id {
 					if let Some(ci) = identities_by_content_id.get(&cid) {
 						let kind = kinds_by_id
@@ -1578,78 +1567,21 @@ impl FileSearchQuery {
 	}
 
 	/// Find all entry IDs that are tagged with the given tag UUID.
-	/// Handles both entry-scoped and content-scoped user_metadata.
+	/// Handles both entry-scoped and content-scoped user_metadata, and optionally
+	/// descendant entries that inherit the tag through the entry hierarchy.
 	async fn find_entry_ids_for_tag(
 		&self,
 		db: &DatabaseConnection,
 		tag_uuid: Uuid,
+		include_inherited: bool,
 	) -> QueryResult<Vec<i32>> {
-		use crate::infra::db::entities::{
-			content_identity::Entity as ContentIdentity, entry::Entity as Entry,
-			tag::Entity as Tag, user_metadata::Entity as UserMetadata,
-			user_metadata_tag::Entity as UserMetadataTag,
-		};
-
-		// 1. Find tag by UUID
-		let Some(tag_model) = Tag::find()
-			.filter(tag::Column::Uuid.eq(tag_uuid))
-			.one(db)
-			.await?
-		else {
-			return Ok(vec![]);
-		};
-
-		// 2. Find all user_metadata_tag records for this tag
-		let umt_records = UserMetadataTag::find()
-			.filter(user_metadata_tag::Column::TagId.eq(tag_model.id))
-			.all(db)
-			.await?;
-
-		if umt_records.is_empty() {
-			return Ok(vec![]);
-		}
-
-		let um_ids: Vec<i32> = umt_records.iter().map(|r| r.user_metadata_id).collect();
-
-		// 3. Fetch all user_metadata records in batch
-		let um_records = UserMetadata::find()
-			.filter(user_metadata::Column::Id.is_in(um_ids))
-			.all(db)
-			.await?;
-
-		let entry_uuids: Vec<Uuid> =
-			um_records.iter().filter_map(|um| um.entry_uuid).collect();
-		let ci_uuids: Vec<Uuid> =
-			um_records.iter().filter_map(|um| um.content_identity_uuid).collect();
-
-		let mut entry_ids: HashSet<i32> = HashSet::new();
-
-		// 4a. Entries directly linked via entry_uuid
-		if !entry_uuids.is_empty() {
-			let entries = Entry::find()
-				.filter(entry::Column::Uuid.is_in(entry_uuids))
-				.all(db)
-				.await?;
-			entry_ids.extend(entries.iter().map(|e| e.id));
-		}
-
-		// 4b. Entries linked via content_identity_uuid
-		if !ci_uuids.is_empty() {
-			let cis = ContentIdentity::find()
-				.filter(content_identity::Column::Uuid.is_in(ci_uuids.into_iter().map(Some)))
-				.all(db)
-				.await?;
-			if !cis.is_empty() {
-				let ci_ids: Vec<i32> = cis.iter().map(|ci| ci.id).collect();
-				let entries = Entry::find()
-					.filter(entry::Column::ContentId.is_in(ci_ids.into_iter().map(Some)))
-					.all(db)
-					.await?;
-				entry_ids.extend(entries.iter().map(|e| e.id));
-			}
-		}
-
-		Ok(entry_ids.into_iter().collect())
+		let ids = crate::ops::search::inherited::find_entry_ids_for_tag_with_inheritance(
+			db,
+			tag_uuid,
+			include_inherited,
+		)
+		.await?;
+		Ok(ids)
 	}
 
 	/// Resolve a TagFilter to (include_ids, exclude_ids) entry ID lists.
@@ -1660,12 +1592,17 @@ impl FileSearchQuery {
 		db: &DatabaseConnection,
 		tag_filter: &crate::ops::search::input::TagFilter,
 	) -> QueryResult<(Option<Vec<i32>>, Vec<i32>)> {
+		let include_inherited = tag_filter.include_inherited;
+
 		// Include: AND logic — entry must have ALL listed tags (intersection)
 		let include_ids = if !tag_filter.include.is_empty() {
 			let mut result_set: Option<HashSet<i32>> = None;
 			for tag_uuid in &tag_filter.include {
-				let ids: HashSet<i32> =
-					self.find_entry_ids_for_tag(db, *tag_uuid).await?.into_iter().collect();
+				let ids: HashSet<i32> = self
+					.find_entry_ids_for_tag(db, *tag_uuid, include_inherited)
+					.await?
+					.into_iter()
+					.collect();
 				result_set = Some(match result_set {
 					None => ids,
 					Some(existing) => existing.intersection(&ids).copied().collect(),
@@ -1679,7 +1616,9 @@ impl FileSearchQuery {
 		// Exclude: OR logic — entry must have NONE of the listed tags (union)
 		let mut exclude_ids: HashSet<i32> = HashSet::new();
 		for tag_uuid in &tag_filter.exclude {
-			let ids = self.find_entry_ids_for_tag(db, *tag_uuid).await?;
+			let ids = self
+				.find_entry_ids_for_tag(db, *tag_uuid, include_inherited)
+				.await?;
 			exclude_ids.extend(ids);
 		}
 

@@ -6,6 +6,7 @@ use specta::Type;
 pub mod ephemeral_search;
 pub mod facets;
 pub mod filters;
+pub mod inherited;
 pub mod input;
 pub mod output;
 pub mod query;
@@ -39,8 +40,8 @@ pub enum FilterKind {
 	DateRange,
 	SizeRange,
 	ContentTypes,
-	Tags,      // Persistent only
-	Locations, // Persistent only
+	Tags,         // Persistent only
+	Locations,    // Persistent only
 	Hidden,       // Not implemented yet
 	Archived,     // Not implemented yet
 	AtRisk,       // Redundancy: content on exactly one volume
