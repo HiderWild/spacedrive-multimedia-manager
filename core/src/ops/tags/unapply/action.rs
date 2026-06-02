@@ -6,6 +6,7 @@ use crate::{
 	context::CoreContext,
 	infra::action::{error::ActionError, LibraryAction},
 	infra::db::entities::{content_identity, entry, tag, user_metadata, user_metadata_tag},
+	infra::sync::ChangeType,
 	library::Library,
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -97,9 +98,22 @@ impl LibraryAction for UnapplyTagsAction {
 			});
 		}
 
+		// Fetch user_metadata_tag records BEFORE deleting (for sync)
+		let um_ids_vec: Vec<i32> = um_ids.into_iter().collect();
+		let umt_records_for_sync = user_metadata_tag::Entity::find()
+			.filter(
+				user_metadata_tag::Column::UserMetadataId.is_in(um_ids_vec.clone()),
+			)
+			.filter(user_metadata_tag::Column::TagId.is_in(tag_db_ids.clone()))
+			.all(conn)
+			.await
+			.map_err(|e| ActionError::Internal(format!("DB error: {}", e)))?;
+
 		// Delete user_metadata_tag records
 		let result = user_metadata_tag::Entity::delete_many()
-			.filter(user_metadata_tag::Column::UserMetadataId.is_in(um_ids.into_iter().collect::<Vec<_>>()))
+			.filter(
+				user_metadata_tag::Column::UserMetadataId.is_in(um_ids_vec),
+			)
 			.filter(user_metadata_tag::Column::TagId.is_in(tag_db_ids))
 			.exec(conn)
 			.await
@@ -107,11 +121,12 @@ impl LibraryAction for UnapplyTagsAction {
 
 		let total_removed = result.rows_affected as usize;
 
-		// TODO(sync): Tag unapply is not synced to other devices.
-		// The sync infrastructure supports ChangeType::Delete but tag removal
-		// does not yet call library.sync_model(). This means removed tags will
-		// reappear on other devices after sync. Tracked for a dedicated
-		// sync-deletion PR. See also delete/action.rs.
+		// Sync tag unapply deletions to other devices
+		for umt_model in &umt_records_for_sync {
+			if let Err(e) = library.sync_model(umt_model, ChangeType::Delete).await {
+				tracing::warn!("Failed to sync tag unapply to other devices: {}", e);
+			}
+		}
 
 		// Only collect and notify if rows were actually deleted
 		if total_removed > 0 {

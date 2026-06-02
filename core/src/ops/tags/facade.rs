@@ -58,7 +58,7 @@ impl TaggingFacade {
 			.await?;
 		if let Some(color) = color {
 			tag.color = Some(color);
-			// TODO: Update tag in database with color
+			tag = self.tag_manager.update_tag(&tag).await?;
 		}
 		Ok(tag)
 	}
@@ -76,7 +76,7 @@ impl TaggingFacade {
 		if let Some(color) = color {
 			tag.color = Some(color);
 		}
-		// TODO: Update tag in database with type and anchor status
+		tag = self.tag_manager.update_tag(&tag).await?;
 		Ok(tag)
 	}
 
@@ -102,7 +102,7 @@ impl TaggingFacade {
 			tag.add_alias(alias);
 		}
 
-		// TODO: Update tag in database with variants
+		tag = self.tag_manager.update_tag(&tag).await?;
 		Ok(tag)
 	}
 
@@ -198,7 +198,7 @@ impl TaggingFacade {
 					.create_tag(tag_name, None, device_id)
 					.await?;
 				new_tag.tag_type = TagType::System;
-				// TODO: Update tag type in database
+				new_tag = self.tag_manager.update_tag(&new_tag).await?;
 				new_tag.id
 			} else {
 				existing_tags[0].id
@@ -242,8 +242,8 @@ impl TaggingFacade {
 
 		// Simple suggestion logic based on co-occurrence
 		for existing_tag in &existing_tags {
-			// TODO: Access usage analyzer through public method
-			let co_occurrences: Vec<(Uuid, Uuid, i32)> = Vec::new(); // Placeholder
+			// Access co-occurrence data through public method on TagManager
+			let co_occurrences = self.tag_manager.get_frequent_co_occurrences(3).await.unwrap_or_default();
 
 			for (tag1_id, tag2_id, count) in co_occurrences {
 				if tag1_id == existing_tag.id && !existing_tag_ids.contains(&tag2_id) {
@@ -313,22 +313,21 @@ impl TaggingFacade {
 	async fn build_hierarchy_node(
 		&self,
 		tag: &Tag,
-		all_tags: &[Tag],
+		_all_tags: &[Tag],
 	) -> Result<TagHierarchyNode, TagError> {
-		let descendant_ids = self.tag_manager.get_descendants(tag.id).await?;
-		let descendant_uuid_ids: Vec<Uuid> = descendant_ids.into_iter().map(|tag| tag.id).collect();
-		let descendants = self
+		// Get direct children (depth=1) via closure table for proper hierarchy
+		let direct_child_ids = self.tag_manager.get_direct_children(tag.id).await?;
+		let direct_children = self
 			.tag_manager
-			.get_tags_by_ids(&descendant_uuid_ids)
+			.get_tags_by_ids(&direct_child_ids)
 			.await?;
 
-		let children = descendants
-			.into_iter()
-			.map(|child_tag| TagHierarchyNode {
-				tag: child_tag,
-				children: Vec::new(), // TODO: Recursive building if needed
-			})
-			.collect();
+		// Recursively build each child's subtree
+		let mut children = Vec::new();
+		for child_tag in direct_children {
+			let node = Box::pin(self.build_hierarchy_node(&child_tag, &[])).await?;
+			children.push(node);
+		}
 
 		Ok(TagHierarchyNode {
 			tag: tag.clone(),

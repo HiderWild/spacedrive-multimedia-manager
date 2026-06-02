@@ -481,23 +481,32 @@ impl TagManager {
 			results.push(model_to_domain(model)?);
 		}
 
-		// Also search aliases using a separate query
-		// Get all tags and filter by aliases in memory (for now)
-		// TODO: Optimize this with JSON query operators or FTS5
-		let all_models = tag::Entity::find()
-			.all(&*db)
-			.await
-			.map_err(|e| TagError::DatabaseError(e.to_string()))?;
+		// Search aliases using json_each for efficient JSON array querying
+		// instead of loading all tags and filtering in memory
+		if let Ok(alias_rows) = db.query_all(
+			sea_orm::Statement::from_sql_and_values(
+				sea_orm::DatabaseBackend::Sqlite,
+				"SELECT DISTINCT t.id FROM tag t, json_each(t.aliases) a WHERE a.value = ? COLLATE NOCASE",
+				[name.into()]
+			)
+		).await {
+			let alias_db_ids: Vec<i32> = alias_rows
+				.iter()
+				.filter_map(|row| row.try_get::<i32>("", "id").ok())
+				.collect();
 
-		for model in all_models {
-			if let Some(aliases_json) = &model.aliases {
-				if let Ok(aliases) = serde_json::from_value::<Vec<String>>(aliases_json.clone()) {
-					if aliases.iter().any(|alias| alias.eq_ignore_ascii_case(name)) {
-						let domain_tag = model_to_domain(model)?;
-						// Avoid duplicates
-						if !results.iter().any(|t| t.id == domain_tag.id) {
-							results.push(domain_tag);
-						}
+			if !alias_db_ids.is_empty() {
+				let alias_models = tag::Entity::find()
+					.filter(tag::Column::Id.is_in(alias_db_ids))
+					.all(&*db)
+					.await
+					.map_err(|e| TagError::DatabaseError(e.to_string()))?;
+
+				for model in alias_models {
+					let domain_tag = model_to_domain(model)?;
+					// Avoid duplicates
+					if !results.iter().any(|t| t.id == domain_tag.id) {
+						results.push(domain_tag);
 					}
 				}
 			}
@@ -678,10 +687,69 @@ impl TagManager {
 			}
 		}
 
-		// TODO: Add more pattern discovery algorithms
-		// - Hierarchical relationship detection
-		// - Semantic similarity analysis
-		// - Contextual grouping analysis
+		// Hierarchical relationship detection: find tags with many descendants
+		// that could serve as organizational anchors
+		let all_tags_models = tag::Entity::find()
+			.all(&*self.db)
+			.await
+			.map_err(|e| TagError::DatabaseError(e.to_string()))?;
+
+		for tag_model in &all_tags_models {
+			if !tag_model.is_organizational_anchor {
+				let descendant_ids = self.closure_service.get_all_descendants(tag_model.uuid).await?;
+				// If a non-anchor tag has 3+ descendants, suggest promoting it
+				if descendant_ids.len() >= 3 {
+					let mut involved = vec![tag_model.uuid];
+					involved.extend(descendant_ids.iter().take(10));
+					patterns.push(OrganizationalPattern {
+						pattern_type: PatternType::HierarchicalRelationship,
+						tags_involved: involved,
+						confidence: (descendant_ids.len() as f32 / 10.0).min(0.9),
+						suggestion: format!(
+							"Tag '{}' has {} descendants and could serve as an organizational anchor",
+							tag_model.canonical_name, descendant_ids.len()
+						),
+						discovered_at: Utc::now(),
+					});
+				}
+			}
+		}
+
+		// Contextual grouping: find tags that share namespace but have no relationship
+		let mut namespace_groups: HashMap<Option<String>, Vec<Uuid>> = HashMap::new();
+		for tag_model in &all_tags_models {
+			namespace_groups
+				.entry(tag_model.namespace.clone())
+				.or_default()
+				.push(tag_model.uuid);
+		}
+
+		for (namespace, tag_uuids) in &namespace_groups {
+			if tag_uuids.len() >= 3 {
+				// Check if these tags are already related to each other
+				let mut unrelated_pairs = 0;
+				for i in 0..tag_uuids.len().min(10) {
+					for j in (i + 1)..tag_uuids.len().min(10) {
+						if !self.are_tags_related(tag_uuids[i], tag_uuids[j]).await? {
+							unrelated_pairs += 1;
+						}
+					}
+				}
+				if unrelated_pairs > 2 {
+					let ns_display = namespace.as_deref().unwrap_or("(root)");
+					patterns.push(OrganizationalPattern {
+						pattern_type: PatternType::ContextualGrouping,
+						tags_involved: tag_uuids.iter().take(10).copied().collect(),
+						confidence: (unrelated_pairs as f32 / 10.0).min(0.8),
+						suggestion: format!(
+							"{} tags in namespace '{}' share a namespace but have no relationships",
+							tag_uuids.len(), ns_display
+						),
+						discovered_at: Utc::now(),
+					});
+				}
+			}
+		}
 
 		Ok(patterns)
 	}
@@ -806,39 +874,45 @@ impl TagManager {
 			results.push(model_to_domain(model)?);
 		}
 
-		// Also search aliases in memory (for now)
-		// TODO: Optimize this with JSON query operators or FTS5
-		let all_models = tag::Entity::find()
-			.all(&*db)
-			.await
-			.map_err(|e| TagError::DatabaseError(e.to_string()))?;
+		// Search aliases using json_each with LIKE for efficient substring matching
+		// instead of loading all tags and filtering in memory
+		let alias_search_pattern = format!("%{}%", query.to_lowercase());
+		if let Ok(alias_rows) = db.query_all(
+			sea_orm::Statement::from_sql_and_values(
+				sea_orm::DatabaseBackend::Sqlite,
+				"SELECT DISTINCT t.id FROM tag t, json_each(t.aliases) a WHERE lower(a.value) LIKE ?",
+				[alias_search_pattern.into()]
+			)
+		).await {
+			let alias_db_ids: Vec<i32> = alias_rows
+				.iter()
+				.filter_map(|row| row.try_get::<i32>("", "id").ok())
+				.collect();
 
-		for model in all_models {
-			if let Some(aliases_json) = &model.aliases {
-				if let Ok(aliases) = serde_json::from_value::<Vec<String>>(aliases_json.clone()) {
-					if aliases
-						.iter()
-						.any(|alias| alias.to_lowercase().contains(&query.to_lowercase()))
-					{
-						// Apply additional filters to alias matches before converting to domain
-						let matches_namespace = namespace_filter.map_or(true, |ns| {
-							model
-								.namespace
-								.as_ref()
-								.map_or(false, |model_ns| model_ns == ns)
-						});
-						let matches_tag_type = tag_type_filter
-							.as_ref()
-							.map_or(true, |tt| model.tag_type == tt.as_str());
-						let matches_privacy = include_archived || model.privacy_level == "normal";
+			if !alias_db_ids.is_empty() {
+				let mut alias_query = tag::Entity::find()
+					.filter(tag::Column::Id.is_in(alias_db_ids));
 
-						if matches_namespace && matches_tag_type && matches_privacy {
-							let domain_tag = model_to_domain(model)?;
-							// Avoid duplicates
-							if !results.iter().any(|t| t.id == domain_tag.id) {
-								results.push(domain_tag);
-							}
-						}
+				if let Some(ns) = namespace_filter {
+					alias_query = alias_query.filter(tag::Column::Namespace.eq(ns));
+				}
+				if let Some(ref tt) = tag_type_filter {
+					alias_query = alias_query.filter(tag::Column::TagType.eq(tt.as_str()));
+				}
+				if !include_archived {
+					alias_query = alias_query.filter(tag::Column::PrivacyLevel.eq("normal"));
+				}
+
+				let alias_models = alias_query
+					.all(&*db)
+					.await
+					.map_err(|e| TagError::DatabaseError(e.to_string()))?;
+
+				for model in alias_models {
+					let domain_tag = model_to_domain(model)?;
+					// Avoid duplicates
+					if !results.iter().any(|t| t.id == domain_tag.id) {
+						results.push(domain_tag);
 					}
 				}
 			}
@@ -855,6 +929,14 @@ impl TagManager {
 		self.usage_analyzer
 			.record_usage_patterns(tag_applications)
 			.await
+	}
+
+	/// Get frequently co-occurring tag pairs (public accessor for usage analysis)
+	pub async fn get_frequent_co_occurrences(
+		&self,
+		min_count: i32,
+	) -> Result<Vec<(Uuid, Uuid, i32)>, TagError> {
+		self.usage_analyzer.get_frequent_co_occurrences(min_count).await
 	}
 }
 
@@ -1538,8 +1620,30 @@ impl TagClosureService {
 			return Ok(None);
 		}
 
-		// For now, return just the endpoints (pathfinding would require more complex query)
-		// TODO: Implement full path reconstruction if needed
+		// BFS through direct parent-child relationships to reconstruct full path
+		use std::collections::VecDeque;
+		let mut queue: VecDeque<(Uuid, Vec<Uuid>)> = VecDeque::new();
+		let mut visited: HashSet<Uuid> = HashSet::new();
+		queue.push_back((from_tag_uuid, vec![from_tag_uuid]));
+		visited.insert(from_tag_uuid);
+
+		while let Some((current, path)) = queue.pop_front() {
+			if current == to_tag_uuid {
+				return Ok(Some(path));
+			}
+
+			let children = self.get_direct_children(current).await?;
+			for child in children {
+				if !visited.contains(&child) {
+					visited.insert(child);
+					let mut new_path = path.clone();
+					new_path.push(child);
+					queue.push_back((child, new_path));
+				}
+			}
+		}
+
+		// Fallback: should not happen since we verified path exists in closure table
 		Ok(Some(vec![from_tag_uuid, to_tag_uuid]))
 	}
 }

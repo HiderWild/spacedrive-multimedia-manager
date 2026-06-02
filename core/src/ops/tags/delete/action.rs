@@ -6,6 +6,7 @@ use crate::{
 	context::CoreContext,
 	infra::action::{error::ActionError, LibraryAction},
 	infra::db::entities::{entry, tag, user_metadata, user_metadata_tag},
+	infra::sync::ChangeType,
 	library::Library,
 	ops::tags::TagManager,
 };
@@ -35,8 +36,8 @@ impl LibraryAction for DeleteTagAction {
 		let db = library.db();
 		let conn = db.conn();
 
-		// Collect affected entry UUIDs BEFORE deleting (same pattern as unapply/action.rs)
-		let affected_entry_uuids = {
+		// Collect affected entry UUIDs and save models for sync BEFORE deleting
+		let (affected_entry_uuids, tag_model_opt, umt_records) = {
 			let tag_model = tag::Entity::find()
 				.filter(tag::Column::Uuid.eq(self.input.tag_id))
 				.one(conn)
@@ -44,14 +45,18 @@ impl LibraryAction for DeleteTagAction {
 				.map_err(|e| ActionError::Internal(format!("DB error: {}", e)))?;
 
 			let mut uuids = Vec::new();
-			if let Some(tag_model) = tag_model {
+			let mut umt_for_sync = Vec::new();
+			if let Some(ref tag_model) = tag_model {
 				let umt_records = user_metadata_tag::Entity::find()
 					.filter(user_metadata_tag::Column::TagId.eq(tag_model.id))
 					.all(conn)
 					.await
 					.map_err(|e| ActionError::Internal(format!("DB error: {}", e)))?;
 
-				let um_ids: Vec<i32> = umt_records.iter().map(|r| r.user_metadata_id).collect();
+				// Save user_metadata_tag records for sync after deletion
+				umt_for_sync = umt_records;
+
+				let um_ids: Vec<i32> = umt_for_sync.iter().map(|r| r.user_metadata_id).collect();
 				if !um_ids.is_empty() {
 					let um_records = user_metadata::Entity::find()
 						.filter(user_metadata::Column::Id.is_in(um_ids))
@@ -79,7 +84,9 @@ impl LibraryAction for DeleteTagAction {
 						let ci_ids: Vec<i32> = cis.iter().map(|ci| ci.id).collect();
 						if !ci_ids.is_empty() {
 							let entries = entry::Entity::find()
-								.filter(entry::Column::ContentId.is_in(ci_ids.into_iter().map(Some)))
+								.filter(
+									entry::Column::ContentId.is_in(ci_ids.into_iter().map(Some)),
+								)
 								.all(conn)
 								.await
 								.map_err(|e| ActionError::Internal(format!("DB error: {}", e)))?;
@@ -88,7 +95,7 @@ impl LibraryAction for DeleteTagAction {
 					}
 				}
 			}
-			uuids
+			(uuids, tag_model, umt_for_sync)
 		};
 
 		// Delete the tag and all its relationships (atomic transaction)
@@ -98,16 +105,22 @@ impl LibraryAction for DeleteTagAction {
 			.await
 			.map_err(|e| ActionError::Internal(format!("Failed to delete tag: {}", e)))?;
 
-		// TODO(sync): Tag deletion is not synced to other devices.
-		// The sync infrastructure supports ChangeType::Delete but the tag deletion
-		// path does not yet call library.sync_model() with it. This means deleted
-		// tags will reappear on other devices after sync. Tracked for a dedicated
-		// sync-deletion PR.
+		// Sync tag deletion to other devices
+		if let Some(ref tag_model) = tag_model_opt {
+			if let Err(e) = library.sync_model(tag_model, ChangeType::Delete).await {
+				tracing::warn!("Failed to sync tag deletion to other devices: {}", e);
+			}
+		}
 
-		let resource_manager = crate::domain::ResourceManager::new(
-			Arc::new(conn.clone()),
-			_context.events.clone(),
-		);
+		// Sync user_metadata_tag deletions to other devices
+		for umt_model in &umt_records {
+			if let Err(e) = library.sync_model(umt_model, ChangeType::Delete).await {
+				tracing::warn!("Failed to sync tag association deletion: {}", e);
+			}
+		}
+
+		let resource_manager =
+			crate::domain::ResourceManager::new(Arc::new(conn.clone()), _context.events.clone());
 
 		// Emit "tag" event so sidebar refreshes
 		if let Err(e) = resource_manager
@@ -123,7 +136,10 @@ impl LibraryAction for DeleteTagAction {
 				.emit_resource_events("file", affected_entry_uuids)
 				.await
 			{
-				tracing::warn!("Failed to emit file resource events after tag deletion: {}", e);
+				tracing::warn!(
+					"Failed to emit file resource events after tag deletion: {}",
+					e
+				);
 			}
 		}
 
