@@ -57,9 +57,6 @@ pub struct LibrarySettings {
 	/// File extensions to ignore during indexing
 	pub ignored_extensions: Vec<String>,
 
-	/// TODO: ai slop config pls remove this
-	pub max_file_size: Option<u64>,
-
 	/// Whether to automatically track system volumes
 	pub auto_track_system_volumes: bool,
 
@@ -98,7 +95,6 @@ impl Default for LibrarySettings {
 				".cache".to_string(),
 				".part".to_string(),
 			],
-			max_file_size: Some(100 * 1024 * 1024 * 1024), // 100GB
 			auto_track_system_volumes: true,               // Default to true for user convenience
 			auto_track_external_volumes: false,            // Default to false for privacy
 			indexer: IndexerSettings::default(),

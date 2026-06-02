@@ -2595,10 +2595,6 @@ thumbnail_sizes: number[];
  */
 ignored_extensions: string[]; 
 /**
- * TODO: ai slop config pls remove this
- */
-max_file_size: number | null; 
-/**
  * Whether to automatically track system volumes
  */
 auto_track_system_volumes: boolean; 
@@ -4554,7 +4550,13 @@ include: string[];
 /**
  * Must not have any of these tag IDs
  */
-exclude: string[] };
+exclude: string[]; 
+/**
+ * When true, a file also matches a tag it inherits from an ancestor folder
+ * through the entry hierarchy, not just tags applied directly to it.
+ * Defaults to false so existing queries keep direct-only matching.
+ */
+include_inherited?: boolean };
 
 /**
  * Inheritance state of a tag application on a specific item.

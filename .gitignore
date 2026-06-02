@@ -1,3 +1,6 @@
+# Reference repositories (cloned for reference only, not part of this repo's iteration)
+/reference/
+
 # Created by https://www.toptal.com/developers/gitignore/api/macos,windows,linux,rust,node,react,turbo,vercel,nextjs,storybookjs
 # Edit at https://www.toptal.com/developers/gitignore?templates=macos,windows,linux,rust,node,react,turbo,vercel,nextjs,storybookjs
 ### Linux ###
@@ -460,6 +463,13 @@ combined_design_docs.txt
 combined_rust_files.txt
 combined_cli_rust_files.txt
 
+# HLS streaming test artifacts
+*.m4s
+init-stream*.m4s
+chunk-stream*.m4s
+
+# OMC (oh-my-claudecode) state directories
+.omc/
 
 # iOS build artifacts
 apps/ios/sd-ios-core/sd_ios_core.xcframework/

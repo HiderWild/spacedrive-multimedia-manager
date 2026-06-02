@@ -114,13 +114,6 @@ pub async fn run(ctx: &Context, cmd: LibraryCmd) -> Result<()> {
 					"Auto track external volumes: {}",
 					info.settings.auto_track_external_volumes
 				);
-				println!(
-					"Max file size: {}",
-					info.settings
-						.max_file_size
-						.map(|size| format!("{} bytes", size))
-						.unwrap_or_else(|| "No limit".to_string())
-				);
 				println!();
 				println!("Statistics");
 				println!("----------");
