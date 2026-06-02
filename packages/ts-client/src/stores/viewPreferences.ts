@@ -9,7 +9,7 @@ interface ViewSettings {
 }
 
 interface SpaceItemViewPreferences {
-	viewMode: 'grid' | 'list' | 'media' | 'column' | 'size' | 'knowledge';
+	viewMode: 'grid' | 'list' | 'media' | 'masonry' | 'column' | 'size' | 'knowledge';
 	viewSettings: ViewSettings;
 }
 
