@@ -9,7 +9,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 use uuid::Uuid;
 
@@ -93,6 +93,85 @@ impl DeleteStrategy for LocalDeleteStrategy {
 }
 
 impl LocalDeleteStrategy {
+	#[cfg(target_os = "windows")]
+	fn should_bypass_trash_helper_for_tests() -> bool {
+		std::env::var_os("SD_TRASH_HELPER_BYPASS").is_some()
+	}
+
+	#[cfg(target_os = "windows")]
+	fn resolve_trash_helper_binary() -> Result<PathBuf, std::io::Error> {
+		if let Some(path) = std::env::var_os("SD_TRASH_HELPER_PATH") {
+			return Ok(PathBuf::from(path));
+		}
+
+		std::env::current_exe()
+	}
+
+	#[cfg(target_os = "windows")]
+	async fn move_to_trash_direct(path: PathBuf) -> Result<(), std::io::Error> {
+		tokio::task::spawn_blocking(move || {
+			trash::delete(&path).map_err(|e| {
+				std::io::Error::new(
+					std::io::ErrorKind::Other,
+					format!("Failed to move to trash: {}", e),
+				)
+			})
+		})
+		.await
+		.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))??;
+
+		Ok(())
+	}
+
+	#[cfg(target_os = "windows")]
+	async fn move_to_trash_via_helper(&self, path: &Path) -> Result<(), std::io::Error> {
+		let helper_path = Self::resolve_trash_helper_binary()?;
+		let mut command = tokio::process::Command::new(&helper_path);
+		command
+			.arg("--internal-trash-helper")
+			.arg("--internal-trash-path")
+			.arg(path)
+			.stdout(std::process::Stdio::null())
+			.stderr(std::process::Stdio::piped());
+
+		#[cfg(target_os = "windows")]
+		{
+			use std::os::windows::process::CommandExt;
+
+			const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+			command.creation_flags(CREATE_NO_WINDOW);
+		}
+
+		let output = command.output().await.map_err(|error| {
+			std::io::Error::new(
+				std::io::ErrorKind::Other,
+				format!(
+					"Failed to launch trash helper '{}' for '{}': {}",
+					helper_path.display(),
+					path.display(),
+					error
+				),
+			)
+		})?;
+
+		if output.status.success() {
+			return Ok(());
+		}
+
+		let exit_code = output.status.code().unwrap_or(-1);
+		let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+		let detail = if stderr.is_empty() {
+			format!("exit code {}", exit_code)
+		} else {
+			format!("exit code {}: {}", exit_code, stderr)
+		};
+
+		Err(std::io::Error::new(
+			std::io::ErrorKind::Other,
+			format!("Trash helper failed for '{}': {}", path.display(), detail),
+		))
+	}
+
 	/// Delete a cloud path using VolumeBackend
 	async fn delete_cloud_path(
 		&self,
@@ -221,18 +300,33 @@ impl LocalDeleteStrategy {
 	/// - Linux: XDG trash spec
 	#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 	pub async fn move_to_trash(&self, path: &Path) -> Result<(), std::io::Error> {
-		let path = path.to_path_buf();
-		tokio::task::spawn_blocking(move || {
-			trash::delete(&path).map_err(|e| {
-				std::io::Error::new(
-					std::io::ErrorKind::Other,
-					format!("Failed to move to trash: {}", e),
-				)
-			})
-		})
-		.await
-		.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))??;
+		#[cfg(target_os = "windows")]
+		{
+			if Self::should_bypass_trash_helper_for_tests() {
+				return Self::move_to_trash_direct(path.to_path_buf()).await;
+			}
 
+			return self.move_to_trash_via_helper(path).await;
+		}
+
+		#[cfg(any(target_os = "macos", target_os = "linux"))]
+		{
+			let path = path.to_path_buf();
+			tokio::task::spawn_blocking(move || {
+				trash::delete(&path).map_err(|e| {
+					std::io::Error::new(
+						std::io::ErrorKind::Other,
+						format!("Failed to move to trash: {}", e),
+					)
+				})
+			})
+			.await
+			.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))??;
+
+			return Ok(());
+		}
+
+		#[allow(unreachable_code)]
 		Ok(())
 	}
 
