@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::warn;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// Device sync state for state machine
@@ -262,16 +263,83 @@ impl BackfillCheckpoint {
 		self.updated_at = Utc::now();
 	}
 
-	/// Save checkpoint to disk (TODO: implement persistence)
-	pub async fn save(&self) -> Result<(), std::io::Error> {
-		// TODO: Persist to disk for crash recovery
+	/// Save checkpoint to disk for crash recovery.
+	///
+	/// Persists as JSON at `{base_dir}/sync/backfill_checkpoint.json`.
+	/// Creates the `sync/` subdirectory if it does not exist.
+	/// Uses atomic write (write to temp file then rename) to prevent corruption
+	/// if the process crashes mid-write.
+	pub async fn save(&self, base_dir: &Path) -> Result<(), std::io::Error> {
+		let sync_dir = base_dir.join("sync");
+		std::fs::create_dir_all(&sync_dir)?;
+
+		let checkpoint_path = sync_dir.join("backfill_checkpoint.json");
+		let tmp_path = sync_dir.join("backfill_checkpoint.json.tmp");
+
+		let json = serde_json::to_string_pretty(self)
+			.map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+		// Atomic write: write to temp file, then rename
+		std::fs::write(&tmp_path, &json)?;
+		std::fs::rename(&tmp_path, &checkpoint_path)?;
+
+		info!(
+			peer = %self.peer,
+			progress = self.progress,
+			completed_models = self.completed_models.len(),
+			"Saved backfill checkpoint"
+		);
+
 		Ok(())
 	}
 
-	/// Load checkpoint from disk (TODO: implement persistence)
-	pub async fn load() -> Result<Option<Self>, std::io::Error> {
-		// TODO: Load from disk
-		Ok(None)
+	/// Load checkpoint from disk.
+	///
+	/// Reads from `{base_dir}/sync/backfill_checkpoint.json`.
+	/// Returns `Ok(None)` if the file does not exist (fresh start).
+	/// Returns `Ok(None)` if the file is corrupt or unreadable (treat as fresh start
+	/// rather than panicking, since backfill will re-run).
+	pub async fn load(base_dir: &Path) -> Result<Option<Self>, std::io::Error> {
+		let checkpoint_path = base_dir.join("sync").join("backfill_checkpoint.json");
+
+		if !checkpoint_path.exists() {
+			return Ok(None);
+		}
+
+		let json = std::fs::read_to_string(&checkpoint_path)?;
+
+		match serde_json::from_str::<Self>(&json) {
+			Ok(checkpoint) => {
+				info!(
+					peer = %checkpoint.peer,
+					progress = checkpoint.progress,
+					completed_models = checkpoint.completed_models.len(),
+					"Loaded backfill checkpoint"
+				);
+				Ok(Some(checkpoint))
+			}
+			Err(e) => {
+				warn!(
+					error = %e,
+					path = %checkpoint_path.display(),
+					"Corrupt backfill checkpoint, ignoring (will re-run backfill)"
+				);
+				Ok(None)
+			}
+		}
+	}
+
+	/// Delete checkpoint file from disk.
+	///
+	/// Called after backfill completes successfully so that the next startup
+	/// starts a fresh session instead of resuming a completed one.
+	pub async fn delete(base_dir: &Path) -> Result<(), std::io::Error> {
+		let checkpoint_path = base_dir.join("sync").join("backfill_checkpoint.json");
+		if checkpoint_path.exists() {
+			std::fs::remove_file(&checkpoint_path)?;
+			info!("Deleted backfill checkpoint");
+		}
+		Ok(())
 	}
 }
 

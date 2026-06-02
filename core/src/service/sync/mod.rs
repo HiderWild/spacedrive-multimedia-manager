@@ -210,6 +210,7 @@ impl SyncService {
 		let backfill_manager = Arc::new(BackfillManager::new(
 			library_id,
 			device_id,
+			library.path().to_path_buf(),
 			peer_sync.clone(),
 			log_handler,
 			config.clone(),
@@ -788,29 +789,57 @@ async fn run_metrics_persistence_task(
 	db: Arc<sea_orm::DatabaseConnection>,
 ) {
 	let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // 5 minutes
+	let mut cleanup_interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // 1 hour
 
 	info!("Starting metrics persistence task (interval: 5m)");
 
 	loop {
-		interval.tick().await;
+		tokio::select! {
+			_ = interval.tick() => {
+				// Create snapshot
+				let snapshot = crate::service::sync::metrics::snapshot::SyncMetricsSnapshot::from_metrics(
+					metrics.metrics(),
+				)
+				.await;
 
-		// Create snapshot
-		let snapshot = crate::service::sync::metrics::snapshot::SyncMetricsSnapshot::from_metrics(
-			metrics.metrics(),
-		)
-		.await;
-
-		// Store in database
-		if let Err(e) = crate::service::sync::metrics::persistence::store_metrics_snapshot(
-			&db, library_id, snapshot,
-		)
-		.await
-		{
-			warn!(
-				library_id = %library_id,
-				error = %e,
-				"Failed to persist metrics snapshot"
-			);
+				// Store in database
+				if let Err(e) = crate::service::sync::metrics::persistence::store_metrics_snapshot(
+					&db, library_id, snapshot,
+				)
+				.await
+				{
+					warn!(
+						library_id = %library_id,
+						error = %e,
+						"Failed to persist metrics snapshot"
+					);
+				}
+			}
+			_ = cleanup_interval.tick() => {
+				// Clean up metrics older than 30 days
+				let cutoff = Utc::now() - chrono::Duration::days(30);
+				match crate::service::sync::metrics::persistence::cleanup_old_metrics(
+					&db, library_id, cutoff,
+				)
+				.await
+				{
+					Ok(deleted) if deleted > 0 => {
+						debug!(
+							library_id = %library_id,
+							deleted = deleted,
+							"Cleaned up old metrics snapshots"
+						);
+					}
+					Err(e) => {
+						warn!(
+							library_id = %library_id,
+							error = %e,
+							"Failed to clean up old metrics snapshots"
+						);
+					}
+					_ => {}
+				}
+			}
 		}
 	}
 }

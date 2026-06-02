@@ -20,6 +20,7 @@ use crate::{
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex};
 use tracing::{debug, info, warn};
@@ -29,6 +30,8 @@ use uuid::Uuid;
 pub struct BackfillManager {
 	library_id: Uuid,
 	device_id: Uuid,
+	/// Path to the library directory, used for checkpoint persistence
+	library_path: PathBuf,
 	peer_sync: Arc<PeerSync>,
 	log_handler: Arc<LogSyncHandler>,
 	config: Arc<crate::infra::sync::SyncConfig>,
@@ -46,6 +49,7 @@ impl BackfillManager {
 	pub fn new(
 		library_id: Uuid,
 		device_id: Uuid,
+		library_path: PathBuf,
 		peer_sync: Arc<PeerSync>,
 		log_handler: Arc<LogSyncHandler>,
 		config: Arc<crate::infra::sync::SyncConfig>,
@@ -55,6 +59,7 @@ impl BackfillManager {
 		Self {
 			library_id,
 			device_id,
+			library_path,
 			peer_sync,
 			log_handler,
 			config,
@@ -849,7 +854,7 @@ impl BackfillManager {
 					}
 
 					current_checkpoint.update(chk.clone(), 0.5); // TODO: Calculate actual progress
-					current_checkpoint.save().await?;
+					current_checkpoint.save(&self.library_path).await?;
 
 					// Record pagination round
 					self.metrics.record_backfill_pagination_round();
