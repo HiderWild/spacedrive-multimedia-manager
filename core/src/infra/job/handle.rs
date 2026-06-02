@@ -140,24 +140,62 @@ impl JobHandle {
 
 	/// Pause the job
 	pub async fn pause(&self) -> JobResult<()> {
-		// For now, these operations need to be implemented through JobManager
-		// since the TaskHandle is stored there, not in JobHandle
-		todo!("Job control operations will be implemented through JobManager")
+		let guard = self.task_handle.lock().await;
+		match guard.as_ref() {
+			Some(task_handle) => task_handle
+				.pause()
+				.await
+				.map_err(|e| JobError::Other(format!("Failed to pause task: {}", e))),
+			None => Err(JobError::InvalidState(
+				"Job handle does not hold a task handle; pause must be performed via JobManager"
+					.into(),
+			)),
+		}
 	}
 
 	/// Resume the job
 	pub async fn resume(&self) -> JobResult<()> {
-		todo!("Job control operations will be implemented through JobManager")
+		let guard = self.task_handle.lock().await;
+		match guard.as_ref() {
+			Some(task_handle) => task_handle
+				.resume()
+				.await
+				.map_err(|e| JobError::Other(format!("Failed to resume task: {}", e))),
+			None => Err(JobError::InvalidState(
+				"Job handle does not hold a task handle; resume must be performed via JobManager"
+					.into(),
+			)),
+		}
 	}
 
 	/// Cancel the job
 	pub async fn cancel(&self) -> JobResult<()> {
-		todo!("Job control operations will be implemented through JobManager")
+		let guard = self.task_handle.lock().await;
+		match guard.as_ref() {
+			Some(task_handle) => task_handle
+				.cancel()
+				.await
+				.map_err(|e| JobError::Other(format!("Failed to cancel task: {}", e))),
+			None => Err(JobError::InvalidState(
+				"Job handle does not hold a task handle; cancel must be performed via JobManager"
+					.into(),
+			)),
+		}
 	}
 
 	/// Force abort the job
 	pub async fn force_abort(&self) -> JobResult<()> {
-		todo!("Job control operations will be implemented through JobManager")
+		let guard = self.task_handle.lock().await;
+		match guard.as_ref() {
+			Some(task_handle) => task_handle
+				.force_abortion()
+				.await
+				.map_err(|e| JobError::Other(format!("Failed to force abort task: {}", e))),
+			None => Err(JobError::InvalidState(
+				"Job handle does not hold a task handle; force abort must be performed via JobManager"
+					.into(),
+			)),
+		}
 	}
 }
 

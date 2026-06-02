@@ -177,9 +177,16 @@ impl<'a> JobContext<'a> {
 	where
 		J: super::traits::Job + super::traits::JobHandler,
 	{
-		// This will be implemented by JobManager
-		// For now, return a placeholder
-		todo!("Child job spawning will be implemented with JobManager")
+		// Child job spawning requires a reference to JobManager which is not available
+		// in JobContext. Use JobManager::dispatch() directly instead.
+		Err(JobError::InvalidState(
+			format!(
+				"Child job spawning is not yet supported via JobContext. \
+				 Use JobManager::dispatch() to spawn job '{}'.",
+				J::NAME
+			)
+			.into(),
+		))
 	}
 
 	/// Wait for all child jobs to complete
