@@ -26,7 +26,7 @@ export function GridView() {
 	const emptySpaceContextMenu = useEmptySpaceContextMenu();
 
 	// Get files from centralized hook (handles search, virtual, and directory)
-	const { files, isLoading, source } = useExplorerFiles();
+	const { files, isLoading, source, hasNextPage, fetchNextPage } = useExplorerFiles();
 
 	// Update current files in explorer context for quick preview navigation
 	useEffect(() => {
@@ -118,6 +118,8 @@ export function GridView() {
 			setSelectedFiles={setSelectedFiles}
 			onContainerClick={handleContainerClick}
 			onContainerContextMenu={handleContainerContextMenu}
+			hasNextPage={hasNextPage}
+			fetchNextPage={fetchNextPage}
 		/>
 	);
 }
@@ -139,6 +141,8 @@ interface VirtualizedGridProps {
 	setSelectedFiles: (files: File[]) => void;
 	onContainerClick: (e: React.MouseEvent) => void;
 	onContainerContextMenu: (e: React.MouseEvent) => void;
+	hasNextPage: boolean;
+	fetchNextPage: () => void;
 }
 
 function VirtualizedGrid({
@@ -153,6 +157,8 @@ function VirtualizedGrid({
 	setSelectedFiles,
 	onContainerClick,
 	onContainerContextMenu,
+	hasNextPage,
+	fetchNextPage,
 }: VirtualizedGridProps) {
 	const parentRef = useRef<HTMLDivElement>(null);
 	const [containerWidth, setContainerWidth] = useState<number | null>(null);
@@ -221,6 +227,17 @@ function VirtualizedGrid({
 	});
 
 	const virtualRows = rowVirtualizer.getVirtualItems();
+
+	// Infinite loading: fetch the next page once the user scrolls within a few
+	// rows of the end of the currently loaded set.
+	useEffect(() => {
+		if (!hasNextPage) return;
+		const lastRow = virtualRows[virtualRows.length - 1];
+		if (!lastRow) return;
+		if (lastRow.index >= rowCount - 2) {
+			fetchNextPage();
+		}
+	}, [hasNextPage, fetchNextPage, virtualRows, rowCount]);
 
 	// Keyboard navigation with correct column count
 	useEffect(() => {

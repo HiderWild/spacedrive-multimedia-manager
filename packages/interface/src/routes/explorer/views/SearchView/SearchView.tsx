@@ -2,6 +2,7 @@ import { useExplorer } from '../../context';
 import { GridView } from '../GridView';
 import { ListView } from '../ListView';
 import { MediaView } from '../MediaView';
+import { MasonryView } from '../MasonryView';
 import { ColumnView } from '../ColumnView';
 import { SizeView } from '../SizeView';
 import { KnowledgeView } from '../KnowledgeView';
@@ -49,6 +50,8 @@ export function SearchView() {
 			return <ListView />;
 		case 'media':
 			return <MediaView />;
+		case 'masonry':
+			return <MasonryView />;
 		case 'column':
 			return <ColumnView />;
 		case 'size':

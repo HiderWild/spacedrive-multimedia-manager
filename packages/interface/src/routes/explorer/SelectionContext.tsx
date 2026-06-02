@@ -47,11 +47,18 @@ const SelectionContext = createContext<SelectionContextValue | null>(null);
 interface SelectionProviderProps {
 	children: ReactNode;
 	isActiveTab?: boolean;
+	/**
+	 * When true the selection is kept purely local and is never synced to the
+	 * shared TabManager store. Used by secondary explorer panes so each pane has
+	 * its own independent selection.
+	 */
+	isolated?: boolean;
 }
 
 export function SelectionProvider({
 	children,
 	isActiveTab = true,
+	isolated = false,
 }: SelectionProviderProps) {
 	const platform = usePlatform();
 	const clipboard = useClipboard();
@@ -65,15 +72,17 @@ export function SelectionProvider({
 	const [, setLastSelectedIndex] = useState(-1);
 	const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
 
-	// Track the stored IDs for the active tab (separate from File objects)
-	const storedIds = getSelectionIds(activeTabId);
+	// Track the stored IDs for the active tab (separate from File objects).
+	// Isolated panes never persist to TabManager, so they start empty.
+	const storedIds = isolated ? [] : getSelectionIds(activeTabId);
 
 	// Clear selection when activeTabId changes (we'll restore it when files load)
 	useEffect(() => {
+		if (isolated) return;
 		setSelectedFilesInternal([]);
 		setFocusedIndex(-1);
 		setLastSelectedIndex(-1);
-	}, [activeTabId]);
+	}, [activeTabId, isolated]);
 
 	// Wrapper for setSelectedFiles that syncs to TabManager
 	// Supports both direct values and updater functions
@@ -85,16 +94,18 @@ export function SelectionProvider({
 						? filesOrUpdater(prev)
 						: filesOrUpdater;
 
-				// Sync to TabManager
-				updateSelectionIds(
-					activeTabId,
-					nextFiles.map((f) => f.id),
-				);
+				// Sync to TabManager (skipped for isolated panes)
+				if (!isolated) {
+					updateSelectionIds(
+						activeTabId,
+						nextFiles.map((f) => f.id),
+					);
+				}
 
 				return nextFiles;
 			});
 		},
-		[activeTabId, updateSelectionIds],
+		[activeTabId, updateSelectionIds, isolated],
 	);
 
 	// Sync selected file IDs to platform (for cross-window state sharing)
@@ -283,10 +294,12 @@ export function SelectionProvider({
 		}
 	}, [selectedFiles, renamingFileId]);
 
-	// Use stored IDs for selection checking (allows highlighting before File objects are restored)
+	// Use stored IDs for selection checking (allows highlighting before File objects
+	// are restored). Isolated panes have no TabManager-backed store, so they derive
+	// the set directly from their local selection.
 	const selectedFileIds = useMemo(
-		() => new Set(storedIds),
-		[storedIds],
+		() => new Set(isolated ? selectedFiles.map((f) => f.id) : storedIds),
+		[isolated, selectedFiles, storedIds],
 	);
 
 	// Stable function for checking if a file is selected

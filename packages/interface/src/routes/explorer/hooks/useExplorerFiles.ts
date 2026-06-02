@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DirectorySortBy, File, FileSearchInput, FileSearchOutput } from "@sd/ts-client";
 import { useNormalizedQuery } from "../../../contexts/SpacedriveContext";
 import { useExplorer } from "../context";
 import { useVirtualListing } from "./useVirtualListing";
+import { DEFAULT_PAGE_SIZE, useInfiniteSearchFiles } from "./useInfiniteFiles";
 
 export type FileSource =
 	| "search"
@@ -16,7 +17,31 @@ export interface ExplorerFilesResult {
 	files: File[];
 	isLoading: boolean;
 	source: FileSource;
+	/**
+	 * Request the next page of results for the active source.
+	 *
+	 * Wired for the paginated sources (search, filtered, directory). For
+	 * non-paginated sources (recents, tag, virtual) this is a no-op.
+	 */
+	fetchNextPage: () => void;
+	/** Whether more results can be loaded for the active source. */
+	hasNextPage: boolean;
+	/** Whether the next page is currently being fetched. */
+	isFetchingNextPage: boolean;
+	/** Total matching files for the active source, when known. */
+	total: number;
 }
+
+/**
+ * Files loaded per directory-listing page.
+ *
+ * The directory_listing op only supports a `limit` (no offset), so infinite
+ * loading is implemented by growing this limit and refetching the cumulative
+ * set. Kept on the normalized query so live filesystem updates still apply.
+ */
+const DIRECTORY_PAGE_SIZE = 200;
+
+const noop = () => {};
 
 /**
  * Centralized hook for fetching files in the explorer.
@@ -89,8 +114,9 @@ export function useExplorerFiles(): ExplorerFilesResult {
 				field: searchSortField,
 				direction: "Desc",
 			},
+			// Placeholder pagination; useInfiniteSearchFiles overrides limit/offset per page.
 			pagination: {
-				limit: 1000,
+				limit: DEFAULT_PAGE_SIZE,
 				offset: 0,
 			},
 		};
@@ -123,8 +149,9 @@ export function useExplorerFiles(): ExplorerFilesResult {
 				field: searchSortField,
 				direction: "Desc",
 			},
+			// Placeholder pagination; useInfiniteSearchFiles overrides limit/offset per page.
 			pagination: {
-				limit: 1000,
+				limit: DEFAULT_PAGE_SIZE,
 				offset: 0,
 			},
 		};
@@ -164,19 +191,13 @@ export function useExplorerFiles(): ExplorerFilesResult {
 		};
 	}, [isRecentsMode]);
 
-	// Search query
-	const searchQuery = useNormalizedQuery<FileSearchInput, FileSearchOutput>({
-		query: "search.files",
-		input: searchQueryInput!,
-		resourceType: "file",
-		pathScope:
-			isSearchMode && mode.type === "search" && mode.scope === "folder" && currentPath
-				? (currentPath as any)
-				: undefined,
+	// Search query — infinite loading over offset/limit pagination
+	const searchQuery = useInfiniteSearchFiles({
+		input: searchQueryInput,
 		enabled: isSearchMode && !!searchQueryInput && searchQueryInput.query.length >= 2,
 	});
 
-	// Recents query
+	// Recents query — capped, non-paginated (recents screen)
 	const recentsQuery = useNormalizedQuery<FileSearchInput, FileSearchOutput>({
 		query: "search.files",
 		input: recentsQueryInput!,
@@ -184,11 +205,9 @@ export function useExplorerFiles(): ExplorerFilesResult {
 		enabled: isRecentsMode && !!recentsQueryInput,
 	});
 
-	// Filtered query (pre-applied SearchFilters)
-	const filteredQuery = useNormalizedQuery<FileSearchInput, FileSearchOutput>({
-		query: "search.files",
-		input: filteredQueryInput!,
-		resourceType: "file",
+	// Filtered query (pre-applied SearchFilters) — infinite loading
+	const filteredQuery = useInfiniteSearchFiles({
+		input: filteredQueryInput,
 		enabled: isFilteredMode && !!filteredQueryInput,
 	});
 
@@ -209,13 +228,20 @@ export function useExplorerFiles(): ExplorerFilesResult {
 		enabled: isTagMode && !!tagQueryInput,
 	});
 
+	// Directory listing only supports `limit` (no offset), so grow the limit to
+	// page in more results. Reset whenever the listing identity changes.
+	const [directoryLimit, setDirectoryLimit] = useState(DIRECTORY_PAGE_SIZE);
+	useEffect(() => {
+		setDirectoryLimit(DIRECTORY_PAGE_SIZE);
+	}, [currentPath, sortBy, viewSettings.foldersFirst]);
+
 	// Directory query
 	const directoryQuery = useNormalizedQuery({
 		query: "files.directory_listing",
 		input: currentPath
 			? {
 					path: currentPath,
-					limit: null,
+					limit: directoryLimit,
 					include_hidden: false,
 					sort_by: sortBy as DirectorySortBy,
 					folders_first: viewSettings.foldersFirst,
@@ -247,9 +273,7 @@ export function useExplorerFiles(): ExplorerFilesResult {
 
 	const files = useMemo(() => {
 		if (isFilteredMode) {
-			return (
-				(filteredQuery.data as FileSearchOutput | undefined)?.files || []
-			);
+			return filteredQuery.files;
 		}
 		if (isTagMode) {
 			return (tagQuery.data as { files: File[] } | undefined)?.files ?? [];
@@ -258,7 +282,7 @@ export function useExplorerFiles(): ExplorerFilesResult {
 			return (recentsQuery.data as FileSearchOutput | undefined)?.files || [];
 		}
 		if (isSearchMode) {
-			return (searchQuery.data as FileSearchOutput | undefined)?.files || [];
+			return searchQuery.files;
 		}
 		if (isVirtualView) {
 			return virtualFiles || [];
@@ -270,10 +294,10 @@ export function useExplorerFiles(): ExplorerFilesResult {
 		isRecentsMode,
 		isSearchMode,
 		isVirtualView,
-		filteredQuery.data,
+		filteredQuery.files,
 		tagQuery.data,
 		recentsQuery.data,
-		searchQuery.data,
+		searchQuery.files,
 		virtualFiles,
 		directoryQuery.data,
 	]);
@@ -290,5 +314,56 @@ export function useExplorerFiles(): ExplorerFilesResult {
 						? false
 						: directoryQuery.isLoading;
 
-	return { files, isLoading, source };
+	// Directory pagination: backend reports no usable `has_more`, so infer from
+	// whether a full page was returned, then grow the limit on demand.
+	const directoryFileCount =
+		(directoryQuery.data as { files: File[] } | undefined)?.files.length ?? 0;
+	const directoryHasNextPage = directoryFileCount >= directoryLimit;
+	const fetchDirectoryNextPage = useCallback(() => {
+		setDirectoryLimit((limit) => limit + DIRECTORY_PAGE_SIZE);
+	}, []);
+
+	// Pagination API for the active source.
+	const { fetchNextPage, hasNextPage, isFetchingNextPage, total } = (() => {
+		if (isFilteredMode) {
+			return {
+				fetchNextPage: filteredQuery.fetchNextPage,
+				hasNextPage: filteredQuery.hasNextPage,
+				isFetchingNextPage: filteredQuery.isFetchingNextPage,
+				total: filteredQuery.total,
+			};
+		}
+		if (isSearchMode) {
+			return {
+				fetchNextPage: searchQuery.fetchNextPage,
+				hasNextPage: searchQuery.hasNextPage,
+				isFetchingNextPage: searchQuery.isFetchingNextPage,
+				total: searchQuery.total,
+			};
+		}
+		if (!isTagMode && !isRecentsMode && !isVirtualView) {
+			return {
+				fetchNextPage: fetchDirectoryNextPage,
+				hasNextPage: directoryHasNextPage,
+				isFetchingNextPage: directoryQuery.isFetching && !directoryQuery.isLoading,
+				total: directoryFileCount,
+			};
+		}
+		return {
+			fetchNextPage: noop,
+			hasNextPage: false,
+			isFetchingNextPage: false,
+			total: files.length,
+		};
+	})();
+
+	return {
+		files,
+		isLoading,
+		source,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+		total,
+	};
 }

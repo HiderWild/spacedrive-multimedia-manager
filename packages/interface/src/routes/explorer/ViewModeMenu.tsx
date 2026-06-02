@@ -6,7 +6,8 @@ import {
 	GridFour,
 	Rows,
 	Sparkle,
-	SquaresFour
+	SquaresFour,
+	SquareHalf
 } from '@phosphor-icons/react';
 import {CircleButton} from '@spacedrive/primitives';
 import clsx from 'clsx';
@@ -14,7 +15,7 @@ import {AnimatePresence, motion} from 'framer-motion';
 import {useEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 
-type ViewMode = 'list' | 'grid' | 'column' | 'media' | 'size' | 'knowledge';
+type ViewMode = 'list' | 'grid' | 'column' | 'media' | 'masonry' | 'size' | 'knowledge';
 
 interface ViewOption {
 	id: ViewMode | 'timeline';
@@ -45,6 +46,13 @@ const viewOptions: ViewOption[] = [
 		icon: Camera,
 		color: 'bg-pink-500',
 		keybind: '⌘3'
+	},
+	{
+		id: 'masonry',
+		label: 'Masonry',
+		icon: SquareHalf,
+		color: 'bg-teal-500',
+		keybind: '⌘7'
 	},
 	{
 		id: 'column',

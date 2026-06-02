@@ -4,9 +4,9 @@ import { getIcon, getBeardedIcon } from "@sd/assets/util";
 // @ts-expect-error - Vite glob import, resolved at build time
 import { beardedIconUrls } from "@sd/assets/svgs/ext/Extras/urls";
 import type { File } from "@sd/ts-client";
-import { ThumbstripScrubber } from "./ThumbstripScrubber";
 import { getFileKindForIcon, getVirtualMetadata, getContentKind } from "@sd/ts-client";
 import { useServer } from "../../../contexts/ServerContext";
+import { useVideoHoverScrub } from "../hooks/useVideoHoverScrub";
 
 interface ThumbProps {
   file: File;
@@ -32,6 +32,10 @@ export const Thumb = memo(function Thumb({
   const cacheKey = `${file.id}-${size}`;
   const { buildSidecarUrl } = useServer();
 
+  // In-grid video hover-scrub over the existing thumbstrip sidecar.
+  // Disabled (no behavior change) when the file has no thumbstrip.
+  const scrub = useVideoHoverScrub(file, size, squareMode);
+
   const [thumbLoaded, setThumbLoaded] = useState(
     () => thumbLoadedCache.get(cacheKey) || false,
   );
@@ -53,10 +57,6 @@ export const Thumb = memo(function Thumb({
   // Check for virtual file icon override
   const virtualMetadata = getVirtualMetadata(file);
   const iconOverride = virtualMetadata?.iconUrl;
-
-  // Check if this is a video with thumbstrip sidecar
-  const isVideo = getContentKind(file) === "video";
-  const hasThumbstrip = file.sidecars?.some((s) => s.kind === "thumbstrip");
 
   // Get appropriate thumbnail URL from sidecars based on size
   const getThumbnailUrl = (targetSize: number) => {
@@ -219,9 +219,29 @@ export const Thumb = memo(function Thumb({
         />
       )}
 
-      {/* Thumbstrip scrubber overlay (for videos with thumbstrips) */}
-      {isVideo && hasThumbstrip && thumbLoaded && (
-        <ThumbstripScrubber file={file} size={size} squareMode={squareMode} />
+      {/* In-grid video hover-scrub overlay (videos with thumbstrips only) */}
+      {scrub.enabled && thumbLoaded && (
+        <div
+          ref={scrub.containerRef}
+          className="absolute inset-0 z-10 flex items-center justify-center pointer-events-auto"
+          onPointerMove={scrub.onPointerMove}
+          onPointerEnter={scrub.onPointerEnter}
+          onPointerLeave={scrub.onPointerLeave}
+        >
+          {scrub.isScrubbing && scrub.spriteStyle && (
+            <div
+              className="relative overflow-hidden rounded-lg shadow-lg bg-app-darkBox/95"
+              style={{ width: size, height: size, ...scrub.spriteStyle }}
+            >
+              <div className="absolute bottom-1 left-1 right-1 h-0.5 overflow-hidden rounded-full bg-black/50">
+                <div
+                  className="h-full bg-accent"
+                  style={{ width: `${scrub.progress * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

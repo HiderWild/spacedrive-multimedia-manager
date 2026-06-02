@@ -1,4 +1,5 @@
 import { useExplorerKeyboard } from "./hooks/useExplorerKeyboard";
+import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 
 /**
  * Invisible component that handles keyboard events
@@ -6,5 +7,6 @@ import { useExplorerKeyboard } from "./hooks/useExplorerKeyboard";
  */
 export function KeyboardHandler() {
   useExplorerKeyboard();
+  useKeyboardNavigation();
   return null;
 }

@@ -5,6 +5,8 @@ import {
 	useMemo,
 	useEffect,
 	useCallback,
+	useId,
+	useRef,
 	type ReactNode,
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -13,6 +15,7 @@ import { useTabManager } from "../../components/TabManager/useTabManager";
 import type {
 	ViewMode as TabViewMode,
 	SortBy as TabSortBy,
+	TabExplorerState,
 } from "../../components/TabManager/TabManagerContext";
 
 import type {
@@ -34,6 +37,7 @@ export type ViewMode =
 	| "grid"
 	| "list"
 	| "media"
+	| "masonry"
 	| "column"
 	| "size"
 	| "knowledge";
@@ -464,15 +468,48 @@ interface ExplorerContextValue {
 
 const ExplorerContext = createContext<ExplorerContextValue | null>(null);
 
+// Default per-view state for an isolated (multi-pane) provider. Mirrors the
+// TabManager defaults so an isolated pane behaves like a fresh tab without
+// touching the shared TabManager store.
+const ISOLATED_TAB_DEFAULT: TabExplorerState = {
+	viewMode: "grid",
+	sortBy: "name",
+	gridSize: 120,
+	gapSize: 16,
+	foldersFirst: true,
+	columnStack: [],
+	scrollTop: 0,
+	scrollLeft: 0,
+	sizeViewTransform: { k: 1, x: 0, y: 0 },
+};
+
+function isolatedTabReducer(
+	state: TabExplorerState,
+	patch: Partial<TabExplorerState>,
+): TabExplorerState {
+	return { ...state, ...patch };
+}
+
 interface ExplorerProviderProps {
 	children: ReactNode;
 	/** Reserved for Phase 2: Will control whether this tab's context should process events/updates */
 	isActiveTab?: boolean;
+	/**
+	 * When true the provider is a self-contained explorer pane: its per-view
+	 * state lives in local component state instead of the shared TabManager, and
+	 * navigation does NOT touch the router URL. Used to host multiple independent
+	 * panes side by side without them fighting over the global tab/URL state.
+	 */
+	isolated?: boolean;
+	/** Starting directory/view for an isolated pane. */
+	initialTarget?: NavigationTarget | null;
 }
 
 export function ExplorerProvider({
 	children,
 	isActiveTab: _isActiveTab = true,
+	isolated = false,
+	initialTarget = null,
 }: ExplorerProviderProps) {
 	const routerNavigate = useNavigate();
 	const location = useLocation();
@@ -483,16 +520,50 @@ export function ExplorerProvider({
 	const { activeTabId, getExplorerState, updateExplorerState } =
 		useTabManager();
 
+	// Local per-view store for isolated panes. Never read/written when the
+	// provider is in its default (non-isolated) mode, so the single-pane path is
+	// byte-for-byte unchanged.
+	const generatedTabId = useId();
+	const [isolatedTabState, isolatedTabDispatch] = useReducer(
+		isolatedTabReducer,
+		ISOLATED_TAB_DEFAULT,
+	);
+
+	const effectiveTabId = isolated ? generatedTabId : activeTabId;
+
 	// Memoize tabState to ensure it updates when activeTabId or explorerStates change
 	const tabState = useMemo(
-		() => getExplorerState(activeTabId),
-		[activeTabId, getExplorerState],
+		() => (isolated ? isolatedTabState : getExplorerState(activeTabId)),
+		[isolated, isolatedTabState, activeTabId, getExplorerState],
+	);
+
+	// Routes per-view writes either to the shared TabManager (default) or the
+	// isolated local store (multi-pane), keeping every call site identical.
+	const updateTabState = useCallback(
+		(id: string, patch: Partial<TabExplorerState>) => {
+			if (isolated) {
+				isolatedTabDispatch(patch);
+			} else {
+				updateExplorerState(id, patch);
+			}
+		},
+		[isolated, updateExplorerState],
 	);
 
 	const [navState, navDispatch] = useReducer(
 		navigationReducer,
 		initialNavigationState,
 	);
+
+	// Seed an isolated pane at its starting directory exactly once.
+	const seededRef = useRef(false);
+	useEffect(() => {
+		if (!isolated || seededRef.current) return;
+		seededRef.current = true;
+		if (initialTarget) {
+			navDispatch({ type: "NAVIGATE", target: initialTarget });
+		}
+	}, [isolated, initialTarget]);
 	const [uiState, uiDispatch] = useReducer(uiReducer, initialUIState);
 	const [currentFiles, setCurrentFiles] = useReducer(
 		(_: File[], files: File[]) => files,
@@ -514,11 +585,11 @@ export function ExplorerProvider({
 
 	const setColumnStack = useCallback(
 		(columns: SdPath[]) => {
-			updateExplorerState(activeTabId, {
+			updateTabState(effectiveTabId, {
 				columnStack: columns.map((c) => JSON.stringify(c)),
 			});
 		},
-		[activeTabId, updateExplorerState],
+		[effectiveTabId, updateTabState],
 	);
 
 	const scrollPosition = useMemo(
@@ -531,12 +602,12 @@ export function ExplorerProvider({
 
 	const setScrollPosition = useCallback(
 		(pos: { top: number; left: number }) => {
-			updateExplorerState(activeTabId, {
+			updateTabState(effectiveTabId, {
 				scrollTop: pos.top,
 				scrollLeft: pos.left,
 			});
 		},
-		[activeTabId, updateExplorerState],
+		[effectiveTabId, updateTabState],
 	);
 
 	const sizeViewTransform = useMemo(
@@ -546,11 +617,11 @@ export function ExplorerProvider({
 
 	const setSizeViewTransform = useCallback(
 		(transform: { k: number; x: number; y: number }) => {
-			updateExplorerState(activeTabId, {
+			updateTabState(effectiveTabId, {
 				sizeViewTransform: transform,
 			});
 		},
-		[activeTabId, updateExplorerState],
+		[effectiveTabId, updateTabState],
 	);
 
 	const currentTarget = navState.history[navState.index] ?? null;
@@ -586,12 +657,14 @@ export function ExplorerProvider({
 
 	// Exclude currentTarget from deps to prevent infinite sync loops.
 	useEffect(() => {
+		// Isolated panes own their navigation and never read the shared URL.
+		if (isolated) return;
 		const target = urlToTarget(location.search);
 		if (target && !targetsEqual(target, currentTarget)) {
 			navDispatch({ type: "SYNC", target });
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [location.search]);
+	}, [location.search, isolated]);
 
 	const pathKey = getPathKey(currentTarget);
 
@@ -604,6 +677,7 @@ export function ExplorerProvider({
 
 	// "datetaken" only applies to media view; fall back to "modified" elsewhere.
 	useEffect(() => {
+		if (isolated) return;
 		if (uiState.viewMode === "media" && uiState.sortBy === "type") {
 			uiDispatch({ type: "SET_SORT_BY", sort: "datetaken" });
 			sortPrefs.setPreferences(pathKey, "datetaken");
@@ -620,24 +694,24 @@ export function ExplorerProvider({
 		(path: SdPath) => {
 			const target: NavigationTarget = { type: "path", path };
 			navDispatch({ type: "NAVIGATE", target });
-			routerNavigate(targetToUrl(target));
+			if (!isolated) routerNavigate(targetToUrl(target));
 			// Exit special modes when navigating to a path
 			uiDispatch({ type: "EXIT_SEARCH_MODE" });
 			uiDispatch({ type: "EXIT_TAG_MODE" });
 		},
-		[routerNavigate],
+		[routerNavigate, isolated],
 	);
 
 	const navigateToView = useCallback(
 		(view: string, id?: string, params?: Record<string, string>) => {
 			const target: NavigationTarget = { type: "view", view, id, params };
 			navDispatch({ type: "NAVIGATE", target });
-			routerNavigate(targetToUrl(target));
+			if (!isolated) routerNavigate(targetToUrl(target));
 			// Exit special modes when navigating
 			uiDispatch({ type: "EXIT_SEARCH_MODE" });
 			uiDispatch({ type: "EXIT_TAG_MODE" });
 		},
-		[routerNavigate],
+		[routerNavigate, isolated],
 	);
 
 	const goBack = useCallback(() => {
@@ -645,24 +719,26 @@ export function ExplorerProvider({
 		const targetIndex = navState.index - 1;
 		if (targetIndex >= 0) {
 			const target = navState.history[targetIndex];
-			routerNavigate(targetToUrl(target), { replace: true });
+			if (!isolated)
+				routerNavigate(targetToUrl(target), { replace: true });
 			// Exit special modes when navigating
 			uiDispatch({ type: "EXIT_SEARCH_MODE" });
 			uiDispatch({ type: "EXIT_TAG_MODE" });
 		}
-	}, [navState.index, navState.history, routerNavigate]);
+	}, [navState.index, navState.history, routerNavigate, isolated]);
 
 	const goForward = useCallback(() => {
 		navDispatch({ type: "GO_FORWARD" });
 		const targetIndex = navState.index + 1;
 		if (targetIndex < navState.history.length) {
 			const target = navState.history[targetIndex];
-			routerNavigate(targetToUrl(target), { replace: true });
+			if (!isolated)
+				routerNavigate(targetToUrl(target), { replace: true });
 			// Exit special modes when navigating
 			uiDispatch({ type: "EXIT_SEARCH_MODE" });
 			uiDispatch({ type: "EXIT_TAG_MODE" });
 		}
-	}, [navState.index, navState.history, routerNavigate]);
+	}, [navState.index, navState.history, routerNavigate, isolated]);
 
 	const spaceKey = getSpaceItemKey(location.pathname, location.search);
 
@@ -691,28 +767,28 @@ export function ExplorerProvider({
 
 	const setViewMode = useCallback(
 		(mode: ViewMode) => {
-			updateExplorerState(activeTabId, {
+			updateTabState(effectiveTabId, {
 				viewMode: mode as TabViewMode,
 			});
-			viewPrefs.setPreferences(spaceKey, { viewMode: mode });
+			if (!isolated) viewPrefs.setPreferences(spaceKey, { viewMode: mode });
 		},
-		[activeTabId, updateExplorerState, spaceKey, viewPrefs],
+		[effectiveTabId, updateTabState, spaceKey, viewPrefs, isolated],
 	);
 
 	const setSortBy = useCallback(
 		(sort: SortBy) => {
-			updateExplorerState(activeTabId, {
+			updateTabState(effectiveTabId, {
 				sortBy: sort as TabSortBy,
 			});
-			sortPrefs.setPreferences(pathKey, sort);
+			if (!isolated) sortPrefs.setPreferences(pathKey, sort);
 		},
-		[activeTabId, updateExplorerState, pathKey, sortPrefs],
+		[effectiveTabId, updateTabState, pathKey, sortPrefs, isolated],
 	);
 
 	const setViewSettings = useCallback(
 		(settings: Partial<ViewSettings>) => {
 			// Update tab state for tab-specific settings
-			updateExplorerState(activeTabId, {
+			updateTabState(effectiveTabId, {
 				gridSize: settings.gridSize ?? tabState.gridSize,
 				gapSize: settings.gapSize ?? tabState.gapSize,
 				foldersFirst: settings.foldersFirst ?? tabState.foldersFirst,
@@ -727,13 +803,15 @@ export function ExplorerProvider({
 			}
 
 			// Save to preferences
-			viewPrefs.setPreferences(spaceKey, {
-				viewSettings: { ...viewSettings, ...settings },
-			});
+			if (!isolated) {
+				viewPrefs.setPreferences(spaceKey, {
+					viewSettings: { ...viewSettings, ...settings },
+				});
+			}
 		},
 		[
-			activeTabId,
-			updateExplorerState,
+			effectiveTabId,
+			updateTabState,
 			tabState,
 			spaceKey,
 			viewSettings,
@@ -864,7 +942,7 @@ export function ExplorerProvider({
 			setSearchFilters,
 			devices,
 			loadPreferencesForSpaceItem,
-			activeTabId,
+			activeTabId: effectiveTabId,
 		}),
 		[
 			currentTarget,

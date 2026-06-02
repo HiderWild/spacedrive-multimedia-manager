@@ -1,32 +1,31 @@
 import {
 	ArrowLeft,
 	ArrowRight,
+	Columns,
+	FilmStrip,
 	Info,
+	MagicWand,
 	SidebarSimple,
 	Tag as TagIcon
 } from '@phosphor-icons/react';
 import {CircleButton, CircleButtonGroup} from '@spacedrive/primitives';
-import clsx from 'clsx';
+import {getContentKind} from '@sd/ts-client';
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {TopBarItem, TopBarPortal} from '../../TopBar';
 import {ExpandableSearchButton} from './components/ExpandableSearchButton';
 import {PathBar} from './components/PathBar';
 import {VirtualPathBar} from './components/VirtualPathBar';
 import {useExplorer, type ViewMode} from './context';
+import {useExplorerFiles} from './hooks/useExplorerFiles';
 import {useVirtualListing} from './hooks/useVirtualListing';
-import {SearchToolbar} from './SearchToolbar';
+import {ExplorerPaneBody, PaneLayout, usePanes} from './panes';
+import {useSelection} from './SelectionContext';
 import {SortMenu, SortMenuPanel} from './SortMenu';
-import {TabNavigationGuard} from './TabNavigationGuard';
 import {ViewModeMenu, ViewModeMenuPanel} from './ViewModeMenu';
-import {ColumnView} from './views/ColumnView';
 import {EmptyView} from './views/EmptyView';
-import {GridView} from './views/GridView';
-import {KnowledgeView} from './views/KnowledgeView';
-import {ListView} from './views/ListView';
-import {MediaView} from './views/MediaView';
-import {SearchView} from './views/SearchView';
-import {SizeView} from './views/SizeView';
 import {ViewSettings, ViewSettingsPanel} from './ViewSettings';
+import {WanderOverlay} from './wander';
+import {openTranscodeDialog} from './transcode';
 
 export function ExplorerView() {
 	const {
@@ -48,6 +47,7 @@ export function ExplorerView() {
 		canGoForward,
 		currentPath,
 		currentView,
+		currentTarget,
 		navigateToPath,
 		devices,
 		quickPreviewFileId,
@@ -60,6 +60,45 @@ export function ExplorerView() {
 
 	const {isVirtualView} = useVirtualListing();
 	const isPreviewActive = !!quickPreviewFileId;
+
+	// Multi-pane layout state. Defaults to a single pane, in which case
+	// PaneLayout renders the primary content unchanged.
+	const {panes, sizes, focusedId, splitPane, closePane, focusPane, resize} =
+		usePanes();
+
+	// Open a new pane to the right, seeded at the current location so the user
+	// starts from where they are and can navigate it independently.
+	const handleSplit = useCallback(() => {
+		splitPane(currentTarget);
+	}, [splitPane, currentTarget]);
+
+	// Live media set + pagination for the immersive "wander" slideshow. Shares
+	// the explorer's existing data hook so no separate data layer is introduced.
+	const {
+		files: wanderFiles,
+		hasNextPage: wanderHasNextPage,
+		fetchNextPage: wanderFetchNextPage
+	} = useExplorerFiles();
+	const {selectedFiles} = useSelection();
+	const [wanderOpen, setWanderOpen] = useState(false);
+
+	// Start the slideshow on the selected file (matched by id so it works even
+	// when wander's paged set differs from the active view's), else the first.
+	const wanderStartIndex = useMemo(() => {
+		const firstSelectedId = selectedFiles[0]?.id;
+		if (!firstSelectedId) return 0;
+		const idx = wanderFiles.findIndex((f) => f.id === firstSelectedId);
+		return idx >= 0 ? idx : 0;
+	}, [selectedFiles, wanderFiles]);
+
+	const canWander = wanderFiles.length > 0;
+
+	// Transcode operates on the current selection, filtered to video entries.
+	const selectedVideos = useMemo(
+		() => selectedFiles.filter((f) => getContentKind(f) === 'video'),
+		[selectedFiles]
+	);
+	const canTranscode = selectedVideos.length > 0;
 
 	// In column view, the path bar should reflect the deepest column, not the root
 	const pathBarPath = useMemo(() => {
@@ -142,7 +181,7 @@ export function ExplorerView() {
 			<SortMenuPanel
 				sortBy={sortBy}
 				onSortChange={setSortBy}
-				viewMode={viewMode as any}
+				viewMode={viewMode}
 			/>
 		),
 		[sortBy, setSortBy, viewMode]
@@ -254,6 +293,22 @@ export function ExplorerView() {
 								/>
 							</TopBarItem>
 							<TopBarItem
+								id="wander"
+								label="Wander"
+								priority="low"
+								onClick={() =>
+									canWander && setWanderOpen(true)
+								}
+							>
+								<CircleButton
+									icon={MagicWand}
+									onClick={() =>
+										canWander && setWanderOpen(true)
+									}
+									disabled={!canWander}
+								/>
+							</TopBarItem>
+							<TopBarItem
 								id="view-mode"
 								label="Views"
 								priority="normal"
@@ -283,7 +338,36 @@ export function ExplorerView() {
 								<SortMenu
 									sortBy={sortBy}
 									onSortChange={setSortBy}
-									viewMode={viewMode as any}
+									viewMode={viewMode}
+								/>
+							</TopBarItem>
+							<TopBarItem
+								id="split-pane"
+								label="Split"
+								priority="low"
+								onClick={handleSplit}
+							>
+								<CircleButton
+									icon={Columns}
+									onClick={handleSplit}
+								/>
+							</TopBarItem>
+							<TopBarItem
+								id="transcode"
+								label="Transcode"
+								priority="low"
+								onClick={() =>
+									canTranscode &&
+									openTranscodeDialog(selectedVideos)
+								}
+							>
+								<CircleButton
+									icon={FilmStrip}
+									onClick={() =>
+										canTranscode &&
+										openTranscodeDialog(selectedVideos)
+									}
+									disabled={!canTranscode}
 								/>
 							</TopBarItem>
 							<TopBarItem
@@ -307,40 +391,25 @@ export function ExplorerView() {
 				/>
 			)}
 
-			<div
-				className={clsx(
-					'relative flex h-full w-full flex-col overflow-hidden pt-1.5',
-					viewMode === 'size' ? 'bg-transparent' : 'bg-app/80'
-				)}
-			>
-				{mode.type === 'search' && <SearchToolbar />}
-				<div
-					className={clsx(
-						'flex-1',
-						viewMode === 'size'
-							? 'overflow-visible'
-							: 'overflow-auto'
-					)}
-				>
-					<TabNavigationGuard>
-						{mode.type === 'search' ? (
-							<SearchView />
-						) : viewMode === 'grid' ? (
-							<GridView />
-						) : viewMode === 'list' ? (
-							<ListView />
-						) : viewMode === 'column' ? (
-							<ColumnView />
-						) : viewMode === 'size' ? (
-							<SizeView />
-						) : viewMode === 'knowledge' ? (
-							<KnowledgeView />
-						) : (
-							<MediaView />
-						)}
-					</TabNavigationGuard>
-				</div>
-			</div>
+			<PaneLayout
+				panes={panes}
+				sizes={sizes}
+				focusedId={focusedId}
+				onFocus={focusPane}
+				onClose={closePane}
+				onResize={resize}
+				primary={<ExplorerPaneBody />}
+			/>
+
+			{wanderOpen && (
+				<WanderOverlay
+					files={wanderFiles}
+					startIndex={wanderStartIndex}
+					hasNextPage={wanderHasNextPage}
+					fetchNextPage={wanderFetchNextPage}
+					onClose={() => setWanderOpen(false)}
+				/>
+			)}
 		</>
 	);
 }

@@ -13,11 +13,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
 import { CircleButton } from "@spacedrive/primitives";
 import type { DirectorySortBy, MediaSortBy } from "@sd/ts-client";
+import type { ViewMode } from "./context";
 
 interface SortMenuPanelProps {
   sortBy: DirectorySortBy | MediaSortBy;
   onSortChange: (sort: DirectorySortBy | MediaSortBy) => void;
-  viewMode: "grid" | "list" | "media" | "column";
+  viewMode: ViewMode;
 }
 
 export function SortMenuPanel({ sortBy, onSortChange, viewMode }: SortMenuPanelProps) {
@@ -72,7 +73,7 @@ export function SortMenuPanel({ sortBy, onSortChange, viewMode }: SortMenuPanelP
 interface SortMenuProps {
   sortBy: DirectorySortBy | MediaSortBy;
   onSortChange: (sort: DirectorySortBy | MediaSortBy) => void;
-  viewMode: "grid" | "list" | "media" | "column";
+  viewMode: ViewMode;
   className?: string;
 }
 

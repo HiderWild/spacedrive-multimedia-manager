@@ -44,8 +44,9 @@ import {
 import {useContextMenu} from '../../../hooks/useContextMenu';
 import {File as FileComponent} from '../../../routes/explorer/File';
 import { formatBytes } from '../../../routes/explorer/utils';
-import {Divider, InfoRow, Section, TabContent, Tabs, Tag} from '../Inspector';
+import {Divider, InfoRow, Section, TabContent, Tabs} from '../Inspector';
 import {useRefetchTagQueries} from '../../../hooks/useRefetchTagQueries';
+import {EffectiveTagsList} from '../../../components/Tags/EffectiveTagsList';
 
 interface FileInspectorProps {
 	file: File;
@@ -633,7 +634,6 @@ function OverviewTab({file}: {file: File}) {
 	// Tag mutations — refetch queries on success to update the UI
 	const refetchTagQueries = useRefetchTagQueries();
 	const applyTag = useLibraryMutation('tags.apply', { onSuccess: refetchTagQueries });
-	const unapplyTag = useLibraryMutation('tags.unapply', { onSuccess: refetchTagQueries });
 
 	// AI Processing mutations
 	const extractText = useLibraryMutation('media.ocr.extract');
@@ -907,29 +907,8 @@ function OverviewTab({file}: {file: File}) {
 						Tags are available after indexing this location
 					</p>
 				) : (
-					<div className="flex flex-wrap gap-1.5">
-						{file.tags &&
-							file.tags.length > 0 &&
-							file.tags.map((tag) => (
-								<Tag
-									key={tag.id}
-									color={tag.color || '#3B82F6'}
-									size="sm"
-									onRemove={async () => {
-										try {
-									await unapplyTag.mutateAsync({
-											entry_ids: [file.id],
-											tag_ids: [tag.id],
-										});
-									} catch (err) {
-										console.error('Failed to remove tag:', err);
-										toast.error(`Failed to remove tag: ${err}`);
-									}
-									}}
-								>
-									{tag.canonical_name}
-								</Tag>
-							))}
+					<div className="flex flex-wrap items-center gap-1.5">
+						<EffectiveTagsList fileId={file.id} />
 
 						{/* Add Tag Button */}
 						<TagSelectorButton

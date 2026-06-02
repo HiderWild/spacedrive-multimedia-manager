@@ -13,5 +13,7 @@ export function useRefetchTagQueries() {
 		queryClient.refetchQueries({ queryKey: ["query:files.by_tag"], exact: false, type: 'all' });
 		queryClient.refetchQueries({ queryKey: ["query:files.by_id"], exact: false, type: 'all' });
 		queryClient.refetchQueries({ queryKey: ["query:tags.search"], exact: false, type: 'all' });
+		// `tags.effective` is fetched via useLibraryQuery, whose key is the bare op name.
+		queryClient.refetchQueries({ queryKey: ["tags.effective"], exact: false, type: 'all' });
 	}, [queryClient]);
 }
