@@ -5,7 +5,8 @@ param(
     [string] $Bun = "",
     [ValidateSet("Debug", "Release")]
     [string] $BuildProfile = "Debug",
-    [switch] $SkipRebuild
+    [switch] $SkipRebuild,
+    [int[]] $KillPorts = @(1420, 6969)
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,8 +35,8 @@ function Get-RepoProcessCandidates {
     $tauriDirEscaped = [Regex]::Escape((Join-Path $ProjectPath "apps\tauri"))
     $webDirEscaped = [Regex]::Escape((Join-Path $ProjectPath "apps\web"))
     $daemonNamePatterns = @("sd-daemon.exe", "sd-daemon", "Spacedrive.exe", "Spacedrive", "sd-desktop.exe", "sd-desktop")
-    $scriptRunnerNames = @("bun.exe", "node.exe", "cargo.exe", "rustc.exe", "pnpm.exe")
-    $cliPattern = 'bun run tauri:dev|bun run dev:with-daemon|bun run tauri|@tauri-apps\\cli\\tauri|tauri dev|sd-daemon|cargo run --bin sd-daemon|cargo build .*--bin sd-daemon|cargo build .* --bin sd-daemon|vite dev|bun run dev'
+    $scriptRunnerNames = @("bun.exe", "node.exe", "cargo.exe", "rustc.exe", "pnpm.exe", "tauri.exe")
+    $cliPattern = 'bun run tauri:dev|bun run dev:with-daemon|bun run tauri|@tauri-apps\\cli\\tauri|tauri dev|sd-daemon|cargo run --bin sd-daemon|cargo build .*--bin sd-daemon|cargo build .* --bin sd-daemon|vite dev|bun run dev|cargo build --bin sd-daemon'
 
     $results = @()
 
@@ -52,7 +53,12 @@ function Get-RepoProcessCandidates {
             continue
         }
 
-        if ($name -in $scriptRunnerNames -and $cmd -match $projectEscaped -and ($cmd -match $cliPattern)) {
+        if (($name -in $scriptRunnerNames) -and (
+                ($cmd -match $projectEscaped) -or
+                (($name -ieq "cargo.exe") -and ($cmd -match "sd-daemon")) -or
+                (($name -ieq "tauri.exe") -and ($cmd -match "tauri dev|@tauri-apps\\cli\\tauri|bun run tauri:dev"))
+            ) -and ($cmd -match $cliPattern)
+        ) {
             $results += $proc
             continue
         }
@@ -186,6 +192,11 @@ if (-not $candidates) {
 }
 
 Stop-ProcessOnPort -Port 1420
+foreach ($port in $KillPorts) {
+    if ($port -ne 1420) {
+        Stop-ProcessOnPort -Port $port
+    }
+}
 
 Set-Location $project
 
@@ -219,8 +230,12 @@ if ($BuildProfile -ieq "Release") {
 if (-not $SkipRebuild) {
     Write-Host "Rebuilding daemon ($BuildProfile)..."
     $buildLogPath = Join-Path $project "scripts\\restart-desktop-debug.build.log"
+    $buildSucceeded = $true
     & $cargoCmd @cargoArgs 2>&1 | Tee-Object -FilePath $buildLogPath
     if ($LASTEXITCODE -ne 0) {
+        $buildSucceeded = $false
+    }
+    if (-not $buildSucceeded) {
         $tail = if (Test-Path $buildLogPath) { Get-Content $buildLogPath -Tail 40 } else { @() }
         Write-Host "Build failed, showing last 40 lines from: $buildLogPath"
         $tail | ForEach-Object { Write-Host $_ }
