@@ -3,6 +3,7 @@ import {
 	Microphone,
 	SpeakerHigh,
 	Stop,
+	X,
 } from "@phosphor-icons/react";
 import { BallBlue } from "@sd/assets/images";
 import { Popover, usePopover } from "@spacedrive/primitives";
@@ -25,6 +26,7 @@ const OVERLAY_WINDOW_LABEL = "voice-overlay";
 const OVERLAY_WIDTH = 520;
 const SPACEBOT_URL = "http://127.0.0.1:19898";
 const DEFAULT_AGENT_ID = "main";
+const READY_STATUS_TEXT = `Press ${getRecordShortcutLabel()} to talk`;
 
 interface SpokenResponseEvent {
 	agent_id: string;
@@ -35,6 +37,17 @@ interface SpokenResponseEvent {
 
 function getVoiceSessionId(agentId: string) {
 	return `portal:chat:${agentId}`;
+}
+
+function getRecordShortcutLabel() {
+	if (
+		typeof navigator !== "undefined" &&
+		navigator.platform.toLowerCase().includes("mac")
+	) {
+		return "Option+Shift+Space";
+	}
+
+	return "Alt+Shift+Space";
 }
 
 // Initialize API client for the voice overlay window
@@ -50,9 +63,7 @@ export function VoiceOverlay() {
 	const [profileId, setProfileId] = useState<string>(
 		() => localStorage.getItem("spacedrive.voice.profileId") ?? "",
 	);
-	const [statusText, setStatusText] = useState(
-		"Press Option+Shift+Space to talk",
-	);
+	const [statusText, setStatusText] = useState(READY_STATUS_TEXT);
 	const [transcript, setTranscript] = useState<
 		Array<{ role: string; text: string }>
 	>([]);
@@ -79,6 +90,20 @@ export function VoiceOverlay() {
 
 	const spokenReceivedRef = useRef(false);
 	const ttsStartedRef = useRef(false);
+
+	const closeOverlay = useCallback(() => {
+		stopTts();
+
+		const closePromise = platform.closeCurrentWindow
+			? platform.closeCurrentWindow()
+			: platform.closeWindow?.(OVERLAY_WINDOW_LABEL);
+
+		if (closePromise) {
+			closePromise.catch((error) => {
+				console.error("Failed to close voice overlay:", error);
+			});
+		}
+	}, [platform, stopTts]);
 
 	// -- Overlay window setup --
 	useEffect(() => {
@@ -171,7 +196,7 @@ export function VoiceOverlay() {
 			speak(event.spoken_text, agentId, profileId).then(() => {
 				ttsStartedRef.current = false;
 				setVoiceState("idle");
-				setStatusText("Press Option+Shift+Space to talk");
+				setStatusText(READY_STATUS_TEXT);
 			});
 		},
 		[sessionId, agentId, speak, profileId],
@@ -203,7 +228,7 @@ export function VoiceOverlay() {
 					speak(event.text, agentId, profileId).then(() => {
 						ttsStartedRef.current = false;
 						setVoiceState("idle");
-						setStatusText("Press Option+Shift+Space to talk");
+						setStatusText(READY_STATUS_TEXT);
 					});
 				}
 			}
@@ -257,7 +282,7 @@ export function VoiceOverlay() {
 		const blob = await stopRecording();
 		if (!blob || blob.size === 0) {
 			setVoiceState("idle");
-			setStatusText("Press Option+Shift+Space to talk");
+			setStatusText(READY_STATUS_TEXT);
 			return;
 		}
 
@@ -276,7 +301,7 @@ export function VoiceOverlay() {
 			setVoiceState("idle");
 			setStatusText("Failed to send. Try again.");
 			setTimeout(
-				() => setStatusText("Press Option+Shift+Space to talk"),
+				() => setStatusText(READY_STATUS_TEXT),
 				3000,
 			);
 		}
@@ -285,6 +310,12 @@ export function VoiceOverlay() {
 	// -- Keyboard shortcut --
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.code === "Escape") {
+				event.preventDefault();
+				closeOverlay();
+				return;
+			}
+
 			if (
 				event.code === "Space" &&
 				event.altKey &&
@@ -315,7 +346,7 @@ export function VoiceOverlay() {
 			window.removeEventListener("keydown", handleKeyDown);
 			window.removeEventListener("keyup", handleKeyUp);
 		};
-	}, [voiceState, handleStartRecording, handleStopRecording]);
+	}, [closeOverlay, voiceState, handleStartRecording, handleStopRecording]);
 
 	// -- Derived visualization values --
 	const activeEnergy =
@@ -433,6 +464,17 @@ export function VoiceOverlay() {
 								className="text-[11px] text-ink-faint transition-colors hover:text-ink"
 							>
 								Collapse
+							</button>
+							<button
+								onClick={(event) => {
+									event.stopPropagation();
+									closeOverlay();
+								}}
+								className="flex size-7 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-white/10 hover:text-ink"
+								aria-label="Close voice overlay"
+								title="Close"
+							>
+								<X className="size-3.5" weight="bold" />
 							</button>
 						</div>
 					</div>
@@ -570,6 +612,18 @@ export function VoiceOverlay() {
 					) : (
 						<Microphone className="size-4" weight="fill" />
 					)}
+				</button>
+
+				<button
+					onClick={(event) => {
+						event.stopPropagation();
+						closeOverlay();
+					}}
+					className="relative z-10 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-ink-faint transition-colors hover:bg-white/10 hover:text-ink"
+					aria-label="Close voice overlay"
+					title="Close"
+				>
+					<X className="size-4" weight="bold" />
 				</button>
 
 				{voiceState === "recording" && (
