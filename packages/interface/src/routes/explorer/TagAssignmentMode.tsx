@@ -3,7 +3,7 @@ import { Tag as TagIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { Button, toast } from '@spacedrive/primitives';
 import { useNormalizedQuery, useLibraryMutation } from '../../contexts/SpacedriveContext';
-import { useSelection } from './SelectionContext';
+import { useOptionalSelection } from './SelectionContext';
 import { useKeybind } from '../../hooks/useKeybind';
 import type { Tag } from '@sd/ts-client';
 
@@ -22,7 +22,8 @@ interface TagAssignmentModeProps {
  * - Works on selected files
  */
 export function TagAssignmentMode({ isActive, onExit }: TagAssignmentModeProps) {
-	const { selectedFiles } = useSelection();
+	const selection = useOptionalSelection();
+	const selectedFiles = selection?.selectedFiles ?? [];
 	const applyTag = useLibraryMutation('tags.apply');
 
 	// Fetch all tags (for now, we'll use the first 10 as the default palette)
@@ -45,17 +46,19 @@ export function TagAssignmentMode({ isActive, onExit }: TagAssignmentModeProps) 
 	const paletteTags = allTags.slice(0, 10) as Tag[];
 
 	// Keyboard shortcuts using keybind registry
-	useKeybind('explorer.exitTagMode', onExit, { enabled: isActive });
-	useKeybind('explorer.toggleTag1', () => handleToggleTag(0), { enabled: isActive });
-	useKeybind('explorer.toggleTag2', () => handleToggleTag(1), { enabled: isActive });
-	useKeybind('explorer.toggleTag3', () => handleToggleTag(2), { enabled: isActive });
-	useKeybind('explorer.toggleTag4', () => handleToggleTag(3), { enabled: isActive });
-	useKeybind('explorer.toggleTag5', () => handleToggleTag(4), { enabled: isActive });
-	useKeybind('explorer.toggleTag6', () => handleToggleTag(5), { enabled: isActive });
-	useKeybind('explorer.toggleTag7', () => handleToggleTag(6), { enabled: isActive });
-	useKeybind('explorer.toggleTag8', () => handleToggleTag(7), { enabled: isActive });
-	useKeybind('explorer.toggleTag9', () => handleToggleTag(8), { enabled: isActive });
-	useKeybind('explorer.toggleTag10', () => handleToggleTag(9), { enabled: isActive });
+	const keybindsEnabled = isActive && selection != null;
+
+	useKeybind('explorer.exitTagMode', onExit, { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag1', () => handleToggleTag(0), { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag2', () => handleToggleTag(1), { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag3', () => handleToggleTag(2), { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag4', () => handleToggleTag(3), { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag5', () => handleToggleTag(4), { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag6', () => handleToggleTag(5), { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag7', () => handleToggleTag(6), { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag8', () => handleToggleTag(7), { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag9', () => handleToggleTag(8), { enabled: keybindsEnabled });
+	useKeybind('explorer.toggleTag10', () => handleToggleTag(9), { enabled: keybindsEnabled });
 
 	const handleToggleTag = async (index: number) => {
 		const tag = paletteTags[index];
@@ -94,7 +97,7 @@ export function TagAssignmentMode({ isActive, onExit }: TagAssignmentModeProps) 
 		);
 	};
 
-	if (!isActive) return null;
+	if (!isActive || selection == null) return null;
 
 	return (
 		<AnimatePresence>

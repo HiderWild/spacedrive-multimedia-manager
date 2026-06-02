@@ -399,3 +399,13 @@ export function useSelection() {
 		throw new Error("useSelection must be used within SelectionProvider");
 	return context;
 }
+
+/**
+ * Returns selection state when explorer selection is available.
+ *
+ * Global overlays should prefer this to avoid crashing the shell when they are
+ * rendered outside an explorer selection scope during route transitions or HMR.
+ */
+export function useOptionalSelection() {
+	return useContext(SelectionContext);
+}
