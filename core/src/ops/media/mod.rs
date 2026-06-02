@@ -14,7 +14,10 @@ pub mod blurhash;
 pub mod metadata_extractor;
 pub mod ocr;
 pub mod proxy;
+pub mod rotate;
 pub mod splat;
+pub mod stream;
+pub mod transcode;
 
 pub mod speech;
 pub mod thumbnail;
@@ -28,7 +31,10 @@ pub use metadata_extractor::{
 };
 pub use ocr::{OcrJob, OcrProcessor};
 pub use proxy::{ProxyJob, ProxyProcessor};
+pub use rotate::{RotateAction, RotateJob};
 pub use splat::{GaussianSplatJob, GaussianSplatProcessor};
+pub use stream::{StreamAction, StreamJob};
+pub use transcode::{TranscodeAction, TranscodeJob};
 
 #[cfg(feature = "speech-to-text")]
 pub use speech::{SpeechToTextJob, SpeechToTextProcessor};

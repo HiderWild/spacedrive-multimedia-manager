@@ -7,6 +7,8 @@ use tracing::{debug, warn};
 /// Supported hardware acceleration platforms
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum HardwareAccel {
+	/// Vendor-neutral Vulkan Video encoder
+	Vulkan,
 	/// Apple VideoToolbox (macOS/iOS)
 	VideoToolbox,
 	/// NVIDIA NVENC
@@ -23,6 +25,7 @@ impl HardwareAccel {
 	/// Get the FFmpeg encoder name for this acceleration platform
 	pub fn encoder_name(&self) -> &'static str {
 		match self {
+			Self::Vulkan => "h264_vulkan",
 			Self::VideoToolbox => "h264_videotoolbox",
 			Self::NVENC => "h264_nvenc",
 			Self::QuickSync => "h264_qsv",
@@ -34,6 +37,7 @@ impl HardwareAccel {
 	/// Get recommended preset for this encoder
 	pub fn preset(&self) -> Option<&'static str> {
 		match self {
+			Self::Vulkan => None,
 			Self::VideoToolbox => None, // VideoToolbox doesn't use presets
 			Self::NVENC | Self::QuickSync | Self::AMF => Some("fast"),
 			Self::VAAPI => None,
@@ -43,6 +47,7 @@ impl HardwareAccel {
 	/// Additional arguments for this encoder
 	pub fn extra_args(&self) -> Vec<&'static str> {
 		match self {
+			Self::Vulkan => vec![],
 			Self::VideoToolbox => vec![],
 			Self::NVENC => vec!["-rc", "vbr"],
 			Self::QuickSync => vec!["-look_ahead", "0"],
@@ -54,8 +59,7 @@ impl HardwareAccel {
 
 /// Detect available hardware acceleration
 pub fn detect_hardware_accel() -> Option<HardwareAccel> {
-	// Try to run ffmpeg -encoders and check which hardware encoders are available
-	let output = match Command::new("ffmpeg")
+	let encoders_output = match Command::new("ffmpeg")
 		.args(["-hide_banner", "-encoders"])
 		.output()
 	{
@@ -66,12 +70,37 @@ pub fn detect_hardware_accel() -> Option<HardwareAccel> {
 		}
 	};
 
-	if !output.status.success() {
+	if !encoders_output.status.success() {
 		warn!("ffmpeg -encoders command failed");
 		return None;
 	}
 
-	let encoders = String::from_utf8_lossy(&output.stdout);
+	let hwaccels_output = Command::new("ffmpeg")
+		.args(["-hide_banner", "-hwaccels"])
+		.output()
+		.ok()
+		.filter(|out| out.status.success());
+
+	let encoders = String::from_utf8_lossy(&encoders_output.stdout);
+	let hwaccels = hwaccels_output
+		.as_ref()
+		.map(|out| String::from_utf8_lossy(&out.stdout))
+		.unwrap_or_default();
+
+	detect_hardware_accel_from_ffmpeg_output(&encoders, &hwaccels)
+}
+
+/// Choose the best H.264 hardware encoder from ffmpeg capability output.
+pub fn detect_hardware_accel_from_ffmpeg_output(
+	encoders: &str,
+	hwaccels: &str,
+) -> Option<HardwareAccel> {
+	// Vulkan requires both the encoder and a hardware device type; the driver may
+	// still reject encode at runtime, in which case callers should fall back to CPU.
+	if encoders.contains("h264_vulkan") && hwaccels.contains("vulkan") {
+		debug!("Detected Vulkan hardware acceleration");
+		return Some(HardwareAccel::Vulkan);
+	}
 
 	// Platform-specific detection order (prefer native first)
 	#[cfg(target_os = "macos")]
@@ -119,6 +148,7 @@ mod tests {
 
 	#[test]
 	fn test_encoder_names() {
+		assert_eq!(HardwareAccel::Vulkan.encoder_name(), "h264_vulkan");
 		assert_eq!(
 			HardwareAccel::VideoToolbox.encoder_name(),
 			"h264_videotoolbox"
@@ -128,9 +158,22 @@ mod tests {
 	}
 
 	#[test]
-	fn test_detection() {
-		// This will actually detect hardware on the test system
-		let hw = detect_hardware_accel();
-		println!("Detected hardware: {:?}", hw);
+	fn detects_vulkan_when_encoder_and_hwaccel_are_present() {
+		let hw = detect_hardware_accel_from_ffmpeg_output(
+			" V....D h264_vulkan Vulkan H.264",
+			"Hardware acceleration methods:\nvulkan\n",
+		);
+
+		assert_eq!(hw, Some(HardwareAccel::Vulkan));
+	}
+
+	#[test]
+	fn skips_vulkan_when_hwaccel_is_missing() {
+		let hw = detect_hardware_accel_from_ffmpeg_output(
+			" V....D h264_vulkan Vulkan H.264",
+			"Hardware acceleration methods:\ncuda\n",
+		);
+
+		assert_ne!(hw, Some(HardwareAccel::Vulkan));
 	}
 }
