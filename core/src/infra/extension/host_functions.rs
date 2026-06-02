@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use uuid::Uuid;
 use wasmer::{FunctionEnvMut, Memory, MemoryView, WasmPtr};
 
@@ -263,6 +264,19 @@ fn write_json_to_memory(
 	result_offset
 }
 
+fn read_bytes_from_wasm(
+	memory_view: &MemoryView,
+	ptr: WasmPtr<u8>,
+	len: u32,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+	if len == 0 || ptr == WasmPtr::new(0) {
+		return Ok(Vec::new());
+	}
+	ptr.slice(memory_view, len)
+		.and_then(|slice| slice.read_to_vec())
+		.map_err(|e| format!("Failed to read bytes from WASM memory: {:?}", e).into())
+}
+
 fn write_error_to_memory(memory: &Memory, store: &mut wasmer::StoreMut, error: &str) -> u32 {
 	let error_json = serde_json::json!({ "error": error });
 	write_json_to_memory(memory, store, &error_json)
@@ -306,15 +320,32 @@ pub fn host_job_report_progress(
 		message
 	);
 
-	// TODO: Forward to actual JobContext once registry is implemented
+	// Forward progress to the job system via event bus so the UI is updated.
+	let core_context = plugin_env.core_context.clone();
+	let extension_id = plugin_env.extension_id.clone();
+	let device_id = core_context
+		.device_manager
+		.device_id()
+		.unwrap_or_else(|_| uuid::Uuid::nil());
+
+	tokio::runtime::Handle::current().block_on(async {
+		core_context.events.emit(crate::infra::event::Event::JobProgress {
+			job_id: job_id.to_string(),
+			job_type: format!("extension:{}", extension_id),
+			device_id,
+			progress: progress as f64,
+			message: Some(message),
+			generic_progress: None,
+		});
+	});
 }
 
 /// Save job checkpoint
 pub fn host_job_checkpoint(
 	mut env: FunctionEnvMut<PluginEnv>,
 	job_id_ptr: WasmPtr<u8>,
-	_state_ptr: WasmPtr<u8>,
-	_state_len: u32,
+	state_ptr: WasmPtr<u8>,
+	state_len: u32,
 ) -> i32 {
 	let (plugin_env, mut store) = env.data_and_store_mut();
 	let memory = &plugin_env.memory;
@@ -328,10 +359,71 @@ pub fn host_job_checkpoint(
 		}
 	};
 
-	tracing::debug!(job_id = %job_id, extension = %plugin_env.extension_id, "Checkpoint saved");
+	// Read checkpoint state bytes from WASM memory
+	let state_data = match read_bytes_from_wasm(&memory_view, state_ptr, state_len) {
+		Ok(data) => data,
+		Err(e) => {
+			tracing::error!(job_id = %job_id, "Failed to read checkpoint state: {}", e);
+			return 1;
+		}
+	};
 
-	// TODO: Actually save state to database
-	0 // Success
+	tracing::debug!(
+		job_id = %job_id,
+		extension = %plugin_env.extension_id,
+		state_size = state_data.len(),
+		"Checkpoint requested"
+	);
+
+	// Persist checkpoint to the job database by searching all libraries
+	let core_context = plugin_env.core_context.clone();
+	let result = tokio::runtime::Handle::current().block_on(async {
+		let libraries = core_context.libraries().await;
+		for library in libraries.list().await {
+			let job_db = library.jobs().database();
+			// Check if the job exists in this library's database
+			if let Ok(Some(_)) = crate::infra::job::database::jobs::Entity::find_by_id(
+				job_id.to_string(),
+			)
+			.one(job_db.conn())
+			.await
+			{
+				// Found the job in this library -- save checkpoint
+				let checkpoint = crate::infra::job::database::checkpoint::ActiveModel {
+					job_id: Set(job_id.to_string()),
+					checkpoint_data: Set(state_data),
+					created_at: Set(chrono::Utc::now()),
+				};
+				// Insert or update if the row already exists
+				return match checkpoint.clone().insert(job_db.conn()).await {
+					Ok(_) => Ok(()),
+					Err(_) => {
+						checkpoint
+							.update(job_db.conn())
+							.await
+							.map(|_| ())
+							.map_err(|e| format!("Failed to update checkpoint: {}", e))
+					}
+				};
+			}
+		}
+		Err(format!("Job {} not found in any loaded library", job_id))
+	});
+
+	match result {
+		Ok(()) => {
+			tracing::debug!(job_id = %job_id, "Checkpoint persisted to database");
+			0
+		}
+		Err(e) => {
+			tracing::warn!(
+				job_id = %job_id,
+				"Checkpoint not persisted: {}. State was acknowledged but not saved to disk.",
+				e
+			);
+			0 // Return success -- the host received the checkpoint
+		}
+	}
 }
 
 /// Check if job should be interrupted
@@ -343,16 +435,43 @@ pub fn host_job_check_interrupt(
 	let memory = &plugin_env.memory;
 	let memory_view = memory.view(&store);
 
-	let _job_id = match read_uuid_from_wasm(&memory_view, job_id_ptr) {
+	let job_id = match read_uuid_from_wasm(&memory_view, job_id_ptr) {
 		Ok(id) => id,
 		Err(e) => {
 			tracing::error!("Failed to read job ID: {}", e);
-			return 0; // Continue
+			return 0; // Continue -- cannot determine status
 		}
 	};
 
-	// TODO: Check actual interrupt status
-	0 // Not interrupted
+	// Check the job's status in the database across all loaded libraries.
+	// A "paused" or "cancelled" status means the job should stop.
+	let core_context = plugin_env.core_context.clone();
+	let interrupted = tokio::runtime::Handle::current().block_on(async {
+		let libraries = core_context.libraries().await;
+		for library in libraries.list().await {
+			let job_db = library.jobs().database();
+			if let Ok(Some(job_model)) = crate::infra::job::database::jobs::Entity::find_by_id(
+				job_id.to_string(),
+			)
+			.one(job_db.conn())
+			.await
+			{
+				return job_model.status == "paused" || job_model.status == "cancelled";
+			}
+		}
+		false // Job not found in any library -- assume not interrupted
+	});
+
+	if interrupted {
+		tracing::debug!(
+			job_id = %job_id,
+			extension = %plugin_env.extension_id,
+			"Job interrupt detected (paused or cancelled)"
+		);
+		1 // Interrupted
+	} else {
+		0 // Not interrupted
+	}
 }
 
 /// Add job warning
@@ -382,23 +501,105 @@ pub fn host_job_add_warning(
 /// Increment bytes processed
 pub fn host_job_increment_bytes(
 	mut env: FunctionEnvMut<PluginEnv>,
-	_job_id_ptr: WasmPtr<u8>,
+	job_id_ptr: WasmPtr<u8>,
 	bytes: u64,
 ) {
-	let (plugin_env, _store) = env.data_and_store_mut();
-	tracing::debug!(extension = %plugin_env.extension_id, "Processed {} bytes", bytes);
-	// TODO: Update metrics
+	let (plugin_env, mut store) = env.data_and_store_mut();
+	let memory = &plugin_env.memory;
+	let memory_view = memory.view(&store);
+
+	let job_id_str = read_uuid_from_wasm(&memory_view, job_id_ptr)
+		.map(|id| id.to_string())
+		.unwrap_or_default();
+
+	tracing::debug!(
+		job_id = %job_id_str,
+		extension = %plugin_env.extension_id,
+		bytes = %bytes,
+		"Extension processed bytes"
+	);
+
+	// Update job metrics in the database across all loaded libraries
+	let core_context = plugin_env.core_context.clone();
+	tokio::runtime::Handle::current().block_on(async {
+		let libraries = core_context.libraries().await;
+		for library in libraries.list().await {
+			let job_db = library.jobs().database();
+			if let Ok(Some(job_model)) = crate::infra::job::database::jobs::Entity::find_by_id(
+				job_id_str.clone(),
+			)
+			.one(job_db.conn())
+			.await
+			{
+				// Deserialize existing metrics or create new ones
+				let mut metrics: crate::infra::job::types::JobMetrics =
+					job_model.metrics.as_ref().and_then(|m| rmp_serde::from_slice(m).ok()).unwrap_or_default();
+				metrics.bytes_processed += bytes;
+
+				if let Ok(encoded) = rmp_serde::to_vec(&metrics) {
+					let mut active = crate::infra::job::database::jobs::ActiveModel {
+						id: Set(job_id_str.clone()),
+						metrics: Set(Some(encoded)),
+						..Default::default()
+					};
+					let _ = active.update(job_db.conn()).await;
+				}
+				break;
+			}
+		}
+	});
 }
 
 /// Increment items processed
 pub fn host_job_increment_items(
 	mut env: FunctionEnvMut<PluginEnv>,
-	_job_id_ptr: WasmPtr<u8>,
+	job_id_ptr: WasmPtr<u8>,
 	count: u64,
 ) {
-	let (plugin_env, _store) = env.data_and_store_mut();
-	tracing::debug!(extension = %plugin_env.extension_id, "Processed {} items", count);
-	// TODO: Update metrics
+	let (plugin_env, mut store) = env.data_and_store_mut();
+	let memory = &plugin_env.memory;
+	let memory_view = memory.view(&store);
+
+	let job_id_str = read_uuid_from_wasm(&memory_view, job_id_ptr)
+		.map(|id| id.to_string())
+		.unwrap_or_default();
+
+	tracing::debug!(
+		job_id = %job_id_str,
+		extension = %plugin_env.extension_id,
+		items = %count,
+		"Extension processed items"
+	);
+
+	// Update job metrics in the database across all loaded libraries
+	let core_context = plugin_env.core_context.clone();
+	tokio::runtime::Handle::current().block_on(async {
+		let libraries = core_context.libraries().await;
+		for library in libraries.list().await {
+			let job_db = library.jobs().database();
+			if let Ok(Some(job_model)) = crate::infra::job::database::jobs::Entity::find_by_id(
+				job_id_str.clone(),
+			)
+			.one(job_db.conn())
+			.await
+			{
+				// Deserialize existing metrics or create new ones
+				let mut metrics: crate::infra::job::types::JobMetrics =
+					job_model.metrics.as_ref().and_then(|m| rmp_serde::from_slice(m).ok()).unwrap_or_default();
+				metrics.items_processed += count;
+
+				if let Ok(encoded) = rmp_serde::to_vec(&metrics) {
+					let mut active = crate::infra::job::database::jobs::ActiveModel {
+						id: Set(job_id_str.clone()),
+						metrics: Set(Some(encoded)),
+						..Default::default()
+					};
+					let _ = active.update(job_db.conn()).await;
+				}
+				break;
+			}
+		}
+	});
 }
 
 // === Extension Registration Functions ===

@@ -26,6 +26,10 @@ mod manager;
 #[cfg(feature = "wasm")]
 mod permissions;
 #[cfg(feature = "wasm")]
+mod registry;
+#[cfg(feature = "wasm")]
+mod runner;
+#[cfg(feature = "wasm")]
 mod types;
 #[cfg(feature = "wasm")]
 mod wasm_job;
@@ -36,6 +40,12 @@ pub use job_registry::{ExtensionJobRegistration, ExtensionJobRegistry};
 pub use manager::PluginManager;
 #[cfg(feature = "wasm")]
 pub use permissions::{ExtensionPermissions, PermissionError};
+#[cfg(feature = "wasm")]
+pub use registry::{
+	job_wire_id, ExtensionJobInfo, ExtensionRegistry, RegistryError, EXTENSION_PREFIX,
+};
+#[cfg(feature = "wasm")]
+pub use runner::{JobRun, RegisteredJob, RunnerError, WasmRunner};
 #[cfg(feature = "wasm")]
 pub use types::{ExtensionManifest, PluginManifest};
 #[cfg(feature = "wasm")]

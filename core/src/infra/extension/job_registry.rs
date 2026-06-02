@@ -1,8 +1,15 @@
-//! Runtime job registry for WASM extensions
+//! Runtime job-metadata registry for WASM extensions
 //!
-//! Allows extensions to register custom job types at runtime that integrate
-//! with the core job system.
+//! Lightweight, `Send`-safe metadata store used by the native [`PluginManager`]
+//! and host-function bridge to track which jobs an extension declared. It shares
+//! the `extension:<ext_id>.<job_name>` wire-id scheme with
+//! [`super::registry::ExtensionRegistry`], the runner-owning registry that
+//! actually invokes jobs through the F-01 [`WasmRunner`].
+//!
+//! [`PluginManager`]: super::manager::PluginManager
+//! [`WasmRunner`]: super::runner::WasmRunner
 
+use crate::infra::extension::registry::job_wire_id;
 use crate::infra::extension::WasmJob;
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -14,7 +21,7 @@ pub struct ExtensionJobRegistration {
 	pub extension_id: String,
 	/// Job name (e.g., "email_scan")
 	pub job_name: String,
-	/// Full qualified name (e.g., "finance:email_scan")
+	/// Full wire id (e.g., "extension:finance.email_scan")
 	pub full_name: String,
 	/// WASM export function name (e.g., "execute_email_scan")
 	pub export_fn: String,
@@ -44,7 +51,7 @@ impl ExtensionJobRegistry {
 		export_fn: String,
 		resumable: bool,
 	) -> Result<(), String> {
-		let full_name = format!("{}:{}", extension_id, job_name);
+		let full_name = job_wire_id(&extension_id, &job_name);
 
 		let registration = ExtensionJobRegistration {
 			extension_id: extension_id.clone(),

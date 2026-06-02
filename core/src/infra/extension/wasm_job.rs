@@ -1,9 +1,15 @@
 //! WASM Job Executor
 //!
-//! Generic job type that executes WASM extension jobs.
+//! Native job adapter that executes a WASM extension job through the F-01
+//! [`WasmRunner`]. The runner's `wasmer::Store` is not `Send`, so execution runs
+//! on a blocking task built from owned manifest + WASM bytes; the async job
+//! future never holds a non-`Send` value across an await point.
+//!
+//! [`WasmRunner`]: super::runner::WasmRunner
 
 use serde::{Deserialize, Serialize};
 
+use super::runner::WasmRunner;
 use crate::infra::job::prelude::*;
 
 /// Generic job for executing WASM extension jobs
@@ -50,64 +56,79 @@ impl JobHandler for WasmJob {
 			"Executing WASM job"
 		);
 
-		// Get PluginManager through Library → CoreContext (simple!)
-		let pm_opt = ctx.library().core_context().get_plugin_manager().await;
-
-		let pm = match pm_opt {
-			Some(pm) => pm,
-			None => {
-				ctx.log("ERROR: PluginManager not available");
-				return Err(crate::infra::job::error::JobError::ExecutionFailed(
+		// Get PluginManager through Library → CoreContext.
+		let pm = ctx
+			.library()
+			.core_context()
+			.get_plugin_manager()
+			.await
+			.ok_or_else(|| {
+				crate::infra::job::error::JobError::ExecutionFailed(
 					"PluginManager not initialized".into(),
-				));
-			}
+				)
+			})?;
+
+		// Pull owned, Send manifest + wasm bytes so the runner can be built on a
+		// blocking task without dragging the manager's non-Send Store across awaits.
+		let (manifest, wasm_bytes) = {
+			let pm = pm.read().await;
+			pm.load_extension_wasm(&self.extension_id).ok_or_else(|| {
+				crate::infra::job::error::JobError::ExecutionFailed(format!(
+					"Extension '{}' is not loaded or its WASM is unavailable",
+					self.extension_id
+				))
+			})?
 		};
 
-		// Prepare job context JSON for WASM
-		let job_ctx_json = serde_json::json!({
+		let ctx_json = serde_json::json!({
 			"job_id": ctx.id().to_string(),
 			"library_id": ctx.library().id().to_string(),
-		});
-		let ctx_json_str = serde_json::to_string(&job_ctx_json).unwrap();
+		})
+		.to_string();
+
+		let export_fn = self.export_fn.clone();
+		let state_json = self.state_json.clone();
 
 		ctx.log(&format!(
-			"Calling WASM function: {}::{}",
+			"Running WASM job {}::{}",
 			self.extension_id, self.export_fn
 		));
 
-		// Call WASM export function
-		let result = {
-			let pm_lock = pm.write().await;
+		// Execute the WASM job on a blocking task. A trap/panic inside the module
+		// is contained as a RunnerError and mapped to a typed job error, never
+		// unwinding into core.
+		let run = tokio::task::spawn_blocking(move || {
+			let mut runner =
+				WasmRunner::from_bytes(manifest, &wasm_bytes).map_err(|e| e.to_string())?;
+			runner.init().map_err(|e| e.to_string())?;
+			let state = if state_json.is_empty() {
+				None
+			} else {
+				Some(state_json.as_str())
+			};
+			runner
+				.run_job(&export_fn, &ctx_json, state)
+				.map_err(|e| e.to_string())
+		})
+		.await
+		.map_err(|e| {
+			crate::infra::job::error::JobError::ExecutionFailed(format!("join error: {e}"))
+		})?
+		.map_err(crate::infra::job::error::JobError::ExecutionFailed)?;
 
-			// For now, just verify the plugin is loaded
-			let plugins = pm_lock.list_plugins().await;
-			if !plugins.contains(&self.extension_id) {
-				ctx.log(&format!(
-					"ERROR: Extension '{}' not loaded",
-					self.extension_id
-				));
-				return Err(crate::infra::job::error::JobError::ExecutionFailed(
-					format!("Extension '{}' not loaded", self.extension_id),
-				));
-			}
+		if !run.completed() {
+			return Err(crate::infra::job::error::JobError::ExecutionFailed(
+				format!(
+					"WASM job exited with code {} (1 = interrupted, 2 = failed)",
+					run.exit_code
+				),
+			));
+		}
 
-			ctx.log(&format!("✓ Extension '{}' is loaded", self.extension_id));
-
-			// TODO: Actually call the WASM export
-			// Need to:
-			// 1. Get the Instance for this plugin
-			// 2. Get the export function
-			// 3. Write ctx_json_str and state_json to WASM memory
-			// 4. Call the function with pointers
-			// 5. Read result code
-
-			ctx.log("WASM export call not yet implemented");
-			ctx.log("But the job executed and extension is available!");
-
-			0 // Success code
-		};
-
-		ctx.log(&format!("✓ WASM job completed with code: {}", result));
+		ctx.log(&format!(
+			"✓ WASM job completed: items={} progress={}",
+			run.items, run.last_progress
+		));
 
 		Ok(JobOutput::Success)
 	}
