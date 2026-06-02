@@ -41,6 +41,10 @@ mod m20260123_000001_remove_legacy_sync_columns;
 mod m20260125_000001_unique_user_metadata_tag;
 mod m20260414_000001_add_redundancy_indexes;
 mod m20260417_000001_add_entries_sync_cursor_index;
+mod m20260531_000001_media_suite_scaffold_template;
+mod m20260601_000001_tag_inheritance_source;
+mod m20260601_000002_tag_relations;
+mod m20260602_000001_create_sync_metrics_table;
 
 pub struct Migrator;
 
@@ -87,6 +91,10 @@ impl MigratorTrait for Migrator {
 			Box::new(m20260125_000001_unique_user_metadata_tag::Migration),
 			Box::new(m20260414_000001_add_redundancy_indexes::Migration),
 			Box::new(m20260417_000001_add_entries_sync_cursor_index::Migration),
+			Box::new(m20260531_000001_media_suite_scaffold_template::Migration),
+			Box::new(m20260601_000001_tag_inheritance_source::Migration),
+			Box::new(m20260601_000002_tag_relations::Migration),
+			Box::new(m20260602_000001_create_sync_metrics_table::Migration),
 		]
 	}
 }

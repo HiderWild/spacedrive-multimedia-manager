@@ -540,6 +540,7 @@ impl LibraryManager {
 			file_sync_service: OnceCell::new(), // Initialized later
 			source_manager: OnceCell::new(),    // Initialized lazily
 			device_cache: Arc::new(std::sync::RwLock::new(device_cache)),
+			tag_cache: Arc::new(crate::ops::tags::EffectiveTagCache::new()),
 			_lock: std::sync::Mutex::new(Some(lock)),
 		});
 

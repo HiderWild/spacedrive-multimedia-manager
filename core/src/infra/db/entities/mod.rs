@@ -19,7 +19,9 @@ pub mod user_metadata;
 // Tagging system
 pub mod tag;
 pub mod tag_closure;
+pub mod tag_parent;
 pub mod tag_relationship;
+pub mod tag_sibling;
 pub mod tag_usage_pattern;
 pub mod user_metadata_tag;
 
@@ -34,6 +36,7 @@ pub mod space_group;
 pub mod space_item;
 pub mod sync_conduit;
 pub mod sync_generation;
+pub mod sync_metrics_snapshot;
 pub mod video_media_data;
 pub mod volume;
 
@@ -59,6 +62,7 @@ pub use space_group::Entity as SpaceGroup;
 pub use space_item::Entity as SpaceItem;
 pub use sync_conduit::Entity as SyncConduit;
 pub use sync_generation::Entity as SyncGeneration;
+pub use sync_metrics_snapshot::Entity as SyncMetricsSnapshot;
 pub use user_metadata::Entity as UserMetadata;
 pub use video_media_data::Entity as VideoMediaData;
 pub use volume::Entity as Volume;
@@ -66,7 +70,9 @@ pub use volume::Entity as Volume;
 // Tagging entities
 pub use tag::Entity as Tag;
 pub use tag_closure::Entity as TagClosure;
+pub use tag_parent::Entity as TagParent;
 pub use tag_relationship::Entity as TagRelationship;
+pub use tag_sibling::Entity as TagSibling;
 pub use tag_usage_pattern::Entity as TagUsagePattern;
 pub use user_metadata_tag::Entity as UserMetadataTag;
 
@@ -92,6 +98,7 @@ pub use space_group::ActiveModel as SpaceGroupActive;
 pub use space_item::ActiveModel as SpaceItemActive;
 pub use sync_conduit::ActiveModel as SyncConduitActive;
 pub use sync_generation::ActiveModel as SyncGenerationActive;
+pub use sync_metrics_snapshot::ActiveModel as SyncMetricsSnapshotActive;
 pub use user_metadata::ActiveModel as UserMetadataActive;
 pub use video_media_data::ActiveModel as VideoMediaDataActive;
 pub use volume::ActiveModel as VolumeActive;
@@ -99,6 +106,8 @@ pub use volume::ActiveModel as VolumeActive;
 // Tagging active models
 pub use tag::ActiveModel as TagActive;
 pub use tag_closure::ActiveModel as TagClosureActive;
+pub use tag_parent::ActiveModel as TagParentActive;
 pub use tag_relationship::ActiveModel as TagRelationshipActive;
+pub use tag_sibling::ActiveModel as TagSiblingActive;
 pub use tag_usage_pattern::ActiveModel as TagUsagePatternActive;
 pub use user_metadata_tag::ActiveModel as UserMetadataTagActive;

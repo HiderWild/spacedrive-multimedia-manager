@@ -72,6 +72,10 @@ pub struct Library {
 	/// Loaded from this library's devices table for per-library device resolution
 	device_cache: Arc<StdRwLock<HashMap<String, Uuid>>>,
 
+	/// Per-library effective-tag cache (task A-05): caches A-02 inheritance
+	/// resolution keyed by entry uuid; invalidated by tag write paths.
+	tag_cache: Arc<crate::ops::tags::EffectiveTagCache>,
+
 	/// Lock preventing concurrent access (wrapped in Mutex to allow explicit release during shutdown)
 	_lock: std::sync::Mutex<Option<LibraryLock>>,
 }
@@ -99,6 +103,11 @@ impl Library {
 	/// Get the database
 	pub fn db(&self) -> &Arc<Database> {
 		&self.db
+	}
+
+	/// Get the per-library effective-tag cache (task A-05).
+	pub fn tag_cache(&self) -> &Arc<crate::ops::tags::EffectiveTagCache> {
+		&self.tag_cache
 	}
 
 	/// Get the general event bus (for UI, jobs, volumes, etc)

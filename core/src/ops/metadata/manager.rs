@@ -281,6 +281,8 @@ impl UserMetadataManager {
 					applied_variant: Set(app.applied_variant.clone()),
 					confidence: Set(app.confidence),
 					source: Set(app.source.as_str().to_string()),
+					inheritance_source: Set("direct".to_string()),
+					overridden_from_entry_id: NotSet,
 					instance_attributes: Set(instance_attributes_value),
 					created_at: Set(app.created_at),
 					updated_at: Set(now),
