@@ -1,5 +1,6 @@
 import { WifiHigh, WifiSlashIcon, Trash } from "@phosphor-icons/react";
 import { useNormalizedQuery, getDeviceIcon, useCoreMutation } from "../../contexts/SpacedriveContext";
+import { useTranslation } from "react-i18next";
 import { useExplorer } from "../../routes/explorer/context";
 import { SpaceItem } from "./SpaceItem";
 import { GroupHeader } from "./GroupHeader";
@@ -18,6 +19,7 @@ export function DevicesGroup({
 	sortableAttributes,
 	sortableListeners,
 }: DevicesGroupProps) {
+	const { t } = useTranslation('sidebar');
 	const { navigateToView, loadPreferencesForSpaceItem } = useExplorer();
 
 	// Use normalized query for automatic updates when device events are emitted
@@ -49,7 +51,7 @@ export function DevicesGroup({
 		const items = [
 			{
 				icon: Trash,
-				label: "Unpair Device",
+				label: t('devices.unpairDevice'),
 				onClick: async () => {
 					await revokeDevice.mutateAsync({
 						device_id: device.id,
@@ -60,7 +62,7 @@ export function DevicesGroup({
 			},
 			{
 				icon: Trash,
-				label: "Remove Device Completely",
+				label: t('devices.removeDevice'),
 				onClick: async () => {
 					await revokeDevice.mutateAsync({
 						device_id: device.id,
@@ -86,7 +88,7 @@ export function DevicesGroup({
 	return (
 		<div>
 			<GroupHeader
-				label="Devices"
+				label={t('sections.devices')}
 				isCollapsed={isCollapsed}
 				onToggle={onToggle}
 				sortableAttributes={sortableAttributes}
@@ -102,7 +104,7 @@ export function DevicesGroup({
 						</div>
 					) : !devices || devices.length === 0 ? (
 						<div className="px-2 py-1 text-xs text-sidebar-ink-faint">
-							No devices
+							{t('devices.noDevices')}
 						</div>
 					) : (
 						devices.map((device, index) => {

@@ -3,6 +3,7 @@ import type {Tag} from '@sd/ts-client';
 import clsx from 'clsx';
 import {useState} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
+import {useTranslation} from 'react-i18next';
 import {usePlatform} from '../../contexts/PlatformContext';
 import {
 	useLibraryMutation,
@@ -26,6 +27,7 @@ interface TagItemProps {
 }
 
 function TagItem({tag, depth = 0}: TagItemProps) {
+	const {t} = useTranslation('sidebar');
 	const navigate = useNavigate();
 	const location = useLocation();
 	const platform = usePlatform();
@@ -49,11 +51,11 @@ function TagItem({tag, depth = 0}: TagItemProps) {
 		items: [
 			{
 				icon: Trash,
-				label: 'Delete Tag',
+				label: t('tags.deleteTag'),
 				variant: 'danger',
 				onClick: () => {
 					platform.confirm(
-						`Delete tag "${tag.canonical_name || tag.display_name || 'this tag'}"? This will remove it from all files.`,
+						t('tags.deleteTagConfirm', { name: tag.canonical_name || tag.display_name || 'this tag' }),
 						async (confirmed) => {
 							if (!confirmed) return;
 							try {
@@ -133,6 +135,7 @@ export function TagsGroup({
 	sortableAttributes,
 	sortableListeners
 }: TagsGroupProps) {
+	const {t} = useTranslation('sidebar');
 	const navigate = useNavigate();
 	const {loadPreferencesForSpaceItem} = useExplorer();
 	const [isCreating, setIsCreating] = useState(false);
@@ -193,7 +196,7 @@ export function TagsGroup({
 	return (
 		<div>
 			<GroupHeader
-				label="Tags"
+				label={t('sections.tags')}
 				isCollapsed={isCollapsed}
 				onToggle={onToggle}
 				sortableAttributes={sortableAttributes}
@@ -215,7 +218,7 @@ export function TagsGroup({
 						</div>
 					) : tags.length === 0 ? (
 						<div className="text-sidebar-ink-faint px-2 py-1 text-xs">
-							No tags yet
+							{t('tags.noTags')}
 						</div>
 					) : (
 						tags.map((tag: Tag) => (
@@ -242,7 +245,7 @@ export function TagsGroup({
 										setIsCreating(false);
 									}
 								}}
-								placeholder="Tag name..."
+								placeholder={t('tags.tagNamePlaceholder')}
 								autoFocus
 								className="bg-sidebar-box border-sidebar-line text-sidebar-ink placeholder:text-sidebar-ink-faint focus:border-accent w-full rounded-md border px-2 py-1 text-xs outline-none"
 							/>
@@ -253,7 +256,7 @@ export function TagsGroup({
 							className="text-sidebar-ink-dull hover:bg-sidebar-box hover:text-sidebar-ink flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors"
 						>
 							<Plus size={12} weight="bold" />
-							<span>New Tag</span>
+							<span>{t('tags.newTag')}</span>
 						</button>
 					)}
 				</div>

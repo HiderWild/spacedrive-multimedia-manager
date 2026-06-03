@@ -1,4 +1,5 @@
 import { useNormalizedQuery } from "@sd/ts-client";
+import { useTranslation } from "react-i18next";
 import { SpaceItem } from "./SpaceItem";
 import { GroupHeader } from "./GroupHeader";
 
@@ -15,6 +16,7 @@ export function LocationsGroup({
   sortableAttributes,
   sortableListeners,
 }: LocationsGroupProps) {
+  const { t } = useTranslation('sidebar');
   const { data: locationsData } = useNormalizedQuery({
     query: "locations.list",
     input: null, // Unit struct serializes as null, not {}
@@ -26,7 +28,7 @@ export function LocationsGroup({
   return (
     <div>
       <GroupHeader
-        label="Locations"
+        label={t('sections.locations')}
         isCollapsed={isCollapsed}
         onToggle={onToggle}
         sortableAttributes={sortableAttributes}
