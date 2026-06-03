@@ -5,6 +5,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { HeroStats } from "./HeroStats";
 import { DevicePanel } from "./DevicePanel";
 import { OverviewTopBar } from "./OverviewTopBar";
@@ -17,6 +18,8 @@ import type {
 import { Inspector } from "../../components/Inspector/Inspector";
 
 export function Overview() {
+	const { t } = useTranslation("common");
+
 	const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
 		null,
 	);
@@ -55,11 +58,11 @@ export function Overview() {
 	if (isLoading || !libraryInfo) {
 		return (
 			<>
-				<OverviewTopBar libraryName="Loading..." />
+				<OverviewTopBar libraryName={t("status.loading")} />
 				<div className="flex flex-col h-full overflow-hidden">
 					<div className="flex-1 overflow-auto p-6 space-y-4">
 						<div className="text-center text-ink-dull">
-							Loading library statistics...
+							{t("status.loading")}
 						</div>
 					</div>
 				</div>
