@@ -1,5 +1,6 @@
 import { useForm } from "react-hook-form";
 import { useCoreQuery, useCoreMutation } from "../../contexts/SpacedriveContext";
+import { LanguageSelector } from "../../components/settings/LanguageSelector";
 
 interface DeviceSettingsForm {
   name: string;
@@ -62,6 +63,9 @@ export function GeneralSettings() {
       </div>
 
       <div className="space-y-4">
+        {/* Language */}
+        <LanguageSelector />
+
         {/* Device Configuration */}
         <form onSubmit={onDeviceSubmit} className="p-4 bg-app-box rounded-lg border border-app-line space-y-4">
           <h3 className="text-sm font-medium text-ink">Device</h3>
