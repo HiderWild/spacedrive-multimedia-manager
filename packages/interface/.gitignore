@@ -468,3 +468,5 @@ apps/ios/sd-ios-core/sd_ios_core.xcframework/**
 src/**/*.js
 src/**/*.d.ts
 !src/**/*.d.ts.map
+!src/i18n/types.d.ts
+!src/i18n/react-i18next.d.ts

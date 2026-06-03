@@ -14,6 +14,7 @@
 		"./windows/VoiceOverlay": "./src/windows/VoiceOverlay.tsx"
 	},
 	"scripts": {
+		"generate:i18n-types": "bun run scripts/generate-i18n-types.ts",
 		"lint": "eslint src --cache",
 		"typecheck": "tsc -b"
 	},
