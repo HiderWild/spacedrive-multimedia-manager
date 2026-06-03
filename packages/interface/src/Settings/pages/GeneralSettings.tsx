@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { useTranslation } from "react-i18next";
 import { useCoreQuery, useCoreMutation } from "../../contexts/SpacedriveContext";
 import { LanguageSelector } from "../../components/settings/LanguageSelector";
 
@@ -8,6 +9,9 @@ interface DeviceSettingsForm {
 }
 
 export function GeneralSettings() {
+  const { t } = useTranslation('settings');
+  const { t: tc } = useTranslation('common');
+
   const statusQuery = useCoreQuery({ type: "core.status", input: null as any });
   const configQuery = useCoreQuery({ type: "config.app.get", input: null as any });
   const updateDevice = useCoreMutation("device.update");
@@ -33,7 +37,7 @@ export function GeneralSettings() {
 
   const handleResetData = () => {
     const confirmed = window.confirm(
-      "Reset All Data\n\nThis will permanently delete all libraries, settings, and cached data. The app will need to be restarted. Are you sure?"
+      t('resetData.confirmTitle') + '\n\n' + t('resetData.confirmMessage')
     );
 
     if (confirmed) {
@@ -42,11 +46,11 @@ export function GeneralSettings() {
         {
           onSuccess: (result) => {
             alert(
-              result.message || "Data has been reset. Please restart the application."
+              result.message || t('resetData.successMessage')
             );
           },
           onError: (error) => {
-            alert("Error: " + (error.message || "Failed to reset data"));
+            alert(tc('status.error') + ': ' + (error.message || tc('status.error')));
           },
         }
       );
@@ -56,9 +60,9 @@ export function GeneralSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-ink mb-2">General</h2>
+        <h2 className="text-lg font-semibold text-ink mb-2">{t('general.title')}</h2>
         <p className="text-sm text-ink-dull">
-          Configure general application settings.
+          {t('general.description')}
         </p>
       </div>
 
@@ -68,12 +72,12 @@ export function GeneralSettings() {
 
         {/* Device Configuration */}
         <form onSubmit={onDeviceSubmit} className="p-4 bg-app-box rounded-lg border border-app-line space-y-4">
-          <h3 className="text-sm font-medium text-ink">Device</h3>
+          <h3 className="text-sm font-medium text-ink">{t('device.title')}</h3>
 
           <label className="block">
-            <span className="text-sm font-medium text-ink mb-1 block">Device Name</span>
+            <span className="text-sm font-medium text-ink mb-1 block">{t('device.name')}</span>
             <p className="text-xs text-ink-dull mb-2">
-              User-friendly name for this device
+              {t('device.nameDescription')}
             </p>
             <input
               type="text"
@@ -84,9 +88,9 @@ export function GeneralSettings() {
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-ink mb-1 block">Device Slug</span>
+            <span className="text-sm font-medium text-ink mb-1 block">{t('device.slug')}</span>
             <p className="text-xs text-ink-dull mb-2">
-              Unique identifier for this device (alphanumeric and hyphens only)
+              {t('device.slugDescription')}
             </p>
             <input
               type="text"
@@ -102,42 +106,42 @@ export function GeneralSettings() {
               disabled={updateDevice.isPending}
               className="px-4 py-2 bg-accent hover:bg-accent-deep text-white rounded-md text-sm font-medium transition-colors disabled:opacity-50"
             >
-              {updateDevice.isPending ? "Saving..." : "Save Changes"}
+              {updateDevice.isPending ? tc('status.saving') : tc('actions.save')}
             </button>
           )}
         </form>
 
         {/* Version Info */}
         <div className="p-4 bg-app-box rounded-lg border border-app-line space-y-3">
-          <h3 className="text-sm font-medium text-ink">Version Information</h3>
+          <h3 className="text-sm font-medium text-ink">{t('version.title')}</h3>
           <div className="flex justify-between items-center">
-            <span className="text-sm text-ink">Version</span>
+            <span className="text-sm text-ink">{t('version.version')}</span>
             <span className="text-sm text-ink-dull font-mono">
-              {status?.version || "Loading..."}
+              {status?.version || tc('status.loading')}
             </span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-sm text-ink">Built</span>
+            <span className="text-sm text-ink">{t('version.built')}</span>
             <span className="text-sm text-ink-dull font-mono">
-              {status?.built_at || "Loading..."}
+              {status?.built_at || tc('status.loading')}
             </span>
           </div>
         </div>
 
         <div className="p-4 bg-app-box rounded-lg border border-app-line">
-          <h3 className="text-sm font-medium text-ink mb-1">Data Directory</h3>
-          <p className="text-xs text-ink-dull mb-2">Where Spacedrive stores its data</p>
+          <h3 className="text-sm font-medium text-ink mb-1">{t('dataDirectory.title')}</h3>
+          <p className="text-xs text-ink-dull mb-2">{t('dataDirectory.description')}</p>
           <code className="block text-xs text-ink-dull bg-app rounded px-2 py-1 overflow-x-auto">
-            {config?.data_dir || status?.system?.data_directory || "Loading..."}
+            {config?.data_dir || status?.system?.data_directory || tc('status.loading')}
           </code>
         </div>
 
         <div className="p-4 bg-app-box rounded-lg border border-app-line">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-medium text-ink mb-1">Reset All Data</h3>
+              <h3 className="text-sm font-medium text-ink mb-1">{t('resetData.title')}</h3>
               <p className="text-xs text-ink-dull">
-                Permanently delete all libraries and settings
+                {t('resetData.description')}
               </p>
             </div>
             <button
@@ -146,7 +150,7 @@ export function GeneralSettings() {
               disabled={resetData.isPending}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
             >
-              {resetData.isPending ? "Resetting..." : "Reset"}
+              {resetData.isPending ? tc('status.resetting') : tc('actions.reset')}
             </button>
           </div>
         </div>
