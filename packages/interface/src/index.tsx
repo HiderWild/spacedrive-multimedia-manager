@@ -66,3 +66,7 @@ export type {
 	KeybindDefinition,
 	KeyCombo,
 } from "./util/keybinds";
+
+// i18n
+export { initI18n, i18n } from './i18n';
+export type { LanguagePersistence } from './i18n/persistence';
