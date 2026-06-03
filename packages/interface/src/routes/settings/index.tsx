@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import clsx from "clsx";
+import { useTranslation } from "react-i18next";
 import {
   GeneralSettings,
   AppearanceSettings,
@@ -18,19 +19,20 @@ interface SettingsSidebarProps {
   onPageChange: (page: string) => void;
 }
 
-const sections = [
-  { id: "general", label: "General" },
-  { id: "appearance", label: "Appearance" },
-  { id: "library", label: "Library" },
-  { id: "indexer", label: "Indexer" },
-  { id: "services", label: "Services" },
-  { id: "privacy", label: "Privacy" },
-  { id: "advanced", label: "Advanced" },
-  { id: "about", label: "About" },
-];
-
 function SettingsSidebar({ currentPage, onPageChange }: SettingsSidebarProps) {
+  const { t } = useTranslation('settings');
   const isAboutPage = currentPage === "about";
+
+  const sections = [
+    { id: "general", label: t('sidebar.general') },
+    { id: "appearance", label: t('sidebar.appearance') },
+    { id: "library", label: t('sidebar.library') },
+    { id: "indexer", label: t('sidebar.indexer') },
+    { id: "services", label: t('sidebar.services') },
+    { id: "privacy", label: t('sidebar.privacy') },
+    { id: "advanced", label: t('sidebar.advanced') },
+    { id: "about", label: t('sidebar.about') },
+  ];
 
   return (
     <div className="space-y-1">
