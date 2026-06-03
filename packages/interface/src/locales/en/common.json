@@ -21,7 +21,8 @@
     "filter": "Filter",
     "sort": "Sort",
     "refresh": "Refresh",
-    "retry": "Retry"
+    "retry": "Retry",
+    "loading": "Loading..."
   },
   "status": {
     "loading": "Loading...",

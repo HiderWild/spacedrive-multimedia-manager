@@ -21,7 +21,8 @@
     "filter": "筛选",
     "sort": "排序",
     "refresh": "刷新",
-    "retry": "重试"
+    "retry": "重试",
+    "loading": "加载中..."
   },
   "status": {
     "loading": "加载中...",

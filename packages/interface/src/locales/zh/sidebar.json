@@ -26,5 +26,41 @@
     "cloud": "云端",
     "locations": "位置",
     "tags": "标签"
+  },
+  "groups": {
+    "renameGroup": "重命名分组",
+    "deleteGroup": "删除分组",
+    "newGroup": "新建分组"
+  },
+  "tags": {
+    "deleteTag": "删除标签",
+    "deleteTagConfirm": "删除标签\"{{name}}\"？这将从所有文件中移除此标签。",
+    "noTags": "暂无标签",
+    "newTag": "新建标签",
+    "tagNamePlaceholder": "标签名称..."
+  },
+  "devices": {
+    "noDevices": "暂无设备",
+    "unpairDevice": "取消配对",
+    "removeDevice": "完全移除设备"
+  },
+  "sync": {
+    "title": "同步监控",
+    "peerOnline": "{{count}} 个对等点在线",
+    "peersOnline": "{{count}} 个对等点在线",
+    "openFullMonitor": "打开完整同步监控",
+    "showPeers": "显示对等点",
+    "showActivity": "显示活动记录"
+  },
+  "jobs": {
+    "title": "任务管理器",
+    "active": "{{count}} 个活跃",
+    "openFull": "打开完整任务界面",
+    "showAll": "显示所有任务",
+    "showActive": "仅显示活跃任务"
+  },
+  "actions": {
+    "customize": "自定义",
+    "settings": "设置"
   }
 }

@@ -23,7 +23,8 @@ interface CommonTranslations {
     "filter": "Filter",
     "sort": "Sort",
     "refresh": "Refresh",
-    "retry": "Retry"
+    "retry": "Retry",
+    "loading": "Loading..."
   },
   "status": {
     "loading": "Loading...",
@@ -155,6 +156,42 @@ interface SidebarTranslations {
     "cloud": "Cloud",
     "locations": "Locations",
     "tags": "Tags"
+  },
+  "groups": {
+    "renameGroup": "Rename Group",
+    "deleteGroup": "Delete Group",
+    "newGroup": "New Group"
+  },
+  "tags": {
+    "deleteTag": "Delete Tag",
+    "deleteTagConfirm": "Delete tag \"{{name}}\"? This will remove it from all files.",
+    "noTags": "No tags yet",
+    "newTag": "New Tag",
+    "tagNamePlaceholder": "Tag name..."
+  },
+  "devices": {
+    "noDevices": "No devices",
+    "unpairDevice": "Unpair Device",
+    "removeDevice": "Remove Device Completely"
+  },
+  "sync": {
+    "title": "Sync Monitor",
+    "peerOnline": "{{count}} peer online",
+    "peersOnline": "{{count}} peers online",
+    "openFullMonitor": "Open full sync monitor",
+    "showPeers": "Show peers",
+    "showActivity": "Show activity feed"
+  },
+  "jobs": {
+    "title": "Job Manager",
+    "active": "{{count}} active",
+    "openFull": "Open full jobs screen",
+    "showAll": "Show all jobs",
+    "showActive": "Show only active jobs"
+  },
+  "actions": {
+    "customize": "Customize",
+    "settings": "Settings"
   }
 }
 
