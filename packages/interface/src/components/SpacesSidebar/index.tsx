@@ -24,6 +24,7 @@ import {CircleButton, Popover, usePopover} from '@spacedrive/primitives';
 import clsx from 'clsx';
 import {motion} from 'framer-motion';
 import {memo, useEffect, useState} from 'react';
+import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router-dom';
 import {usePlatform} from '../../contexts/PlatformContext';
 import {useSpacedriveClient} from '../../contexts/SpacedriveContext';
@@ -121,6 +122,7 @@ function SpaceGroupWithDropZone({
 const SyncButton = memo(function SyncButton() {
 	const popover = usePopover();
 	const navigate = useNavigate();
+	const {t} = useTranslation('sidebar');
 	const [showActivityFeed, setShowActivityFeed] = useState(false);
 	const {onlinePeerCount, isSyncing} = useSyncCount();
 	const sync = useSyncMonitor();
@@ -162,7 +164,7 @@ const SyncButton = memo(function SyncButton() {
 							<ArrowsClockwise className={className} {...props} />
 						)
 					}
-					title="Sync Monitor"
+					title={t('sync.title')}
 				/>
 			</Popover.Trigger>
 			<Popover.Content
@@ -173,22 +175,22 @@ const SyncButton = memo(function SyncButton() {
 			>
 				<div className="border-app-line flex items-center justify-between border-b px-4 py-3">
 					<h3 className="text-ink text-sm font-semibold">
-						Sync Monitor
+						{t('sync.title')}
 					</h3>
 
 					<div className="flex items-center gap-2">
 						{onlinePeerCount > 0 && (
 							<span className="text-ink-dull text-xs">
-								{onlinePeerCount}{' '}
-								{onlinePeerCount === 1 ? 'peer' : 'peers'}{' '}
-								online
+								{onlinePeerCount === 1
+									? t('sync.peerOnline', {count: onlinePeerCount})
+									: t('sync.peersOnline', {count: onlinePeerCount})}
 							</span>
 						)}
 
 						<CircleButton
 							icon={ArrowsOut}
 							onClick={() => navigate('/sync')}
-							title="Open full sync monitor"
+							title={t('sync.openFullMonitor')}
 						/>
 
 						<CircleButton
@@ -199,8 +201,8 @@ const SyncButton = memo(function SyncButton() {
 							}
 							title={
 								showActivityFeed
-									? 'Show peers'
-									: 'Show activity feed'
+									? t('sync.showPeers')
+									: t('sync.showActivity')
 							}
 						/>
 					</div>
@@ -275,6 +277,7 @@ const JobsButton = memo(
 		navigate: any;
 	}) {
 		const popover = usePopover();
+		const {t} = useTranslation('sidebar');
 		const [showOnlyRunning, setShowOnlyRunning] = useState(true);
 
 		useEffect(() => {
@@ -303,7 +306,7 @@ const JobsButton = memo(
 								<ListBullets className={className} {...props} />
 							)
 						}
-						title="Job Manager"
+						title={t('jobs.title')}
 					/>
 				</Popover.Trigger>
 				<Popover.Content
@@ -314,20 +317,20 @@ const JobsButton = memo(
 				>
 					<div className="border-app-line flex items-center justify-between border-b px-4 py-3">
 						<h3 className="text-ink text-sm font-semibold">
-							Job Manager
+							{t('jobs.title')}
 						</h3>
 
 						<div className="flex items-center gap-2">
 							{activeJobCount > 0 && (
 								<span className="text-ink-dull text-xs">
-									{activeJobCount} active
+									{t('jobs.active', {count: activeJobCount})}
 								</span>
 							)}
 
 							<CircleButton
 								icon={ArrowsOut}
 								onClick={() => navigate('/jobs')}
-								title="Open full jobs screen"
+								title={t('jobs.openFull')}
 							/>
 
 							<CircleButton
@@ -338,8 +341,8 @@ const JobsButton = memo(
 								}
 								title={
 									showOnlyRunning
-										? 'Show all jobs'
-										: 'Show only active jobs'
+										? t('jobs.showAll')
+										: t('jobs.showActive')
 								}
 							/>
 						</div>
@@ -395,6 +398,7 @@ export function SpacesSidebar({isPreviewActive = false}: SpacesSidebarProps) {
 	const client = useSpacedriveClient();
 	const platform = usePlatform();
 	const navigate = useNavigate();
+	const {t} = useTranslation('sidebar');
 	const {data: libraries} = useLibraries();
 	const [currentLibraryId, setCurrentLibraryId] = useState<string | null>(
 		() => client.getCurrentLibraryId()
@@ -558,13 +562,13 @@ export function SpacesSidebar({isPreviewActive = false}: SpacesSidebarProps) {
 							/>
 							<CircleButton
 								icon={Palette}
-								title="Customize"
+								title={t('actions.customize')}
 								onClick={() => setCustomizePanelOpen(true)}
 							/>
 						</div>
 						<CircleButton
 							icon={GearSix}
-							title="Settings"
+							title={t('actions.settings')}
 							onClick={() => {
 								if (platform.showWindow) {
 									platform
