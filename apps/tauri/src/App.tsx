@@ -12,6 +12,7 @@ import {
 	SpacedriveProvider,
 	ServerProvider,
 	JobsProvider,
+	initI18n,
 } from "@sd/interface";
 import {
 	SpacebotProvider,
@@ -39,6 +40,14 @@ import { SpacedropWindow } from "./routes/Spacedrop";
 import { platform } from "./platform";
 import { initializeContextMenuHandler } from "./contextMenu";
 import { initializeKeybindGlobal } from "./keybinds";
+
+// Initialize i18n with localStorage persistence
+initI18n({
+	persistence: {
+		getLanguage: () => localStorage.getItem('sd-language'),
+		setLanguage: (lang) => localStorage.setItem('sd-language', lang),
+	},
+});
 
 function getInitialRoute() {
 	const label = getCurrentWebviewWindow().label;
