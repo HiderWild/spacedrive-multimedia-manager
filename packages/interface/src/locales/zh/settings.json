@@ -1,0 +1,41 @@
+{
+  "general": {
+    "title": "通用",
+    "description": "配置通用应用程序设置。",
+    "language": "语言",
+    "languageDescription": "选择您的首选语言"
+  },
+  "device": {
+    "title": "设备",
+    "name": "设备名称",
+    "nameDescription": "此设备的用户友好名称",
+    "slug": "设备标识",
+    "slugDescription": "此设备的唯一标识符（仅限字母数字和连字符）"
+  },
+  "version": {
+    "title": "版本信息",
+    "version": "版本",
+    "built": "构建时间"
+  },
+  "dataDirectory": {
+    "title": "数据目录",
+    "description": "Spacedrive 存储数据的位置"
+  },
+  "resetData": {
+    "title": "重置所有数据",
+    "description": "永久删除所有资料库和设置",
+    "confirmTitle": "重置所有数据",
+    "confirmMessage": "此操作将永久删除所有资料库、设置和缓存数据。应用程序需要重新启动。确定要继续吗？",
+    "successMessage": "数据已重置。请重新启动应用程序。"
+  },
+  "sidebar": {
+    "general": "通用",
+    "appearance": "外观",
+    "library": "资料库",
+    "indexer": "索引器",
+    "services": "服务",
+    "privacy": "隐私",
+    "advanced": "高级",
+    "about": "关于"
+  }
+}

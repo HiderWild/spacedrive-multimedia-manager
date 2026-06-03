@@ -1,0 +1,9 @@
+{
+  "LOCATION_NOT_FOUND": "Location not found",
+  "LOCATION_ALREADY_EXISTS": "Location already exists",
+  "FILE_NOT_FOUND": "File not found",
+  "LIBRARY_NOT_FOUND": "Library not found",
+  "INSUFFICIENT_PERMISSIONS": "Insufficient permissions",
+  "NETWORK_ERROR": "Network connection failed",
+  "UNKNOWN": "An unknown error occurred"
+}

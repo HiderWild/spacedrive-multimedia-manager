@@ -1,0 +1,23 @@
+{
+  "confirm": {
+    "title": "Confirm",
+    "areYouSure": "Are you sure?"
+  },
+  "delete": {
+    "title": "Delete",
+    "confirmMessage": "Are you sure you want to delete this item?",
+    "confirmMultiple": "Are you sure you want to delete {{count}} items?"
+  },
+  "rename": {
+    "title": "Rename",
+    "newName": "New name",
+    "placeholder": "Enter new name"
+  },
+  "create": {
+    "library": {
+      "title": "Create Library",
+      "nameLabel": "Library Name",
+      "namePlaceholder": "My Library"
+    }
+  }
+}

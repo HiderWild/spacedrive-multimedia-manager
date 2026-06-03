@@ -1,0 +1,30 @@
+{
+  "navigation": {
+    "overview": "Overview",
+    "explorer": "Explorer",
+    "favorites": "Favorites",
+    "recents": "Recents",
+    "fileKinds": "File Kinds",
+    "sources": "Sources",
+    "adapters": "Adapters",
+    "redundancy": "Redundancy",
+    "search": "Search",
+    "spacebot": "Spacebot",
+    "jobs": "Jobs",
+    "daemon": "Daemon",
+    "settings": "Settings",
+    "tags": "Tags"
+  },
+  "library": {
+    "switchLibrary": "Switch Library",
+    "newLibrary": "New Library",
+    "librarySettings": "Library Settings",
+    "noLibraries": "No libraries found"
+  },
+  "sections": {
+    "devices": "Devices",
+    "cloud": "Cloud",
+    "locations": "Locations",
+    "tags": "Tags"
+  }
+}

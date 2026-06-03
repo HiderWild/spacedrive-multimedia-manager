@@ -1,0 +1,9 @@
+{
+  "LOCATION_NOT_FOUND": "未找到位置",
+  "LOCATION_ALREADY_EXISTS": "位置已存在",
+  "FILE_NOT_FOUND": "未找到文件",
+  "LIBRARY_NOT_FOUND": "未找到资料库",
+  "INSUFFICIENT_PERMISSIONS": "权限不足",
+  "NETWORK_ERROR": "网络连接失败",
+  "UNKNOWN": "发生未知错误"
+}

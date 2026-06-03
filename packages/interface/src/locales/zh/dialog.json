@@ -1,0 +1,23 @@
+{
+  "confirm": {
+    "title": "确认",
+    "areYouSure": "确定要执行此操作吗？"
+  },
+  "delete": {
+    "title": "删除",
+    "confirmMessage": "确定要删除此项目吗？",
+    "confirmMultiple": "确定要删除 {{count}} 个项目吗？"
+  },
+  "rename": {
+    "title": "重命名",
+    "newName": "新名称",
+    "placeholder": "请输入新名称"
+  },
+  "create": {
+    "library": {
+      "title": "创建资料库",
+      "nameLabel": "资料库名称",
+      "namePlaceholder": "我的资料库"
+    }
+  }
+}

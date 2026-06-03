@@ -1,0 +1,30 @@
+{
+  "navigation": {
+    "overview": "概览",
+    "explorer": "文件管理",
+    "favorites": "收藏",
+    "recents": "最近",
+    "fileKinds": "文件类型",
+    "sources": "来源",
+    "adapters": "适配器",
+    "redundancy": "冗余",
+    "search": "搜索",
+    "spacebot": "Spacebot",
+    "jobs": "任务",
+    "daemon": "守护进程",
+    "settings": "设置",
+    "tags": "标签"
+  },
+  "library": {
+    "switchLibrary": "切换资料库",
+    "newLibrary": "新建资料库",
+    "librarySettings": "资料库设置",
+    "noLibraries": "未找到资料库"
+  },
+  "sections": {
+    "devices": "设备",
+    "cloud": "云端",
+    "locations": "位置",
+    "tags": "标签"
+  }
+}
