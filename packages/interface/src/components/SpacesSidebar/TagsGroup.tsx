@@ -136,6 +136,7 @@ export function TagsGroup({
 	sortableListeners
 }: TagsGroupProps) {
 	const {t} = useTranslation('sidebar');
+	const {t: tc} = useTranslation('common');
 	const navigate = useNavigate();
 	const {loadPreferencesForSpaceItem} = useExplorer();
 	const [isCreating, setIsCreating] = useState(false);
@@ -214,7 +215,7 @@ export function TagsGroup({
 				<div className="space-y-0.5">
 					{isLoading ? (
 						<div className="text-sidebar-ink-faint px-2 py-1 text-xs">
-							Loading...
+							{tc('status.loading')}
 						</div>
 					) : tags.length === 0 ? (
 						<div className="text-sidebar-ink-faint px-2 py-1 text-xs">

@@ -124,7 +124,8 @@ interface SettingsTranslations {
     "services": "Services",
     "privacy": "Privacy",
     "advanced": "Advanced",
-    "about": "About"
+    "about": "About",
+    "settings": "Settings"
   }
 }
 

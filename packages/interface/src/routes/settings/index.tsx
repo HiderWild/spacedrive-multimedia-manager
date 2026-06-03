@@ -86,6 +86,7 @@ function SettingsContent({ page }: SettingsContentProps) {
 }
 
 function SettingsContentWrapper() {
+  const { t } = useTranslation("settings");
   const pathname = window.location.pathname;
   const initialPage = pathname.split("/").filter(Boolean)[1] || "general";
   const [currentPage, setCurrentPage] = useState(initialPage);
@@ -112,7 +113,7 @@ function SettingsContentWrapper() {
           <h1 className={clsx(
             "text-xl font-semibold transition-colors duration-500",
             currentPage === "about" ? "text-white" : "text-sidebar-ink"
-          )}>Settings</h1>
+          )}>{t("sidebar.settings")}</h1>
         </div>
         <SettingsSidebar
           currentPage={currentPage}

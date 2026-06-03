@@ -20,6 +20,7 @@ export function DevicesGroup({
 	sortableListeners,
 }: DevicesGroupProps) {
 	const { t } = useTranslation('sidebar');
+	const { t: tc } = useTranslation('common');
 	const { navigateToView, loadPreferencesForSpaceItem } = useExplorer();
 
 	// Use normalized query for automatic updates when device events are emitted
@@ -100,7 +101,7 @@ export function DevicesGroup({
 				<div className="space-y-0.5">
 					{isLoading ? (
 						<div className="px-2 py-1 text-xs text-sidebar-ink-faint">
-							Loading...
+							{tc('status.loading')}
 						</div>
 					) : !devices || devices.length === 0 ? (
 						<div className="px-2 py-1 text-xs text-sidebar-ink-faint">
