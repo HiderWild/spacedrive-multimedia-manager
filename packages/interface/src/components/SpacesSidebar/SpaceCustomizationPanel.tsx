@@ -6,8 +6,10 @@ import type { ItemType, SpaceItem as SpaceItemType, GroupType } from "@sd/ts-cli
 import { SpaceItem } from "./SpaceItem";
 import { createPortal } from "react-dom";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLibraryMutation } from "../../contexts/SpacedriveContext";
 import { Input } from "@spacedrive/primitives";
+import { i18n } from "../../i18n";
 
 interface PaletteItem {
 	type: ItemType;
@@ -17,27 +19,27 @@ interface PaletteItem {
 const PALETTE_ITEMS: PaletteItem[] = [
 	{
 		type: "Overview",
-		label: "Overview",
+		label: i18n.t('palette.overview', { ns: 'sidebar' }),
 	},
 	{
 		type: "Recents",
-		label: "Recents",
+		label: i18n.t('palette.recents', { ns: 'sidebar' }),
 	},
 	{
 		type: "Favorites",
-		label: "Favorites",
+		label: i18n.t('palette.favorites', { ns: 'sidebar' }),
 	},
 	{
 		type: "FileKinds",
-		label: "File Kinds",
+		label: i18n.t('palette.fileKinds', { ns: 'sidebar' }),
 	},
 	{
 		type: "Sources",
-		label: "Sources",
+		label: i18n.t('palette.sources', { ns: 'sidebar' }),
 	},
 	{
 		type: "Redundancy",
-		label: "Redundancy",
+		label: i18n.t('palette.redundancy', { ns: 'sidebar' }),
 	},
 ];
 
@@ -89,13 +91,14 @@ interface SpaceCustomizationPanelProps {
 }
 
 function getDefaultGroupName(groupType: GroupType): string {
-	if (groupType === "Devices") return "Devices";
-	if (groupType === "Locations") return "Locations";
-	if (groupType === "Tags") return "Tags";
-	if (groupType === "Cloud") return "Cloud";
-	if (groupType === "Custom") return "Custom Group";
-	if (typeof groupType === "object" && "Device" in groupType) return "Device";
-	return "Group";
+	const t = (key: string) => i18n.t(key, { ns: 'sidebar' });
+	if (groupType === "Devices") return t('customize.allDevices');
+	if (groupType === "Locations") return t('sections.locations');
+	if (groupType === "Tags") return t('sections.tags');
+	if (groupType === "Cloud") return t('customize.cloudStorage');
+	if (groupType === "Custom") return t('customize.customGroup');
+	if (typeof groupType === "object" && "Device" in groupType) return t('customize.device');
+	return t('customize.group');
 }
 
 export function SpaceCustomizationPanel({
@@ -103,6 +106,8 @@ export function SpaceCustomizationPanel({
 	onClose,
 	spaceId,
 }: SpaceCustomizationPanelProps) {
+	const { t } = useTranslation('sidebar');
+	const { t: tc } = useTranslation('common');
 	const [groupType, setGroupType] = useState<GroupType>("Custom");
 	const [groupName, setGroupName] = useState("");
 	const [isAddingGroup, setIsAddingGroup] = useState(false);
@@ -178,10 +183,10 @@ export function SpaceCustomizationPanel({
 							<div className="flex items-center justify-between px-2 py-2 mb-2">
 								<div>
 									<h2 className="text-sm font-semibold text-sidebar-ink">
-										Customize
+										{t('customize.title')}
 									</h2>
 									<p className="text-xs text-sidebar-inkDull mt-0.5">
-										Drag to sidebar
+										{t('customize.dragToSidebar')}
 									</p>
 								</div>
 								<button
@@ -208,7 +213,7 @@ export function SpaceCustomizationPanel({
 								<div className="space-y-2 pt-2 border-t border-sidebar-line/50">
 									<div className="flex items-center justify-between px-2">
 										<span className="text-xs font-semibold text-sidebar-inkDull uppercase tracking-wider">
-											Groups
+											{t('customize.groups')}
 										</span>
 									</div>
 
@@ -218,7 +223,7 @@ export function SpaceCustomizationPanel({
 											className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-inkDull hover:text-sidebar-ink hover:bg-sidebar-selected/30 transition-colors"
 										>
 											<Plus size={16} weight="bold" />
-											<span>Add Group</span>
+											<span>{t('customize.addGroup')}</span>
 										</button>
 									) : (
 										<div className="space-y-2 px-2">
@@ -236,16 +241,16 @@ export function SpaceCustomizationPanel({
 												className="w-full rounded-md border border-sidebar-line bg-sidebar-box px-2 py-1.5 text-xs text-sidebar-ink focus:outline-none focus:ring-1 focus:ring-accent"
 											>
 												<option value="Devices">
-													All Devices
+													{t('customize.allDevices')}
 												</option>
 												<option value="Locations">
-													All Locations
+													{t('customize.allLocations')}
 												</option>
-												<option value="Tags">Tags</option>
+												<option value="Tags">{t('sections.tags')}</option>
 												<option value="Cloud">
-													Cloud Storage
+													{t('customize.cloudStorage')}
 												</option>
-												<option value="Custom">Custom</option>
+												<option value="Custom">{t('customize.custom')}</option>
 											</select>
 
 											{groupType === "Custom" && (
@@ -254,7 +259,7 @@ export function SpaceCustomizationPanel({
 													onChange={(e) =>
 														setGroupName(e.target.value)
 													}
-													placeholder="Group name"
+													placeholder={t('customize.groupName')}
 													className="text-xs"
 													onKeyDown={(e) => {
 														if (e.key === "Enter") {
@@ -273,7 +278,7 @@ export function SpaceCustomizationPanel({
 													onClick={handleAddGroup}
 													className="flex-1 px-2 py-1 rounded-md bg-accent text-white text-xs font-medium hover:bg-accent/90 transition-colors"
 												>
-													Add
+													{t('customize.add')}
 												</button>
 												<button
 													onClick={() => {
@@ -283,7 +288,7 @@ export function SpaceCustomizationPanel({
 													}}
 													className="px-2 py-1 rounded-md text-xs font-medium text-sidebar-inkDull hover:bg-sidebar-selected/30 transition-colors"
 												>
-													Cancel
+													{tc('cancel')}
 												</button>
 											</div>
 										</div>
@@ -294,7 +299,7 @@ export function SpaceCustomizationPanel({
 							{/* Footer */}
 							<div className="px-2 py-2 mt-2 border-t border-sidebar-line/50">
 								<p className="text-xs text-sidebar-inkFaint text-center">
-									Drag items to your space
+									{t('customize.dragItems')}
 								</p>
 							</div>
 						</div>
