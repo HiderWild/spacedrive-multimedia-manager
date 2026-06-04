@@ -1,9 +1,11 @@
 import { FunnelSimple, X } from "@phosphor-icons/react";
 import clsx from "clsx";
+import { useTranslation } from 'react-i18next';
 import { useExplorer } from "./context";
 import type { SearchScope } from "./context";
 
 export function SearchToolbar() {
+	const { t } = useTranslation('explorer');
 	const explorer = useExplorer();
 
 	if (explorer.mode.type !== "search") {
@@ -22,26 +24,26 @@ export function SearchToolbar() {
 		<div className="flex items-center gap-3 px-4 py-2 border-b border-sidebar-line/30 bg-sidebar-box/10">
 			<div className="flex items-center gap-2">
 				<span className="text-xs font-medium text-sidebar-inkDull">
-					Search in:
+					{t('search.searchIn')}
 				</span>
 				<div className="flex items-center gap-1 rounded-lg bg-sidebar-box/30 p-0.5">
 					<ScopeButton
 						active={scope === "folder"}
 						onClick={() => handleScopeChange("folder")}
 					>
-						This Folder
+						{t('search.thisFolder')}
 					</ScopeButton>
 					<ScopeButton
 						active={scope === "location"}
 						onClick={() => handleScopeChange("location")}
 					>
-						Location
+						{t('search.location')}
 					</ScopeButton>
 					<ScopeButton
 						active={scope === "library"}
 						onClick={() => handleScopeChange("library")}
 					>
-						Library
+						{t('search.library')}
 					</ScopeButton>
 				</div>
 			</div>
@@ -56,7 +58,7 @@ export function SearchToolbar() {
 				)}
 			>
 				<FunnelSimple className="size-3.5" weight="bold" />
-				Filters
+				{t('search.filters')}
 			</button>
 
 			<div className="flex-1" />
@@ -70,7 +72,7 @@ export function SearchToolbar() {
 				)}
 			>
 				<X className="size-3.5" weight="bold" />
-				Clear Search
+				{t('search.clearSearch')}
 			</button>
 		</div>
 	);

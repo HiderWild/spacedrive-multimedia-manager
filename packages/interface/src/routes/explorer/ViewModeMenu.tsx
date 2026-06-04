@@ -11,8 +11,10 @@ import {
 } from '@phosphor-icons/react';
 import {CircleButton} from '@spacedrive/primitives';
 import clsx from 'clsx';
+import {i18n} from '../../../i18n';
 import {AnimatePresence, motion} from 'framer-motion';
 import {useEffect, useRef, useState} from 'react';
+import {useTranslation} from 'react-i18next';
 import {createPortal} from 'react-dom';
 
 type ViewMode = 'list' | 'grid' | 'column' | 'media' | 'masonry' | 'size' | 'knowledge';
@@ -28,49 +30,49 @@ interface ViewOption {
 const viewOptions: ViewOption[] = [
 	{
 		id: 'grid',
-		label: 'Grid',
+		label: i18n.t('viewModes.grid', { ns: 'explorer' }),
 		icon: GridFour,
 		color: 'bg-accent',
 		keybind: '⌘1'
 	},
 	{
 		id: 'list',
-		label: 'List',
+		label: i18n.t('viewModes.list', { ns: 'explorer' }),
 		icon: Rows,
 		color: 'bg-purple-500',
 		keybind: '⌘2'
 	},
 	{
 		id: 'media',
-		label: 'Media',
+		label: i18n.t('viewModes.media', { ns: 'explorer' }),
 		icon: Camera,
 		color: 'bg-pink-500',
 		keybind: '⌘3'
 	},
 	{
 		id: 'masonry',
-		label: 'Masonry',
+		label: i18n.t('viewModes.masonry', { ns: 'explorer' }),
 		icon: SquareHalf,
 		color: 'bg-teal-500',
 		keybind: '⌘7'
 	},
 	{
 		id: 'column',
-		label: 'Column',
+		label: i18n.t('viewModes.column', { ns: 'explorer' }),
 		icon: Columns,
 		color: 'bg-orange-500',
 		keybind: '⌘4'
 	},
 	{
 		id: 'size',
-		label: 'Size',
+		label: i18n.t('viewModes.size', { ns: 'explorer' }),
 		icon: ChartPieSlice,
 		color: 'bg-green-500',
 		keybind: '⌘5'
 	},
 	{
 		id: 'knowledge',
-		label: 'Knowledge',
+		label: i18n.t('viewModes.knowledge', { ns: 'explorer' }),
 		icon: Sparkle,
 		color: 'bg-purple-500',
 		keybind: '⌘6'
@@ -145,6 +147,7 @@ interface ViewModeMenuProps {
 }
 
 export function ViewModeMenu({viewMode, onViewModeChange}: ViewModeMenuProps) {
+	const {t} = useTranslation('explorer');
 	const [isOpen, setIsOpen] = useState(false);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
@@ -187,7 +190,7 @@ export function ViewModeMenu({viewMode, onViewModeChange}: ViewModeMenuProps) {
 				onClick={() => setIsOpen(!isOpen)}
 				active={isOpen}
 			>
-				Views
+				{t('topBar.views')}
 			</CircleButton>
 
 			{isOpen &&

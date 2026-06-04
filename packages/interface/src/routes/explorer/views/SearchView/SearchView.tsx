@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useExplorer } from '../../context';
 import { GridView } from '../GridView';
 import { ListView } from '../ListView';
@@ -22,6 +23,7 @@ import { KnowledgeView } from '../KnowledgeView';
  * - All other explorer features
  */
 export function SearchView() {
+	const { t } = useTranslation('explorer');
 	const explorer = useExplorer();
 	const { viewMode, mode } = explorer;
 
@@ -35,7 +37,7 @@ export function SearchView() {
 		return (
 			<div className="flex h-full flex-col items-center justify-center p-8 text-center">
 				<p className="text-ink-dull text-sm">
-					Type at least 2 characters to search
+					{t('search.minChars')}
 				</p>
 			</div>
 		);
@@ -62,7 +64,7 @@ export function SearchView() {
 			return (
 				<div className="flex h-full flex-col items-center justify-center p-8 text-center">
 					<p className="text-ink-dull text-sm">
-						Search in {viewMode} view coming soon
+						{t('search.comingSoon', { viewMode })}
 					</p>
 				</div>
 			);

@@ -11,6 +11,7 @@ import {
 import {CircleButton, CircleButtonGroup} from '@spacedrive/primitives';
 import {getContentKind} from '@sd/ts-client';
 import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useTranslation} from 'react-i18next';
 import {TopBarItem, TopBarPortal} from '../../TopBar';
 import {ExpandableSearchButton} from './components/ExpandableSearchButton';
 import {PathBar} from './components/PathBar';
@@ -28,6 +29,7 @@ import {WanderOverlay} from './wander';
 import {openTranscodeDialog} from './transcode';
 
 export function ExplorerView() {
+	const {t} = useTranslation('explorer');
 	const {
 		sidebarVisible,
 		setSidebarVisible,
@@ -201,7 +203,7 @@ export function ExplorerView() {
 						<>
 							<TopBarItem
 								id="sidebar-toggle"
-								label="Sidebar"
+								label={t('topBar.sidebar')}
 								priority="normal"
 								onClick={() =>
 									setSidebarVisible(!sidebarVisible)
@@ -217,7 +219,7 @@ export function ExplorerView() {
 							</TopBarItem>
 							<TopBarItem
 								id="navigation"
-								label="Navigation"
+								label={t('topBar.navigation')}
 								priority="high"
 							>
 								<CircleButtonGroup>
@@ -236,7 +238,7 @@ export function ExplorerView() {
 							{pathBarPath && (
 								<TopBarItem
 									id="path-bar"
-									label="Path"
+									label={t('topBar.path')}
 									priority="high"
 								>
 									<PathBar
@@ -249,7 +251,7 @@ export function ExplorerView() {
 							{currentView && (
 								<TopBarItem
 									id="virtual-path-bar"
-									label="Path"
+									label={t('topBar.path')}
 									priority="high"
 								>
 									<VirtualPathBar
@@ -264,14 +266,14 @@ export function ExplorerView() {
 						<>
 							<TopBarItem
 								id="search"
-								label="Search"
+								label={t('topBar.search')}
 								priority="high"
 							>
 								<ExpandableSearchButton
 									placeholder={
 										currentPath
-											? 'Search in current folder...'
-											: 'Search...'
+											? t('search.searchInFolder')
+											: t('search.placeholder')
 									}
 									value={searchValue}
 									onChange={handleSearchChange}
@@ -280,7 +282,7 @@ export function ExplorerView() {
 							</TopBarItem>
 							<TopBarItem
 								id="tag-mode"
-								label="Tags"
+								label={t('topBar.tags')}
 								priority="low"
 								onClick={() => setTagModeActive(!tagModeActive)}
 							>
@@ -294,7 +296,7 @@ export function ExplorerView() {
 							</TopBarItem>
 							<TopBarItem
 								id="wander"
-								label="Wander"
+								label={t('topBar.wander')}
 								priority="low"
 								onClick={() =>
 									canWander && setWanderOpen(true)
@@ -310,7 +312,7 @@ export function ExplorerView() {
 							</TopBarItem>
 							<TopBarItem
 								id="view-mode"
-								label="Views"
+								label={t('topBar.views')}
 								priority="normal"
 								submenuContent={viewModeSubmenu}
 							>
@@ -321,7 +323,7 @@ export function ExplorerView() {
 							</TopBarItem>
 							<TopBarItem
 								id="view-settings"
-								label="View Settings"
+								label={t('topBar.viewSettings')}
 								priority="low"
 								submenuContent={viewSettingsSubmenu}
 							>
@@ -331,7 +333,7 @@ export function ExplorerView() {
 							</TopBarItem>
 							<TopBarItem
 								id="sort"
-								label="Sort"
+								label={t('topBar.sort')}
 								priority="low"
 								submenuContent={sortSubmenu}
 							>
@@ -343,7 +345,7 @@ export function ExplorerView() {
 							</TopBarItem>
 							<TopBarItem
 								id="split-pane"
-								label="Split"
+								label={t('topBar.split')}
 								priority="low"
 								onClick={handleSplit}
 							>
@@ -354,7 +356,7 @@ export function ExplorerView() {
 							</TopBarItem>
 							<TopBarItem
 								id="transcode"
-								label="Transcode"
+								label={t('topBar.transcode')}
 								priority="low"
 								onClick={() =>
 									canTranscode &&
@@ -372,7 +374,7 @@ export function ExplorerView() {
 							</TopBarItem>
 							<TopBarItem
 								id="inspector-toggle"
-								label="Inspector"
+								label={t('topBar.inspector')}
 								priority="high"
 								onClick={() =>
 									setInspectorVisible(!inspectorVisible)

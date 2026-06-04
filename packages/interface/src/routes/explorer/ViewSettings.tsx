@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Sliders } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
+import { useTranslation } from 'react-i18next';
 import { useExplorer } from "./context";
 import { CircleButton } from "@spacedrive/primitives";
 
@@ -19,10 +20,12 @@ export function ViewSettingsPanel({
 	viewMode,
 	totalFileCount,
 }: ViewSettingsPanelProps) {
+	const { t } = useTranslation('explorer');
+
 	return (
 		<div className="w-64 bg-app-box border border-app-line rounded-lg shadow-lg p-3 space-y-4">
 			<div className="text-xs font-semibold text-sidebar-ink uppercase tracking-wider">
-				View Settings
+				{t('viewSettings.title')}
 			</div>
 
 			{/* Column Width (Column View Only) */}
@@ -30,7 +33,7 @@ export function ViewSettingsPanel({
 				<div className="space-y-2">
 					<div className="flex items-center justify-between">
 						<label className="text-xs text-sidebar-inkDull">
-							Column Width
+							{t('viewSettings.columnWidth')}
 						</label>
 						<span className="text-xs text-sidebar-ink font-medium">
 							{viewSettings.columnWidth}px
@@ -57,7 +60,7 @@ export function ViewSettingsPanel({
 				<div className="space-y-2">
 					<div className="flex items-center justify-between">
 						<label className="text-xs text-sidebar-inkDull">
-							{viewMode === "media" ? "Thumbnail Size" : "Grid Size"}
+							{viewMode === "media" ? t('viewSettings.thumbnailSize') : t('viewSettings.gridSize')}
 						</label>
 						<span className="text-xs text-sidebar-ink font-medium">
 							{viewSettings.gridSize}px
@@ -83,7 +86,7 @@ export function ViewSettingsPanel({
 			{viewMode === "grid" && (
 				<div className="space-y-2">
 					<div className="flex items-center justify-between">
-						<label className="text-xs text-sidebar-inkDull">Gap Size</label>
+						<label className="text-xs text-sidebar-inkDull">{t('viewSettings.gapSize')}</label>
 						<span className="text-xs text-sidebar-ink font-medium">
 							{viewSettings.gapSize}px
 						</span>
@@ -108,7 +111,7 @@ export function ViewSettingsPanel({
 			{viewMode === "size" && (
 				<div className="space-y-2">
 					<div className="flex items-center justify-between">
-						<label className="text-xs text-sidebar-inkDull">Items Shown</label>
+						<label className="text-xs text-sidebar-inkDull">{t('viewSettings.itemsShown')}</label>
 						<span className="text-xs text-sidebar-ink font-medium">
 							{Math.min(viewSettings.sizeViewItemLimit || 500, totalFileCount || 500)} / {totalFileCount || 0}
 						</span>
@@ -131,7 +134,7 @@ export function ViewSettingsPanel({
 
 			{/* Show File Size Toggle */}
 			<div className="flex items-center justify-between pt-1">
-				<label className="text-xs text-sidebar-inkDull">Show File Size</label>
+				<label className="text-xs text-sidebar-inkDull">{t('viewSettings.showFileSize')}</label>
 				<button
 					onClick={() =>
 						setViewSettings({ showFileSize: !viewSettings.showFileSize })
@@ -153,7 +156,7 @@ export function ViewSettingsPanel({
 
 			{/* Folders First Toggle */}
 			<div className="flex items-center justify-between pt-1">
-				<label className="text-xs text-sidebar-inkDull">Folders First</label>
+				<label className="text-xs text-sidebar-inkDull">{t('viewSettings.foldersFirst')}</label>
 				<button
 					onClick={() =>
 						setViewSettings({ foldersFirst: !viewSettings.foldersFirst })
@@ -225,7 +228,7 @@ export function ViewSettings({ className, totalFileCount }: ViewSettingsProps) {
           icon={Sliders}
           onClick={() => setIsOpen(!isOpen)}
           active={isOpen}
-          title="View Settings"
+          title={t('viewSettings.title')}
         />
       </div>
 

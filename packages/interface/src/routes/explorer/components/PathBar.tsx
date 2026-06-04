@@ -16,6 +16,7 @@ import {Button, CircleButton, Popover, usePopover} from '@spacedrive/primitives'
 import clsx from 'clsx';
 import {motion} from 'framer-motion';
 import {useEffect, useState} from 'react';
+import {useTranslation} from 'react-i18next';
 import {useExplorer} from '../context';
 import {useSelection} from '../SelectionContext';
 import {sdPathToUri} from '../utils';
@@ -109,6 +110,7 @@ function parsePathSegments(sdPath: SdPath): PathSegment[] {
 }
 
 function IndexIndicator({path}: {path: SdPath}) {
+	const {t} = useTranslation('explorer');
 	const popover = usePopover();
 	const enableIndexing = useLibraryMutation('locations.enable_indexing');
 	const {clearSelection} = useSelection();
@@ -161,7 +163,7 @@ function IndexIndicator({path}: {path: SdPath}) {
 					icon={isIndexed ? CircleIcon : CircleDashedIcon}
 					active={!isIndexed}
 					className={isIndexed ? '!text-accent' : undefined}
-					title={isIndexed ? 'Location is indexed' : 'Not indexed'}
+					title={isIndexed ? t('pathBar.indexed') : t('pathBar.notIndexed')}
 				/>
 			</Popover.Trigger>
 			<Popover.Content>
@@ -196,7 +198,7 @@ function IndexIndicator({path}: {path: SdPath}) {
 										className="text-ink hover:bg-app-hover flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
 									>
 										<Eye size={16} />
-										Enable Indexing
+										{t('pathBar.enableIndexing')}
 									</button>
 								)}
 								<button
@@ -208,7 +210,7 @@ function IndexIndicator({path}: {path: SdPath}) {
 									className="text-ink hover:bg-app-hover flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
 								>
 									<Folder size={16} />
-									Open Location Inspector
+									{t('pathBar.openInspector')}
 								</button>
 							</div>
 						</>
@@ -216,7 +218,7 @@ function IndexIndicator({path}: {path: SdPath}) {
 						<div>
 							<div className="px-2 py-1.5">
 								<div className="text-ink-dull mb-2 text-xs">
-									Path is outside any location
+									{t('pathBar.outsideLocation')}
 								</div>
 								<Button
 									size="sm"
@@ -233,7 +235,7 @@ function IndexIndicator({path}: {path: SdPath}) {
 										popover.setOpen(false);
 									}}
 								>
-									Add Location
+									{t('pathBar.addLocation')}
 								</Button>
 							</div>
 						</div>
@@ -245,6 +247,7 @@ function IndexIndicator({path}: {path: SdPath}) {
 }
 
 export function PathBar({path, devices, onNavigate}: PathBarProps) {
+	const {t} = useTranslation('explorer');
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [isShiftHeld, setIsShiftHeld] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);
@@ -445,8 +448,8 @@ export function PathBar({path, devices, onNavigate}: PathBarProps) {
 						)}
 						placeholder={
 							editingAsUri
-								? 'Enter SdPath JSON...'
-								: 'Enter path...'
+								? t('pathBar.enterSdPath')
+								: t('pathBar.enterPath')
 						}
 					/>
 				) : showUri ? (
@@ -461,7 +464,7 @@ export function PathBar({path, devices, onNavigate}: PathBarProps) {
 							'cursor-text select-all',
 							'focus:outline-none focus:ring-0'
 						)}
-						placeholder="No path selected"
+						placeholder={t('pathBar.noPath')}
 					/>
 				) : isExpanded ? (
 					<div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
@@ -521,7 +524,7 @@ export function PathBar({path, devices, onNavigate}: PathBarProps) {
 							'cursor-text select-all',
 							'focus:outline-none focus:ring-0'
 						)}
-						placeholder="No path selected"
+						placeholder={t('pathBar.noPath')}
 					/>
 				)}
 			</motion.div>

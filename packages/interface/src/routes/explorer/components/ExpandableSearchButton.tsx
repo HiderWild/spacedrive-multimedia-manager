@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { CircleButton, SearchBar } from "@spacedrive/primitives";
+import { useTranslation } from 'react-i18next';
 
 interface ExpandableSearchButtonProps {
 	value: string;
@@ -14,8 +15,10 @@ export function ExpandableSearchButton({
 	value,
 	onChange,
 	onClear,
-	placeholder = "Search...",
+	placeholder,
 }: ExpandableSearchButtonProps) {
+	const { t } = useTranslation('explorer');
+	const resolvedPlaceholder = placeholder ?? t('search.placeholder');
 	const [isExpanded, setIsExpanded] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -101,7 +104,7 @@ export function ExpandableSearchButton({
 								value={value}
 								onChange={onChange}
 								onClear={onClear}
-								placeholder={placeholder}
+								placeholder={resolvedPlaceholder}
 								className="w-64"
 								onBlur={handleBlur}
 								autoFocus
