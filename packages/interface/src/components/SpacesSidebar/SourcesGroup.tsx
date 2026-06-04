@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { Database } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { useLibraryQuery } from "../../contexts/SpacedriveContext";
 import { useAdapterIcons } from "../../hooks/useAdapterIcons";
 import { GroupHeader } from "./GroupHeader";
@@ -19,6 +20,7 @@ export function SourcesGroup({
 }: SourcesGroupProps) {
 	const navigate = useNavigate();
 	const location = useLocation();
+	const { t } = useTranslation('sidebar');
 	const { getIcon } = useAdapterIcons();
 
 	const { data: sources } = useLibraryQuery({
@@ -31,7 +33,7 @@ export function SourcesGroup({
 	return (
 		<div>
 			<GroupHeader
-				label="Sources"
+				label={t('sources.title')}
 				isCollapsed={isCollapsed}
 				onToggle={onToggle}
 				sortableAttributes={sortableAttributes}

@@ -1,6 +1,7 @@
 import {EyeSlash} from '@phosphor-icons/react';
 import {getVolumeIcon, useNormalizedQuery} from '@sd/ts-client';
 import type {Device, Volume} from '@sd/ts-client';
+import {useTranslation} from 'react-i18next';
 import {GroupHeader} from './GroupHeader';
 import {SpaceItem} from './SpaceItem';
 import {useVolumeContextMenu} from './hooks/useVolumeContextMenu';
@@ -69,6 +70,8 @@ export function VolumesGroup({
 	sortableAttributes,
 	sortableListeners
 }: VolumesGroupProps) {
+	const {t} = useTranslation('sidebar');
+
 	const {data: volumesData} = useNormalizedQuery({
 		query: 'volumes.list',
 		input: {filter},
@@ -87,7 +90,7 @@ export function VolumesGroup({
 	return (
 		<div>
 			<GroupHeader
-				label="Volumes"
+				label={t('volumes.title')}
 				isCollapsed={isCollapsed}
 				onToggle={onToggle}
 				sortableAttributes={sortableAttributes}
@@ -99,7 +102,7 @@ export function VolumesGroup({
 				<div className="space-y-0.5">
 					{volumes.length === 0 ? (
 						<div className="text-ink-faint px-2 py-1 text-xs">
-							No volumes
+							{t('volumes.noVolumes')}
 						</div>
 					) : (
 						volumes.map((volume: Volume, index: number) => (
