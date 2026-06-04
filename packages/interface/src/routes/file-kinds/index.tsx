@@ -1,6 +1,7 @@
 import { useNormalizedQuery } from "../../contexts/SpacedriveContext";
 import type { ContentKind } from "@sd/ts-client";
 import { getIcon } from "@sd/assets/util";
+import { useTranslation } from 'react-i18next';
 
 interface ContentKindStat {
 	kind: ContentKind;
@@ -62,6 +63,7 @@ function formatFileCount(count: number): string {
  * Shows content kinds (images, videos, audio, etc.) with file counts
  */
 export function FileKindsView() {
+	const { t } = useTranslation('settings');
 	// Fetch content kind statistics
 	const { data: statsData, isLoading } = useNormalizedQuery<
 		Record<string, never>,
@@ -80,7 +82,7 @@ export function FileKindsView() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center h-full">
-				<span className="text-ink-dull">Loading file kinds...</span>
+				<span className="text-ink-dull">{t('fileKinds.loading')}</span>
 			</div>
 		);
 	}
@@ -98,17 +100,17 @@ export function FileKindsView() {
 				<div className="flex items-center justify-between">
 					<div>
 						<h1 className="text-2xl font-bold text-ink">
-							File Kinds
+							{t('fileKinds.title')}
 						</h1>
 						<p className="text-sm text-ink-dull mt-1">
-							Browse your files by content type
+							{t('fileKinds.subtitle')}
 						</p>
 					</div>
 					<div className="text-right">
 						<div className="text-2xl font-bold text-ink">
 							{formatFileCount(totalFiles)}
 						</div>
-						<div className="text-xs text-ink-dull">Total Files</div>
+						<div className="text-xs text-ink-dull">{t('fileKinds.totalFiles')}</div>
 					</div>
 				</div>
 			</div>
@@ -154,8 +156,8 @@ export function FileKindsView() {
 											Number(stat.file_count),
 										)}{" "}
 										{Number(stat.file_count) === 1
-											? "file"
-											: "files"}
+											? t('fileKinds.file')
+											: t('fileKinds.files')}
 									</div>
 								</div>
 							</button>

@@ -6,8 +6,10 @@ import { SourceCard } from "../../components/Sources/SourceCard";
 import { TopBarPortal, TopBarItem } from "../../TopBar";
 import { CircleButton } from "@spacedrive/primitives";
 import { SearchBar } from "@spacedrive/primitives";
+import { useTranslation } from 'react-i18next';
 
 export function SourcesHome() {
+	const { t } = useTranslation('settings');
 	const navigate = useNavigate();
 	const { createTab } = useTabManager();
 	const { data: sourcesRaw, isLoading, error } = useLibraryQuery({
@@ -29,7 +31,7 @@ export function SourcesHome() {
 						</TopBarItem>
 						<TopBarItem id="title" label="Title" priority="high">
 							<h1 className="text-ink text-xl font-bold">
-								Sources
+								{t('sources.title')}
 							</h1>
 						</TopBarItem>
 					</>
@@ -38,7 +40,7 @@ export function SourcesHome() {
 					<>
 						<TopBarItem id="search" label="Search" priority="high">
 								<SearchBar
-								placeholder="Search sources..."
+								placeholder={t('sources.searchPlaceholder')}
 								value=""
 								onChange={() => {}}
 								onClear={() => {}}
@@ -49,7 +51,7 @@ export function SourcesHome() {
 							<CircleButton
 								icon={Plus}
 								onClick={() => createTab("Adapters", "/sources/adapters")}
-								title="Add Source"
+								title={t('sources.addSource')}
 							/>
 						</TopBarItem>
 					</>
@@ -59,29 +61,29 @@ export function SourcesHome() {
 
 			{isLoading && (
 				<div className="flex items-center justify-center py-20">
-					<div className="text-ink-faint text-sm">Loading...</div>
+					<div className="text-ink-faint text-sm">{t('sources.loading')}</div>
 				</div>
 			)}
 
 			{error && (
 				<div className="border-red-400/20 rounded-lg border p-4">
 					<p className="text-sm text-red-400">
-						Failed to load sources: {String(error)}
+						{t('sources.loadError', { error: String(error) })}
 					</p>
 				</div>
 			)}
 
 			{sources && sources.length === 0 && (
 				<div className="flex flex-col items-center justify-center py-20">
-					<p className="text-ink-dull text-sm">No sources yet</p>
+					<p className="text-ink-dull text-sm">{t('sources.noSources')}</p>
 					<p className="text-ink-faint mt-1 text-xs">
-						Add a data source to get started
+						{t('sources.noSourcesDescription')}
 					</p>
 					<button
 						onClick={() => createTab("Adapters", "/sources/adapters")}
 						className="bg-accent hover:bg-accent-deep mt-4 rounded-lg px-3.5 py-1.5 text-sm font-medium text-white transition-colors"
 					>
-						Add Source
+						{t('sources.addSource')}
 					</button>
 				</div>
 			)}

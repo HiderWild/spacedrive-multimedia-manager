@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import {useMemo} from 'react';
 import type {Tab} from '.';
 import {useTabManager} from './useTabManager';
+import { useTranslation } from 'react-i18next';
 
 interface SortableTabProps {
 	tab: Tab;
@@ -57,6 +58,7 @@ function SortableTab({tab, isActive, onSwitch, onClose}: SortableTabProps) {
 
 export function TabBar() {
 	const {tabs, activeTabId, switchTab, closeTab, createTab} = useTabManager();
+	const { t } = useTranslation('explorer');
 
 	// Ensure activeTabId exists in tabs array, fallback to first tab
 	// Memoize to prevent unnecessary rerenders during rapid state updates
@@ -75,7 +77,7 @@ export function TabBar() {
 				<button
 					onClick={() => createTab()}
 					className="hover:bg-app-hover text-ink-dull hover:text-ink flex size-7 shrink-0 items-center justify-center rounded-full transition-colors"
-					title="New tab (⌘T)"
+					title={t('topBar.newTab')}
 				>
 					<Plus size={14} weight="bold" />
 				</button>

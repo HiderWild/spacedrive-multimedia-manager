@@ -19,6 +19,7 @@ import {
 	TabsTrigger,
 	TabsContent,
 } from "@spacedrive/primitives";
+import { useTranslation } from 'react-i18next';
 import type {
 	IndexMode,
 	LocationAddInput,
@@ -378,6 +379,7 @@ function AddStorageDialog(props: {
 	initialPath?: string;
 }) {
 	const dialog = useDialog(props);
+	const { t } = useTranslation('explorer');
 	const platform = usePlatform();
 
 	// Derive initial folder name from path
@@ -880,11 +882,9 @@ function AddStorageDialog(props: {
 			>
 				<div className="space-y-3">
 					<div className="rounded-lg bg-accent/10 border border-accent/20 p-4 text-sm text-ink">
-						<strong>Coming Soon</strong>
+						<strong>{t('comingSoon.title')}</strong>
 						<p className="mt-1 text-ink-dull">
-							Network protocol support (SMB, NFS, SFTP, WebDAV) is
-							currently in development. Check back in a future
-							update!
+							{t('comingSoon.networkProtocol')}
 						</p>
 					</div>
 					<div className="grid grid-cols-2 gap-3 opacity-50 pointer-events-none">
