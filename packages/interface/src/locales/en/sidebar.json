@@ -62,5 +62,61 @@
   "actions": {
     "customize": "Customize",
     "settings": "Settings"
+  },
+  "space": {
+    "selectSpace": "Select Space",
+    "newSpace": "New Space",
+    "spaceSettings": "Space Settings",
+    "createSpace": "Create Space",
+    "spaceName": "Space Name",
+    "spaceNamePlaceholder": "e.g., Work Files, Personal Photos",
+    "color": "Color",
+    "icon": "Icon"
+  },
+  "customize": {
+    "title": "Customize",
+    "dragToSidebar": "Drag to sidebar",
+    "groups": "Groups",
+    "addGroup": "Add Group",
+    "allDevices": "All Devices",
+    "allLocations": "All Locations",
+    "cloudStorage": "Cloud Storage",
+    "custom": "Custom",
+    "customGroup": "Custom Group",
+    "groupName": "Group name",
+    "groupNamePlaceholder": "Enter group name",
+    "groupType": "Group Type",
+    "dragItems": "Drag items to your space",
+    "device": "Device",
+    "group": "Group",
+    "add": "Add"
+  },
+  "volumes": {
+    "title": "Volumes",
+    "noVolumes": "No volumes"
+  },
+  "sources": {
+    "title": "Sources"
+  },
+  "palette": {
+    "overview": "Overview",
+    "recents": "Recents",
+    "favorites": "Favorites",
+    "fileKinds": "File Kinds",
+    "sources": "Sources",
+    "redundancy": "Redundancy"
+  },
+  "fallbacks": {
+    "unnamedLocation": "Unnamed Location",
+    "unnamedVolume": "Unnamed Volume",
+    "unnamedTag": "Unnamed Tag",
+    "path": "Path",
+    "source": "Source",
+    "unknown": "Unknown",
+    "spacedrive": "Spacedrive",
+    "thisDevice": "This Device",
+    "tag": "Tag",
+    "tagShort": "Tag: {{id}}...",
+    "explorer": "Explorer"
   }
 }

@@ -38,5 +38,37 @@
     "advanced": "高级",
     "about": "关于",
     "settings": "设置"
+  },
+  "fileKinds": {
+    "title": "文件类型",
+    "subtitle": "按内容类型浏览文件",
+    "totalFiles": "总文件数",
+    "file": "个文件",
+    "files": "个文件",
+    "loading": "加载文件类型..."
+  },
+  "sources": {
+    "title": "来源",
+    "searchPlaceholder": "搜索来源...",
+    "loading": "加载中...",
+    "loadError": "加载来源失败：{{error}}",
+    "noSources": "暂无来源",
+    "noSourcesDescription": "添加数据源以开始使用",
+    "addSource": "添加来源"
+  },
+  "redundancy": {
+    "title": "冗余",
+    "loading": "加载冗余数据...",
+    "replicationScore": "复制分数",
+    "safelyReplicated": "安全复制",
+    "atRisk": "有风险（单副本）",
+    "uniqueContent": "唯一内容总计",
+    "filesAtRisk": "{{count}} 个文件有风险",
+    "oneVolumeData": "数据仅存在于一个卷上",
+    "perVolumeBreakdown": "各卷明细",
+    "noVolumes": "未找到已索引内容的卷。",
+    "indexVolumeHint": "索引一个卷以查看冗余数据。",
+    "compareVolumes": "比较卷",
+    "viewAtRiskFiles": "查看风险文件"
   }
 }

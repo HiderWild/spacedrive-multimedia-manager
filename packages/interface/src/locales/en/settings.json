@@ -38,5 +38,37 @@
     "advanced": "Advanced",
     "about": "About",
     "settings": "Settings"
+  },
+  "fileKinds": {
+    "title": "File Kinds",
+    "subtitle": "Browse your files by content type",
+    "totalFiles": "Total Files",
+    "file": "file",
+    "files": "files",
+    "loading": "Loading file kinds..."
+  },
+  "sources": {
+    "title": "Sources",
+    "searchPlaceholder": "Search sources...",
+    "loading": "Loading...",
+    "loadError": "Failed to load sources: {{error}}",
+    "noSources": "No sources yet",
+    "noSourcesDescription": "Add a data source to get started",
+    "addSource": "Add Source"
+  },
+  "redundancy": {
+    "title": "Redundancy",
+    "loading": "Loading redundancy data...",
+    "replicationScore": "Replication Score",
+    "safelyReplicated": "safely replicated",
+    "atRisk": "at risk (single copy)",
+    "uniqueContent": "unique content total",
+    "filesAtRisk": "{{count}} files at risk",
+    "oneVolumeData": "of data exists on only one volume",
+    "perVolumeBreakdown": "Per-Volume Breakdown",
+    "noVolumes": "No volumes with indexed content found.",
+    "indexVolumeHint": "Index a volume to see redundancy data.",
+    "compareVolumes": "Compare Volumes",
+    "viewAtRiskFiles": "View At-Risk Files"
   }
 }

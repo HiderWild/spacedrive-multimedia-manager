@@ -1,0 +1,35 @@
+{
+  "title": "概览",
+  "selectLibrary": "选择资料库",
+  "newLibrary": "新建资料库",
+  "librarySettings": "资料库设置",
+  "pairDevice": "配对设备",
+  "setupSync": "设置同步",
+  "refresh": "刷新",
+  "refreshStatistics": "刷新统计",
+  "addStorage": "添加存储",
+  "stats": {
+    "totalStorage": "总存储",
+    "used": "已使用",
+    "filesIndexed": "已索引文件",
+    "uniqueFiles": "唯一文件",
+    "connectedDevices": "已连接设备",
+    "registeredInLibrary": "在资料库中注册",
+    "aiComputePower": "AI 算力",
+    "librarySize": "资料库大小",
+    "databaseOnDisk": "磁盘数据库",
+    "sidecarStorage": "附属存储",
+    "filesGenerated": "生成的文件",
+    "locations": "位置",
+    "indexedFolders": "已索引文件夹",
+    "tags": "标签",
+    "organizationLabels": "组织标签"
+  },
+  "topsRank": {
+    "extreme": "极高",
+    "veryHigh": "非常高",
+    "high": "高",
+    "moderate": "中等",
+    "low": "低"
+  }
+}

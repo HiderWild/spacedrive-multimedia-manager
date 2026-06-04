@@ -1,0 +1,77 @@
+{
+  "topBar": {
+    "sidebar": "Sidebar",
+    "navigation": "Navigation",
+    "path": "Path",
+    "search": "Search",
+    "tags": "Tags",
+    "wander": "Wander",
+    "views": "Views",
+    "viewSettings": "View Settings",
+    "sort": "Sort",
+    "split": "Split",
+    "transcode": "Transcode",
+    "inspector": "Inspector",
+    "newTab": "New tab (⌘T)"
+  },
+  "viewModes": {
+    "grid": "Grid",
+    "list": "List",
+    "media": "Media",
+    "masonry": "Masonry",
+    "column": "Column",
+    "size": "Size",
+    "knowledge": "Knowledge"
+  },
+  "sort": {
+    "sortBy": "Sort By",
+    "name": "Name",
+    "dateModified": "Date Modified",
+    "dateCreated": "Date Created",
+    "size": "Size",
+    "type": "Type",
+    "dateTaken": "Date Taken"
+  },
+  "viewSettings": {
+    "title": "View Settings",
+    "columnWidth": "Column Width",
+    "thumbnailSize": "Thumbnail Size",
+    "gridSize": "Grid Size",
+    "gapSize": "Gap Size",
+    "itemsShown": "Items Shown",
+    "showFileSize": "Show File Size",
+    "foldersFirst": "Folders First"
+  },
+  "search": {
+    "placeholder": "Search...",
+    "searchInFolder": "Search in current folder...",
+    "searchIn": "Search in:",
+    "thisFolder": "This Folder",
+    "location": "Location",
+    "library": "Library",
+    "filters": "Filters",
+    "clearSearch": "Clear Search",
+    "minChars": "Type at least 2 characters to search",
+    "comingSoon": "Search in {{viewMode}} view coming soon"
+  },
+  "pathBar": {
+    "indexed": "Location is indexed",
+    "notIndexed": "Not indexed",
+    "indexedStatus": "Indexed ({{mode}})",
+    "enableIndexing": "Enable Indexing",
+    "openInspector": "Open Location Inspector",
+    "outsideLocation": "Path is outside any location",
+    "addLocation": "Add Location",
+    "enterPath": "Enter path...",
+    "enterSdPath": "Enter SdPath JSON...",
+    "noPath": "No path selected"
+  },
+  "empty": {
+    "selectLocation": "Select a location from the sidebar to browse files"
+  },
+  "comingSoon": {
+    "title": "Coming Soon",
+    "networkProtocol": "Network protocol support (SMB, NFS, SFTP, WebDAV) is currently in development. Check back in a future update!"
+  },
+  "favorites": "Favorites (coming soon)"
+}

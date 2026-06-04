@@ -47,5 +47,9 @@
     "daysAgo": "{{count}} days ago",
     "yesterday": "Yesterday",
     "today": "Today"
-  }
+  },
+  "comingSoon": "coming soon",
+  "create": "Create",
+  "cancel": "Cancel",
+  "add": "Add"
 }

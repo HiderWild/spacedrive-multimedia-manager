@@ -1,0 +1,35 @@
+{
+  "title": "Overview",
+  "selectLibrary": "Select Library",
+  "newLibrary": "New Library",
+  "librarySettings": "Library Settings",
+  "pairDevice": "Pair Device",
+  "setupSync": "Setup Sync",
+  "refresh": "Refresh",
+  "refreshStatistics": "Refresh Statistics",
+  "addStorage": "Add Storage",
+  "stats": {
+    "totalStorage": "Total Storage",
+    "used": "used",
+    "filesIndexed": "Files Indexed",
+    "uniqueFiles": "unique files",
+    "connectedDevices": "Connected Devices",
+    "registeredInLibrary": "registered in library",
+    "aiComputePower": "AI Compute Power",
+    "librarySize": "Library Size",
+    "databaseOnDisk": "database on disk",
+    "sidecarStorage": "Sidecar Storage",
+    "filesGenerated": "files generated",
+    "locations": "Locations",
+    "indexedFolders": "indexed folders",
+    "tags": "Tags",
+    "organizationLabels": "organization labels"
+  },
+  "topsRank": {
+    "extreme": "Extreme",
+    "veryHigh": "Very High",
+    "high": "High",
+    "moderate": "Moderate",
+    "low": "Low"
+  }
+}

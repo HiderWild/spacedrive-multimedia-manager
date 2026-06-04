@@ -49,7 +49,11 @@ interface CommonTranslations {
     "daysAgo": "{{count}} days ago",
     "yesterday": "Yesterday",
     "today": "Today"
-  }
+  },
+  "comingSoon": "coming soon",
+  "create": "Create",
+  "cancel": "Cancel",
+  "add": "Add"
 }
 
 interface DialogTranslations {
@@ -84,6 +88,120 @@ interface ErrorsTranslations {
   "INSUFFICIENT_PERMISSIONS": "Insufficient permissions",
   "NETWORK_ERROR": "Network connection failed",
   "UNKNOWN": "An unknown error occurred"
+}
+
+interface ExplorerTranslations {
+  "topBar": {
+    "sidebar": "Sidebar",
+    "navigation": "Navigation",
+    "path": "Path",
+    "search": "Search",
+    "tags": "Tags",
+    "wander": "Wander",
+    "views": "Views",
+    "viewSettings": "View Settings",
+    "sort": "Sort",
+    "split": "Split",
+    "transcode": "Transcode",
+    "inspector": "Inspector",
+    "newTab": "New tab (⌘T)"
+  },
+  "viewModes": {
+    "grid": "Grid",
+    "list": "List",
+    "media": "Media",
+    "masonry": "Masonry",
+    "column": "Column",
+    "size": "Size",
+    "knowledge": "Knowledge"
+  },
+  "sort": {
+    "sortBy": "Sort By",
+    "name": "Name",
+    "dateModified": "Date Modified",
+    "dateCreated": "Date Created",
+    "size": "Size",
+    "type": "Type",
+    "dateTaken": "Date Taken"
+  },
+  "viewSettings": {
+    "title": "View Settings",
+    "columnWidth": "Column Width",
+    "thumbnailSize": "Thumbnail Size",
+    "gridSize": "Grid Size",
+    "gapSize": "Gap Size",
+    "itemsShown": "Items Shown",
+    "showFileSize": "Show File Size",
+    "foldersFirst": "Folders First"
+  },
+  "search": {
+    "placeholder": "Search...",
+    "searchInFolder": "Search in current folder...",
+    "searchIn": "Search in:",
+    "thisFolder": "This Folder",
+    "location": "Location",
+    "library": "Library",
+    "filters": "Filters",
+    "clearSearch": "Clear Search",
+    "minChars": "Type at least 2 characters to search",
+    "comingSoon": "Search in {{viewMode}} view coming soon"
+  },
+  "pathBar": {
+    "indexed": "Location is indexed",
+    "notIndexed": "Not indexed",
+    "indexedStatus": "Indexed ({{mode}})",
+    "enableIndexing": "Enable Indexing",
+    "openInspector": "Open Location Inspector",
+    "outsideLocation": "Path is outside any location",
+    "addLocation": "Add Location",
+    "enterPath": "Enter path...",
+    "enterSdPath": "Enter SdPath JSON...",
+    "noPath": "No path selected"
+  },
+  "empty": {
+    "selectLocation": "Select a location from the sidebar to browse files"
+  },
+  "comingSoon": {
+    "title": "Coming Soon",
+    "networkProtocol": "Network protocol support (SMB, NFS, SFTP, WebDAV) is currently in development. Check back in a future update!"
+  },
+  "favorites": "Favorites (coming soon)"
+}
+
+interface OverviewTranslations {
+  "title": "Overview",
+  "selectLibrary": "Select Library",
+  "newLibrary": "New Library",
+  "librarySettings": "Library Settings",
+  "pairDevice": "Pair Device",
+  "setupSync": "Setup Sync",
+  "refresh": "Refresh",
+  "refreshStatistics": "Refresh Statistics",
+  "addStorage": "Add Storage",
+  "stats": {
+    "totalStorage": "Total Storage",
+    "used": "used",
+    "filesIndexed": "Files Indexed",
+    "uniqueFiles": "unique files",
+    "connectedDevices": "Connected Devices",
+    "registeredInLibrary": "registered in library",
+    "aiComputePower": "AI Compute Power",
+    "librarySize": "Library Size",
+    "databaseOnDisk": "database on disk",
+    "sidecarStorage": "Sidecar Storage",
+    "filesGenerated": "files generated",
+    "locations": "Locations",
+    "indexedFolders": "indexed folders",
+    "tags": "Tags",
+    "organizationLabels": "organization labels"
+  },
+  "topsRank": {
+    "extreme": "Extreme",
+    "veryHigh": "Very High",
+    "high": "High",
+    "moderate": "Moderate",
+    "low": "Low"
+  }
 }
 
 interface SettingsTranslations {
@@ -126,6 +244,38 @@ interface SettingsTranslations {
     "advanced": "Advanced",
     "about": "About",
     "settings": "Settings"
+  },
+  "fileKinds": {
+    "title": "File Kinds",
+    "subtitle": "Browse your files by content type",
+    "totalFiles": "Total Files",
+    "file": "file",
+    "files": "files",
+    "loading": "Loading file kinds..."
+  },
+  "sources": {
+    "title": "Sources",
+    "searchPlaceholder": "Search sources...",
+    "loading": "Loading...",
+    "loadError": "Failed to load sources: {{error}}",
+    "noSources": "No sources yet",
+    "noSourcesDescription": "Add a data source to get started",
+    "addSource": "Add Source"
+  },
+  "redundancy": {
+    "title": "Redundancy",
+    "loading": "Loading redundancy data...",
+    "replicationScore": "Replication Score",
+    "safelyReplicated": "safely replicated",
+    "atRisk": "at risk (single copy)",
+    "uniqueContent": "unique content total",
+    "filesAtRisk": "{{count}} files at risk",
+    "oneVolumeData": "of data exists on only one volume",
+    "perVolumeBreakdown": "Per-Volume Breakdown",
+    "noVolumes": "No volumes with indexed content found.",
+    "indexVolumeHint": "Index a volume to see redundancy data.",
+    "compareVolumes": "Compare Volumes",
+    "viewAtRiskFiles": "View At-Risk Files"
   }
 }
 
@@ -193,6 +343,62 @@ interface SidebarTranslations {
   "actions": {
     "customize": "Customize",
     "settings": "Settings"
+  },
+  "space": {
+    "selectSpace": "Select Space",
+    "newSpace": "New Space",
+    "spaceSettings": "Space Settings",
+    "createSpace": "Create Space",
+    "spaceName": "Space Name",
+    "spaceNamePlaceholder": "e.g., Work Files, Personal Photos",
+    "color": "Color",
+    "icon": "Icon"
+  },
+  "customize": {
+    "title": "Customize",
+    "dragToSidebar": "Drag to sidebar",
+    "groups": "Groups",
+    "addGroup": "Add Group",
+    "allDevices": "All Devices",
+    "allLocations": "All Locations",
+    "cloudStorage": "Cloud Storage",
+    "custom": "Custom",
+    "customGroup": "Custom Group",
+    "groupName": "Group name",
+    "groupNamePlaceholder": "Enter group name",
+    "groupType": "Group Type",
+    "dragItems": "Drag items to your space",
+    "device": "Device",
+    "group": "Group",
+    "add": "Add"
+  },
+  "volumes": {
+    "title": "Volumes",
+    "noVolumes": "No volumes"
+  },
+  "sources": {
+    "title": "Sources"
+  },
+  "palette": {
+    "overview": "Overview",
+    "recents": "Recents",
+    "favorites": "Favorites",
+    "fileKinds": "File Kinds",
+    "sources": "Sources",
+    "redundancy": "Redundancy"
+  },
+  "fallbacks": {
+    "unnamedLocation": "Unnamed Location",
+    "unnamedVolume": "Unnamed Volume",
+    "unnamedTag": "Unnamed Tag",
+    "path": "Path",
+    "source": "Source",
+    "unknown": "Unknown",
+    "spacedrive": "Spacedrive",
+    "thisDevice": "This Device",
+    "tag": "Tag",
+    "tagShort": "Tag: {{id}}...",
+    "explorer": "Explorer"
   }
 }
 
@@ -200,6 +406,8 @@ export interface Resources {
   'common': CommonTranslations;
   'dialog': DialogTranslations;
   'errors': ErrorsTranslations;
+  'explorer': ExplorerTranslations;
+  'overview': OverviewTranslations;
   'settings': SettingsTranslations;
   'sidebar': SidebarTranslations;
 }

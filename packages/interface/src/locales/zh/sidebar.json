@@ -62,5 +62,61 @@
   "actions": {
     "customize": "自定义",
     "settings": "设置"
+  },
+  "space": {
+    "selectSpace": "选择空间",
+    "newSpace": "新建空间",
+    "spaceSettings": "空间设置",
+    "createSpace": "创建空间",
+    "spaceName": "空间名称",
+    "spaceNamePlaceholder": "例如：工作文件、个人照片",
+    "color": "颜色",
+    "icon": "图标"
+  },
+  "customize": {
+    "title": "自定义",
+    "dragToSidebar": "拖拽到侧边栏",
+    "groups": "分组",
+    "addGroup": "添加分组",
+    "allDevices": "所有设备",
+    "allLocations": "所有位置",
+    "cloudStorage": "云存储",
+    "custom": "自定义",
+    "customGroup": "自定义分组",
+    "groupName": "分组名称",
+    "groupNamePlaceholder": "输入分组名称",
+    "groupType": "分组类型",
+    "dragItems": "拖拽项目到您的空间",
+    "device": "设备",
+    "group": "分组",
+    "add": "添加"
+  },
+  "volumes": {
+    "title": "卷",
+    "noVolumes": "暂无卷"
+  },
+  "sources": {
+    "title": "来源"
+  },
+  "palette": {
+    "overview": "概览",
+    "recents": "最近",
+    "favorites": "收藏",
+    "fileKinds": "文件类型",
+    "sources": "来源",
+    "redundancy": "冗余"
+  },
+  "fallbacks": {
+    "unnamedLocation": "未命名位置",
+    "unnamedVolume": "未命名卷",
+    "unnamedTag": "未命名标签",
+    "path": "路径",
+    "source": "来源",
+    "unknown": "未知",
+    "spacedrive": "Spacedrive",
+    "thisDevice": "此设备",
+    "tag": "标签",
+    "tagShort": "标签: {{id}}...",
+    "explorer": "文件管理"
   }
 }

@@ -1,0 +1,77 @@
+{
+  "topBar": {
+    "sidebar": "侧边栏",
+    "navigation": "导航",
+    "path": "路径",
+    "search": "搜索",
+    "tags": "标签",
+    "wander": "浏览",
+    "views": "视图",
+    "viewSettings": "视图设置",
+    "sort": "排序",
+    "split": "分屏",
+    "transcode": "转码",
+    "inspector": "检查器",
+    "newTab": "新建标签页 (⌘T)"
+  },
+  "viewModes": {
+    "grid": "网格",
+    "list": "列表",
+    "media": "媒体",
+    "masonry": "瀑布流",
+    "column": "分栏",
+    "size": "大小",
+    "knowledge": "知识"
+  },
+  "sort": {
+    "sortBy": "排序方式",
+    "name": "名称",
+    "dateModified": "修改日期",
+    "dateCreated": "创建日期",
+    "size": "大小",
+    "type": "类型",
+    "dateTaken": "拍摄日期"
+  },
+  "viewSettings": {
+    "title": "视图设置",
+    "columnWidth": "列宽",
+    "thumbnailSize": "缩略图大小",
+    "gridSize": "网格大小",
+    "gapSize": "间距大小",
+    "itemsShown": "显示项目数",
+    "showFileSize": "显示文件大小",
+    "foldersFirst": "文件夹优先"
+  },
+  "search": {
+    "placeholder": "搜索...",
+    "searchInFolder": "在当前文件夹中搜索...",
+    "searchIn": "搜索范围：",
+    "thisFolder": "当前文件夹",
+    "location": "位置",
+    "library": "资料库",
+    "filters": "筛选",
+    "clearSearch": "清除搜索",
+    "minChars": "请输入至少2个字符进行搜索",
+    "comingSoon": "{{viewMode}} 视图搜索即将推出"
+  },
+  "pathBar": {
+    "indexed": "位置已索引",
+    "notIndexed": "未索引",
+    "indexedStatus": "已索引 ({{mode}})",
+    "enableIndexing": "启用索引",
+    "openInspector": "打开位置检查器",
+    "outsideLocation": "路径在任何位置之外",
+    "addLocation": "添加位置",
+    "enterPath": "输入路径...",
+    "enterSdPath": "输入 SdPath JSON...",
+    "noPath": "未选择路径"
+  },
+  "empty": {
+    "selectLocation": "从侧边栏选择一个位置来浏览文件"
+  },
+  "comingSoon": {
+    "title": "即将推出",
+    "networkProtocol": "网络协议支持（SMB、NFS、SFTP、WebDAV）正在开发中。请关注后续更新！"
+  },
+  "favorites": "收藏（即将推出）"
+}

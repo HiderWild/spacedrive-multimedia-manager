@@ -47,5 +47,9 @@
     "daysAgo": "{{count}}天前",
     "yesterday": "昨天",
     "today": "今天"
-  }
+  },
+  "comingSoon": "即将推出",
+  "create": "创建",
+  "cancel": "取消",
+  "add": "添加"
 }

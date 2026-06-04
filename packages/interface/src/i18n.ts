@@ -22,7 +22,7 @@ export function initI18n(options: InitI18nOptions) {
       lng: options.defaultLanguage || 'zh',
       fallbackLng: 'en',
       defaultNS: 'common',
-      ns: ['common', 'sidebar', 'settings', 'dialog', 'errors'],
+      ns: ['common', 'sidebar', 'settings', 'dialog', 'errors', 'explorer', 'overview'],
       interpolation: { escapeValue: false },
       react: { useSuspense: false },
     });
