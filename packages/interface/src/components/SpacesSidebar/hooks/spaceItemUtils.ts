@@ -16,6 +16,7 @@ import type {
 	SdPath,
 } from "@sd/ts-client";
 import type { Icon } from "@phosphor-icons/react";
+import { i18n } from '../../../i18n';
 
 // Icon data returned from metadata resolution
 export type IconData =
@@ -105,15 +106,17 @@ function getItemIcon(itemType: ItemType): IconData {
 
 // Get label for an item type
 function getItemLabel(itemType: ItemType, resolvedFile?: File | null): string {
-	if (isOverviewItem(itemType)) return "Overview";
-	if (isRecentsItem(itemType)) return "Recents";
-	if (isFavoritesItem(itemType)) return "Favorites";
-	if (isFileKindsItem(itemType)) return "File Kinds";
-	if (isSourcesItem(itemType)) return "Sources";
-	if (isRedundancyItem(itemType)) return "Redundancy";
-	if (isLocationItem(itemType)) return resolvedFile?.name || "Unnamed Location";
-	if (isVolumeItem(itemType)) return resolvedFile?.name || (itemType as { Volume: { volume_id: string; name?: string } }).Volume.name || "Unnamed Volume";
-	if (isTagItem(itemType)) return resolvedFile?.name || "Unnamed Tag";
+	const t = (key: string) => i18n.t(key, { ns: 'sidebar' });
+
+	if (isOverviewItem(itemType)) return t('palette.overview');
+	if (isRecentsItem(itemType)) return t('palette.recents');
+	if (isFavoritesItem(itemType)) return t('palette.favorites');
+	if (isFileKindsItem(itemType)) return t('palette.fileKinds');
+	if (isSourcesItem(itemType)) return t('palette.sources');
+	if (isRedundancyItem(itemType)) return t('palette.redundancy');
+	if (isLocationItem(itemType)) return resolvedFile?.name || t('fallbacks.unnamedLocation');
+	if (isVolumeItem(itemType)) return resolvedFile?.name || (itemType as { Volume: { volume_id: string; name?: string } }).Volume.name || t('fallbacks.unnamedVolume');
+	if (isTagItem(itemType)) return resolvedFile?.name || t('fallbacks.unnamedTag');
 	if (isPathItem(itemType)) {
 		// Use resolved file name if available, otherwise extract from path
 		if (resolvedFile?.name) return resolvedFile.name;
@@ -122,12 +125,12 @@ function getItemLabel(itemType: ItemType, resolvedFile?: File | null): string {
 			const parts = (
 				sdPath as { Physical: { path: string } }
 			).Physical.path.split("/");
-			return parts[parts.length - 1] || "Path";
+			return parts[parts.length - 1] || t('fallbacks.path');
 		}
-		return "Path";
+		return t('fallbacks.path');
 	}
-	if (isSourceItem(itemType)) return "Source";
-	return "Unknown";
+	if (isSourceItem(itemType)) return t('fallbacks.source');
+	return t('fallbacks.unknown');
 }
 
 // Build navigation path for an item
@@ -198,7 +201,7 @@ export function resolveItemMetadata(
 	// Handle raw location object (legacy format)
 	if (isRawLocation(item)) {
 		const rawItem = item as { name?: string; sd_path?: SdPath };
-		const label = customLabel || rawItem.name || "Unnamed Location";
+		const label = customLabel || rawItem.name || i18n.t('fallbacks.unnamedLocation', { ns: 'sidebar' });
 		const path = rawItem.sd_path
 			? `/explorer?path=${encodeURIComponent(JSON.stringify(rawItem.sd_path))}`
 			: null;

@@ -7,20 +7,23 @@ import {
 	type ReactNode,
 } from "react";
 import { createBrowserRouter, type RouteObject } from "react-router-dom";
+import { i18n } from "../../i18n";
 type Router = ReturnType<typeof createBrowserRouter>;
 
 /**
  * Derives a tab title from the current route pathname and search params
  */
 function deriveTitleFromPath(pathname: string, search: string): string {
+	const t = (key: string) => i18n.t(key, { ns: 'sidebar' });
+
 	const routeTitles: Record<string, string> = {
-		"/": "Overview",
-		"/favorites": "Favorites",
-		"/recents": "Recents",
-		"/file-kinds": "File Kinds",
-		"/search": "Search",
-		"/jobs": "Jobs",
-		"/daemon": "Daemon",
+		"/": t('palette.overview'),
+		"/favorites": t('palette.favorites'),
+		"/recents": t('palette.recents'),
+		"/file-kinds": t('palette.fileKinds'),
+		"/search": i18n.t('search.placeholder', { ns: 'explorer' }) || 'Search',
+		"/jobs": t('jobs.title'),
+		"/daemon": t('navigation.daemon'),
 	};
 
 	if (routeTitles[pathname]) {
@@ -29,7 +32,7 @@ function deriveTitleFromPath(pathname: string, search: string): string {
 
 	if (pathname.startsWith("/tag/")) {
 		const tagId = pathname.split("/")[2];
-		return tagId ? `Tag: ${tagId.slice(0, 8)}...` : "Tag";
+		return tagId ? t('fallbacks.tagShort').replace('{{id}}', tagId.slice(0, 8)) : t('fallbacks.tag');
 	}
 
 	if (pathname === "/explorer" && search) {
@@ -37,7 +40,7 @@ function deriveTitleFromPath(pathname: string, search: string): string {
 
 		const view = params.get("view");
 		if (view === "device") {
-			return "This Device";
+			return t('fallbacks.thisDevice');
 		}
 
 		const pathParam = params.get("path");
@@ -47,16 +50,16 @@ function deriveTitleFromPath(pathname: string, search: string): string {
 				if (sdPath?.Physical?.path) {
 					const fullPath = sdPath.Physical.path as string;
 					const parts = fullPath.split("/").filter(Boolean);
-					return parts[parts.length - 1] || "Explorer";
+					return parts[parts.length - 1] || t('fallbacks.explorer');
 				}
 			} catch {
 				// Fall through
 			}
 		}
-		return "Explorer";
+		return t('fallbacks.explorer');
 	}
 
-	return "Spacedrive";
+	return t('fallbacks.spacedrive');
 }
 
 // ============================================================================
@@ -218,7 +221,7 @@ export function TabManagerProvider({
 		return [
 			{
 				id: initialTabId,
-				title: "Overview",
+				title: i18n.t('palette.overview', { ns: 'sidebar' }),
 				icon: null,
 				isPinned: false,
 				lastActive: Date.now(),

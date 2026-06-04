@@ -21,6 +21,7 @@ import { TasksRoute } from "./Spacebot/routes/TasksRoute";
 import { MemoriesRoute } from "./Spacebot/routes/MemoriesRoute";
 import { AutonomyRoute } from "./Spacebot/routes/AutonomyRoute";
 import { ScheduleRoute } from "./Spacebot/routes/ScheduleRoute";
+import { i18n } from './i18n';
 
 /**
  * Spacebot wrapper component that provides the Spacebot context
@@ -53,7 +54,7 @@ export const explorerRoutes = [
 				path: "favorites",
 				element: (
 					<div className="flex items-center justify-center h-full text-ink">
-						Favorites (coming soon)
+						{i18n.t('favorites', { ns: 'explorer' })}
 					</div>
 				),
 			},
@@ -102,7 +103,7 @@ export const explorerRoutes = [
 				path: "search",
 				element: (
 					<div className="flex items-center justify-center h-full text-ink">
-						Search (coming soon)
+						{i18n.t('search.placeholder', { ns: 'explorer' })}
 					</div>
 				),
 			},
