@@ -11,7 +11,7 @@ import {CircleButton} from '@spacedrive/primitives';
 import {motion} from 'framer-motion';
 import {useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {i18n} from '../../../i18n';
+import {i18n} from '../../i18n';
 
 interface HeroStatsProps {
 	totalStorage: number; // bytes

@@ -11,7 +11,7 @@ import {
 } from '@phosphor-icons/react';
 import {CircleButton} from '@spacedrive/primitives';
 import clsx from 'clsx';
-import {i18n} from '../../../i18n';
+import {i18n} from '../../i18n';
 import {AnimatePresence, motion} from 'framer-motion';
 import {useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
