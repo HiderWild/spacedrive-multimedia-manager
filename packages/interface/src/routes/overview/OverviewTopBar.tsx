@@ -11,6 +11,7 @@ import {useLibraryMutation} from '@sd/ts-client';
 import {CircleButton, Popover, usePopover} from '@spacedrive/primitives';
 import clsx from 'clsx';
 import {useEffect, useMemo, useState} from 'react';
+import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router-dom';
 import {useCreateLibraryDialog} from '../../components/modals/CreateLibraryModal';
 import {PairingModal} from '../../components/modals/PairingModal';
@@ -26,6 +27,7 @@ interface OverviewTopBarProps {
 }
 
 export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
+	const {t} = useTranslation('overview');
 	const [isPairingOpen, setIsPairingOpen] = useState(false);
 	const navigate = useNavigate();
 	const client = useSpacedriveClient();
@@ -121,7 +123,7 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 	const overviewTitleContent = useMemo(
 		() => (
 			<div className="flex items-center gap-3">
-				<h1 className="text-ink text-xl font-bold">Overview</h1>
+				<h1 className="text-ink text-xl font-bold">{t('title')}</h1>
 				<span className="text-ink-dull">•</span>
 				<Popover.Root
 					open={librarySwitcher.open}
@@ -141,7 +143,7 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 							<span className="max-w-[200px] truncate">
 								{currentLibrary?.name ||
 									libraryName ||
-									'Select Library'}
+									t('selectLibrary')}
 							</span>
 							<CaretDown size={12} weight="bold" />
 						</button>
@@ -177,14 +179,14 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 								className="hover:bg-app-selected text-ink flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm font-medium"
 							>
 								<Plus size={16} weight="bold" />
-								<span>New Library</span>
+								<span>{t('newLibrary')}</span>
 							</button>
 							<button
 								onClick={() => librarySwitcher.setOpen(false)}
 								className="hover:bg-app-selected text-ink flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm font-medium"
 							>
 								<GearSix size={16} weight="bold" />
-								<span>Library Settings</span>
+								<span>{t('librarySettings')}</span>
 							</button>
 						</div>
 					</Popover.Content>
@@ -210,10 +212,10 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 		() => (
 			<CircleButton
 				icon={DeviceMobile}
-				title="Pair Device"
+				title={t('pairDevice')}
 				onClick={() => setIsPairingOpen(true)}
 			>
-				Pair
+				{t('pairDevice')}
 			</CircleButton>
 		),
 		[]
@@ -223,10 +225,10 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 		() => (
 			<CircleButton
 				icon={CloudArrowUp}
-				title="Setup Sync"
+				title={t('setupSync')}
 				onClick={handleSyncSetup}
 			>
-				Setup Sync
+				{t('setupSync')}
 			</CircleButton>
 		),
 		[handleSyncSetup]
@@ -236,12 +238,12 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 		() => (
 			<CircleButton
 				icon={ArrowsClockwise}
-				title="Refresh Statistics"
+				title={t('refreshStatistics')}
 				onClick={handleRefresh}
 				disabled={isRefreshing}
 				className={clsx(isRefreshing && 'animate-spin')}
 			>
-				Refresh
+				{t('refresh')}
 			</CircleButton>
 		),
 		[handleRefresh, isRefreshing]
@@ -254,7 +256,7 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 				className="!bg-accent hover:!bg-accent-deep !text-white"
 				onClick={handleAddStorage}
 			>
-				Add Storage
+				{t('addStorage')}
 			</CircleButton>
 		),
 		[handleAddStorage]
@@ -267,7 +269,7 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 					<>
 						<TopBarItem
 							id="overview-title"
-							label="Overview"
+							label={t('title')}
 							priority="high"
 						>
 							{overviewTitleContent}
@@ -281,7 +283,7 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 						</TopBarItem>
 						<TopBarItem
 							id="pair-device"
-							label="Pair Device"
+							label={t('pairDevice')}
 							priority="normal"
 							onClick={() => setIsPairingOpen(true)}
 						>
@@ -289,7 +291,7 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 						</TopBarItem>
 						<TopBarItem
 							id="setup-sync"
-							label="Setup Sync"
+							label={t('setupSync')}
 							priority="low"
 							onClick={handleSyncSetup}
 						>
@@ -297,7 +299,7 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 						</TopBarItem>
 						<TopBarItem
 							id="refresh"
-							label="Refresh Statistics"
+							label={t('refreshStatistics')}
 							priority="low"
 							onClick={handleRefresh}
 						>
@@ -305,7 +307,7 @@ export function OverviewTopBar({libraryName}: OverviewTopBarProps) {
 						</TopBarItem>
 						<TopBarItem
 							id="add-storage"
-							label="Add Storage"
+							label={t('addStorage')}
 							priority="high"
 							onClick={handleAddStorage}
 						>
