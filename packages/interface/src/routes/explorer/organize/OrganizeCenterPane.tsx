@@ -23,6 +23,7 @@ export function OrganizeCenterPane(props: {
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="flex items-center gap-2 border-b border-app-line px-3 py-2">
 				<button
+					data-testid="organize-action-keep"
 					className="rounded-md bg-emerald-500/15 px-3 py-1.5 text-sm text-emerald-300 disabled:opacity-40"
 					disabled={!selected}
 					onClick={() => selected && props.onMarkKeep(selected)}
@@ -30,6 +31,7 @@ export function OrganizeCenterPane(props: {
 					{t("organize.keepAction")}
 				</button>
 				<button
+					data-testid="organize-action-discard"
 					className="rounded-md bg-rose-500/15 px-3 py-1.5 text-sm text-rose-300 disabled:opacity-40"
 					disabled={!selected}
 					onClick={() => selected && props.onMarkDiscard(selected)}
@@ -37,6 +39,7 @@ export function OrganizeCenterPane(props: {
 					{t("organize.discardAction")}
 				</button>
 				<button
+					data-testid="organize-action-clear"
 					className="rounded-md bg-app-box px-3 py-1.5 text-sm text-ink disabled:opacity-40"
 					disabled={!selected}
 					onClick={() => selected && props.onClearDecision(selected)}
@@ -56,6 +59,9 @@ export function OrganizeCenterPane(props: {
 					<button
 						key={item.file.id}
 						data-file-id={item.file.id}
+						data-testid={`organize-center-item-${item.file.id}`}
+						data-decision={item.decision ?? undefined}
+						data-dimmed={item.dimmed ? "true" : undefined}
 						onClick={() => props.onSelectFile(item.file)}
 						className={clsx(
 							"relative rounded-xl border border-app-line bg-app-box/60 p-3 text-left",

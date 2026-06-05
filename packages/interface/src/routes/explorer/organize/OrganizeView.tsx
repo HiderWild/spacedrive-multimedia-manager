@@ -49,7 +49,7 @@ export function OrganizeView() {
 
 	if (isLoading || organize.isLoading || !organize.state) {
 		return (
-			<div className="flex h-full items-center justify-center text-sm text-ink-dull">
+			<div data-testid="organize-loading" className="flex h-full items-center justify-center text-sm text-ink-dull">
 				{t("organize.title")}…
 			</div>
 		);

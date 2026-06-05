@@ -1,0 +1,4 @@
+[test]
+# Preload for component tests (Happy DOM globals).
+# Uncomment when running React component tests:
+# preload = ["./tests/setup.ts"]

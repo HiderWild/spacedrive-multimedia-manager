@@ -119,6 +119,7 @@ export function OrganizePreviewPane(props: { selectedFile: File | null }) {
 					return (
 						<button
 							key={tab}
+							data-testid={`organize-preview-tab-${tab}`}
 							disabled={!enabled}
 							onClick={() => enabled && setActiveTab(tab)}
 							className={`rounded-md px-3 py-2 text-sm ${activeTab === tab ? "bg-accent/15 text-accent" : "text-ink-dull hover:bg-app-box"} disabled:opacity-40`}
