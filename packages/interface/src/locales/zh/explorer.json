@@ -21,7 +21,8 @@
     "masonry": "瀑布流",
     "column": "分栏",
     "size": "大小",
-    "knowledge": "知识"
+    "knowledge": "知识",
+    "organize": "整理"
   },
   "sort": {
     "sortBy": "排序方式",
@@ -73,5 +74,8 @@
     "title": "即将推出",
     "networkProtocol": "网络协议支持（SMB、NFS、SFTP、WebDAV）正在开发中。请关注后续更新！"
   },
-  "favorites": "收藏（即将推出）"
+  "favorites": "收藏（即将推出）",
+  "organize": {
+    "placeholder": "整理视图即将推出"
+  }
 }

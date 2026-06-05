@@ -66,7 +66,7 @@ function deriveTitleFromPath(pathname: string, search: string): string {
 // Types
 // ============================================================================
 
-export type ViewMode = "grid" | "list" | "column" | "media" | "masonry" | "size";
+export type ViewMode = "grid" | "list" | "column" | "media" | "masonry" | "size" | "organize";
 export type SortBy =
 	| "name"
 	| "size"

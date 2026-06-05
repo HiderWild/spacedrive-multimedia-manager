@@ -3,6 +3,7 @@ import {
 	Camera,
 	ChartPieSlice,
 	Columns,
+	FunnelSimple,
 	GridFour,
 	Rows,
 	Sparkle,
@@ -17,7 +18,7 @@ import {useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {createPortal} from 'react-dom';
 
-type ViewMode = 'list' | 'grid' | 'column' | 'media' | 'masonry' | 'size' | 'knowledge';
+type ViewMode = 'list' | 'grid' | 'column' | 'media' | 'masonry' | 'size' | 'knowledge' | 'organize';
 
 interface ViewOption {
 	id: ViewMode | 'timeline';
@@ -76,6 +77,13 @@ const viewOptions: ViewOption[] = [
 		icon: Sparkle,
 		color: 'bg-purple-500',
 		keybind: '⌘6'
+	},
+	{
+		id: 'organize',
+		label: i18n.t('viewModes.organize', { ns: 'explorer' }),
+		icon: FunnelSimple,
+		color: 'bg-amber-500',
+		keybind: '⌘8'
 	}
 	// {
 	// 	id: "timeline",
@@ -89,16 +97,20 @@ const viewOptions: ViewOption[] = [
 interface ViewModeMenuPanelProps {
 	viewMode: ViewMode;
 	onViewModeChange: (mode: ViewMode) => void;
+	organizeAvailable?: boolean;
 	onClose?: () => void;
 }
 
 export function ViewModeMenuPanel({
 	viewMode,
 	onViewModeChange,
+	organizeAvailable = false,
 	onClose
 }: ViewModeMenuPanelProps) {
 	const availableViews = viewOptions.filter(
-		(option) => option.id !== 'knowledge' || import.meta.env.DEV
+		(option) =>
+			(option.id !== 'knowledge' || import.meta.env.DEV) &&
+			(option.id !== 'organize' || organizeAvailable)
 	);
 
 	return (
@@ -144,9 +156,10 @@ export function ViewModeMenuPanel({
 interface ViewModeMenuProps {
 	viewMode: ViewMode;
 	onViewModeChange: (mode: ViewMode) => void;
+	organizeAvailable?: boolean;
 }
 
-export function ViewModeMenu({viewMode, onViewModeChange}: ViewModeMenuProps) {
+export function ViewModeMenu({viewMode, onViewModeChange, organizeAvailable = false}: ViewModeMenuProps) {
 	const {t} = useTranslation('explorer');
 	const [isOpen, setIsOpen] = useState(false);
 	const buttonRef = useRef<HTMLButtonElement>(null);
@@ -212,6 +225,7 @@ export function ViewModeMenu({viewMode, onViewModeChange}: ViewModeMenuProps) {
 							<ViewModeMenuPanel
 								viewMode={viewMode}
 								onViewModeChange={onViewModeChange}
+								organizeAvailable={organizeAvailable}
 								onClose={() => setIsOpen(false)}
 							/>
 						</motion.div>

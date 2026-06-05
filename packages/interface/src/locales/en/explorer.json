@@ -21,7 +21,8 @@
     "masonry": "Masonry",
     "column": "Column",
     "size": "Size",
-    "knowledge": "Knowledge"
+    "knowledge": "Knowledge",
+    "organize": "Organize"
   },
   "sort": {
     "sortBy": "Sort By",
@@ -73,5 +74,8 @@
     "title": "Coming Soon",
     "networkProtocol": "Network protocol support (SMB, NFS, SFTP, WebDAV) is currently in development. Check back in a future update!"
   },
-  "favorites": "Favorites (coming soon)"
+  "favorites": "Favorites (coming soon)",
+  "organize": {
+    "placeholder": "Organize view coming soon"
+  }
 }

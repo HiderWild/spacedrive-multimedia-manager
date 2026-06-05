@@ -9,6 +9,7 @@ import { KnowledgeView } from "../views/KnowledgeView";
 import { ListView } from "../views/ListView";
 import { MasonryView } from "../views/MasonryView";
 import { MediaView } from "../views/MediaView";
+import { OrganizeView } from "../views/OrganizeView/OrganizeView";
 import { SearchView } from "../views/SearchView";
 import { SizeView } from "../views/SizeView";
 
@@ -39,6 +40,8 @@ export function ExplorerPaneBody() {
 				<TabNavigationGuard>
 					{mode.type === "search" ? (
 						<SearchView />
+					) : viewMode === "organize" ? (
+						<OrganizeView />
 					) : viewMode === "grid" ? (
 						<GridView />
 					) : viewMode === "list" ? (

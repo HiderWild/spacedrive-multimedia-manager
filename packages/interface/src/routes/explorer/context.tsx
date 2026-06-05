@@ -40,7 +40,8 @@ export type ViewMode =
 	| "masonry"
 	| "column"
 	| "size"
-	| "knowledge";
+	| "knowledge"
+	| "organize";
 
 export interface ViewSettings {
 	gridSize: number;
