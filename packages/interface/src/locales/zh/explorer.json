@@ -85,6 +85,8 @@
     "clearAction": "清除决定",
     "deleteNow": "立即删除",
     "previewList": "预览列表",
+    "previewVideo": "视频",
+    "previewImage": "图片",
     "previewEmpty": "没有可预览的项目"
   }
 }

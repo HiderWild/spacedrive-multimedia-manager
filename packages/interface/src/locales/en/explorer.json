@@ -85,6 +85,8 @@
     "clearAction": "Clear decisions",
     "deleteNow": "Delete now",
     "previewList": "Preview list",
+    "previewVideo": "Video",
+    "previewImage": "Image",
     "previewEmpty": "No items to preview"
   }
 }

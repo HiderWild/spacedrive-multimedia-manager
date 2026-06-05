@@ -107,16 +107,15 @@ export function OrganizePreviewPane(props: { selectedFile: File | null }) {
 
 	// Directory preview: tabs for video / image / list
 	const previewFile = activeTab === "video" ? availability.firstVideo : availability.firstImage;
-	const previewSrc = previewFile
-		? (platform.convertFileSrc?.(getPhysicalPath(previewFile.sd_path) ?? "") ?? null)
-		: null;
+	const previewPath = previewFile ? getPhysicalPath(previewFile.sd_path) : null;
+	const previewSrc = previewPath && platform.convertFileSrc ? platform.convertFileSrc(previewPath) : null;
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="flex gap-1 border-b border-app-line p-2">
 				{availability.renderedTabs.map((tab) => {
 					const enabled = availability.enabledTabs.includes(tab);
-					const label = tab === "list" ? t("organize.previewList") : tab;
+					const label = tab === "list" ? t("organize.previewList") : tab === "video" ? t("organize.previewVideo") : t("organize.previewImage");
 					return (
 						<button
 							key={tab}
