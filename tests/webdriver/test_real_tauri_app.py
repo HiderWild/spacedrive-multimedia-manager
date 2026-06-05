@@ -40,6 +40,8 @@ from selenium.common.exceptions import TimeoutException
 DEBUG_PORT = 9222
 UI_WAIT_SECONDS = 20
 REPO_ROOT = Path(__file__).resolve().parents[2]
+FNV_OFFSET = 14695981039346656037
+FNV_PRIME = 1099511628211
 HARNESS_LOCAL_STORAGE_KEYS = (
     "sd-language",
     "sd-tabs-state",
@@ -50,22 +52,22 @@ ONE_PIXEL_PNG_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5X3r0AAAAASUVORK5CYII="
 )
 VIDEO_FIXTURE_PATH = REPO_ROOT / "packages" / "assets" / "videos" / "SdIntro.mp4"
-LOAD_ORGANIZE_STATE_SCRIPT = """
+LOAD_ORGANIZE_STATE_BY_KEY_SCRIPT = """
 return new Promise(async (resolve) => {
-    const dirPath = arguments[0];
-    const FNV_OFFSET = 14695981039346656037n;
-    const FNV_PRIME = 1099511628211n;
-    let normalized = dirPath.replace(/\\\\/g, '/').replace(/\\/+/g, '/');
-    if (normalized.length > 1 && normalized.endsWith('/')) {
-        normalized = normalized.slice(0, -1);
-    }
-    let h = FNV_OFFSET;
-    for (const ch of normalized) {
-        h ^= BigInt(ch.charCodeAt(0));
-        h = (h * FNV_PRIME) & 0xFFFFFFFFFFFFFFFFn;
-    }
-    const key = 'dir-' + h.toString(16).padStart(16, '0');
+    const key = arguments[0];
     try {
+        const raw = await window.__TAURI__.core.invoke(
+            'load_organize_state', { directoryKey: key });
+        resolve({ key, raw });
+    } catch (e) { resolve({ key, error: e.toString() }); }
+});
+"""
+DELETE_ORGANIZE_STATE_BY_KEY_SCRIPT = """
+return new Promise(async (resolve) => {
+    const key = arguments[0];
+    try {
+        await window.__TAURI__.core.invoke(
+            'delete_organize_state', { directoryKey: key });
         const raw = await window.__TAURI__.core.invoke(
             'load_organize_state', { directoryKey: key });
         resolve({ key, raw });
@@ -181,6 +183,79 @@ def preserved_local_storage_keys(driver, keys=HARNESS_LOCAL_STORAGE_KEYS):
         restore_local_storage_keys(driver, snapshot)
 
 
+def normalize_organize_path(path: Path | str) -> str:
+    normalized = str(path).replace("\\", "/")
+    while "//" in normalized:
+        normalized = normalized.replace("//", "/")
+    if len(normalized) > 1 and normalized.endswith("/"):
+        normalized = normalized[:-1]
+    return normalized
+
+
+def build_organize_directory_key(path: Path | str) -> str:
+    hash_value = FNV_OFFSET
+    for ch in normalize_organize_path(path):
+        hash_value ^= ord(ch)
+        hash_value = (hash_value * FNV_PRIME) & 0xFFFFFFFFFFFFFFFF
+    return f"dir-{hash_value:016x}"
+
+
+def load_persisted_organize_state_by_key(driver, directory_key: str):
+    result = driver.execute_script(LOAD_ORGANIZE_STATE_BY_KEY_SCRIPT, directory_key)
+    assert "error" not in result, result
+    raw = result.get("raw")
+    return {
+        **result,
+        "parsed": json.loads(raw) if raw is not None else None,
+    }
+
+
+def delete_persisted_organize_state_by_key(driver, directory_key: str):
+    result = driver.execute_script(DELETE_ORGANIZE_STATE_BY_KEY_SCRIPT, directory_key)
+    assert "error" not in result, result
+    assert result.get("raw") is None, (
+        f"Organize state key {directory_key} should be removed during cleanup; got {result}"
+    )
+    return result
+
+
+class OrganizeStateTracker:
+    def __init__(self, driver):
+        self.driver = driver
+        self.directory_keys = set()
+
+    def track_directory(self, directory: Path) -> str:
+        return self.track_key(build_organize_directory_key(directory))
+
+    def track_key(self, directory_key: str) -> str:
+        self.directory_keys.add(directory_key)
+        delete_persisted_organize_state_by_key(self.driver, directory_key)
+        return directory_key
+
+    def cleanup(self):
+        for directory_key in sorted(self.directory_keys):
+            delete_persisted_organize_state_by_key(self.driver, directory_key)
+
+
+@contextmanager
+def cleaned_organize_state_keys(driver, directory_keys=()):
+    tracker = OrganizeStateTracker(driver)
+    try:
+        for directory_key in directory_keys:
+            tracker.track_key(directory_key)
+        yield tracker
+    finally:
+        tracker.cleanup()
+
+
+@contextmanager
+def preserved_harness_state(driver, directory: Path | None = None):
+    with preserved_local_storage_keys(driver), cleaned_organize_state_keys(driver) as tracker:
+        if directory is not None:
+            tracker.track_directory(directory)
+        yield tracker
+
+
 def seed_tab_state_for_directory(driver, directory: Path, target_url: str):
     """Seed persisted tab state so the app boots straight into organize view for `directory`."""
     tab_id = str(uuid.uuid4())
@@ -222,13 +297,9 @@ def normalize_path_for_assertions(path: Path | str) -> str:
 
 
 def load_persisted_organize_state(driver, directory: Path):
-    result = driver.execute_script(LOAD_ORGANIZE_STATE_SCRIPT, str(directory))
-    assert "error" not in result, result
-    raw = result.get("raw")
-    return {
-        **result,
-        "parsed": json.loads(raw) if raw is not None else None,
-    }
+    return load_persisted_organize_state_by_key(
+        driver, build_organize_directory_key(directory)
+    )
 
 
 def find_persisted_item_by_path(parsed_state, target_path: Path | str):
@@ -495,7 +566,7 @@ def test_organize_real_ui_renders_for_physical_directory():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 url = open_seeded_organize_view(driver, origin, directory)
                 print(f"  Opened physical directory URL: {url}")
 
@@ -536,7 +607,7 @@ def test_organize_real_ui_decision_flow_and_restore():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 url = open_seeded_organize_view(driver, origin, directory)
                 print(f"  Opened {url}")
 
@@ -699,7 +770,7 @@ def test_organize_real_ui_delete_dialog_open_and_cancel():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 _open_organize_delete_dialog(driver, directory, [target_name])
                 wait_for_text(driver, "This will permanently delete all direct children")
                 print("  Delete dialog opened with expected title and description")
@@ -754,7 +825,7 @@ def test_organize_real_ui_delete_dialog_escape_closes():
             from selenium.webdriver.common.keys import Keys
             from selenium.webdriver.common.action_chains import ActionChains
 
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 _open_organize_delete_dialog(driver, directory, [target_name])
 
                 ActionChains(driver).send_keys(Keys.ESCAPE).perform()
@@ -782,7 +853,7 @@ def test_organize_real_ui_delete_dialog_outside_click_closes():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 _open_organize_delete_dialog(driver, directory, [target_name])
 
                 # The Radix dialog renders the title inside the form (form is the
@@ -834,7 +905,7 @@ def test_organize_real_ui_delete_dialog_enter_confirms_and_deletes():
             from selenium.webdriver.common.keys import Keys
             from selenium.webdriver.common.action_chains import ActionChains
 
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 _open_organize_delete_dialog(driver, directory, [target_name])
 
                 submit_btn = find_clickable_by_text(driver, "Delete permanently")
@@ -908,7 +979,7 @@ def test_organize_real_ui_preview_no_media_renders_list_only():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 open_seeded_organize_view(driver, origin, directory)
 
                 wait_for_card_for_filename(driver, "child-folder")
@@ -950,7 +1021,7 @@ def test_organize_real_ui_preview_one_media_disables_missing_tab_with_title():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 open_seeded_organize_view(driver, origin, directory)
 
                 wait_for_card_for_filename(driver, "images-only")
@@ -999,7 +1070,7 @@ def test_organize_real_ui_preview_mixed_media_prefers_video_tab():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 open_seeded_organize_view(driver, origin, directory)
 
                 wait_for_card_for_filename(driver, "mixed-media")
@@ -1051,7 +1122,7 @@ def test_organize_real_ui_preview_single_video_uses_saved_audio_prefs():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 device_slug = resolve_local_device_slug(driver)
                 assert device_slug, "Could not resolve local device slug"
                 target = explorer_query_for_physical_directory(directory, device_slug)
@@ -1107,7 +1178,7 @@ def test_organize_json_file_only_appears_after_first_decision():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 open_seeded_organize_view(driver, origin, directory)
                 wait_for_card_for_filename(driver, name)
 
@@ -1171,7 +1242,7 @@ def test_organize_real_ui_preview_empty_then_populated():
 
         driver = connect_to_app()
         try:
-            with preserved_local_storage_keys(driver):
+            with preserved_harness_state(driver, directory):
                 url = open_seeded_organize_view(driver, origin, directory)
                 print(f"  Opened {url}")
 
@@ -1233,59 +1304,60 @@ def test_organize_save_and_load():
     print("\n[Organize Save/Load]")
     driver = connect_to_app()
     try:
-        result = driver.execute_script("""
-            return new Promise(async (resolve) => {
-                try {
-                    const testState = JSON.stringify({
-                        version: 1,
-                        directoryPath: "/test/photos",
-                        updatedAt: new Date().toISOString(),
-                        items: {
-                            "file-1": {
-                                itemId: "file-1",
-                                path: "/test/photos/sunset.jpg",
-                                name: "sunset.jpg",
-                                kind: "File",
-                                decision: "keep",
-                                updatedAt: new Date().toISOString()
-                            },
-                            "file-2": {
-                                itemId: "file-2",
-                                path: "/test/photos/blurry.jpg",
-                                name: "blurry.jpg",
-                                kind: "File",
-                                decision: "discard",
-                                updatedAt: new Date().toISOString()
+        with cleaned_organize_state_keys(driver, ("webdriver-e2e-test",)):
+            result = driver.execute_script("""
+                return new Promise(async (resolve) => {
+                    try {
+                        const testState = JSON.stringify({
+                            version: 1,
+                            directoryPath: "/test/photos",
+                            updatedAt: new Date().toISOString(),
+                            items: {
+                                "file-1": {
+                                    itemId: "file-1",
+                                    path: "/test/photos/sunset.jpg",
+                                    name: "sunset.jpg",
+                                    kind: "File",
+                                    decision: "keep",
+                                    updatedAt: new Date().toISOString()
+                                },
+                                "file-2": {
+                                    itemId: "file-2",
+                                    path: "/test/photos/blurry.jpg",
+                                    name: "blurry.jpg",
+                                    kind: "File",
+                                    decision: "discard",
+                                    updatedAt: new Date().toISOString()
+                                }
                             }
-                        }
-                    });
+                        });
 
-                    await window.__TAURI__.core.invoke('save_organize_state', {
-                        directoryKey: 'webdriver-e2e-test',
-                        json: testState
-                    });
+                        await window.__TAURI__.core.invoke('save_organize_state', {
+                            directoryKey: 'webdriver-e2e-test',
+                            json: testState
+                        });
 
-                    const loaded = await window.__TAURI__.core.invoke(
-                        'load_organize_state',
-                        { directoryKey: 'webdriver-e2e-test' }
-                    );
+                        const loaded = await window.__TAURI__.core.invoke(
+                            'load_organize_state',
+                            { directoryKey: 'webdriver-e2e-test' }
+                        );
 
-                    const parsed = loaded ? JSON.parse(loaded) : null;
+                        const parsed = loaded ? JSON.parse(loaded) : null;
 
-                    resolve({
-                        success: true,
-                        saved: true,
-                        loaded: loaded !== null,
-                        version: parsed?.version,
-                        directoryPath: parsed?.directoryPath,
-                        itemCount: parsed ? Object.keys(parsed.items).length : 0,
-                        decisions: parsed ? Object.values(parsed.items).map(i => i.decision) : []
-                    });
-                } catch (e) {
-                    resolve({ success: false, error: e.toString() });
-                }
-            });
-        """)
+                        resolve({
+                            success: true,
+                            saved: true,
+                            loaded: loaded !== null,
+                            version: parsed?.version,
+                            directoryPath: parsed?.directoryPath,
+                            itemCount: parsed ? Object.keys(parsed.items).length : 0,
+                            decisions: parsed ? Object.values(parsed.items).map(i => i.decision) : []
+                        });
+                    } catch (e) {
+                        resolve({ success: false, error: e.toString() });
+                    }
+                });
+            """)
         assert result["success"], f"Failed: {result.get('error')}"
         assert result["saved"], "Should have saved"
         assert result["loaded"], "Should have loaded"
@@ -1310,68 +1382,69 @@ def test_organize_state_structure():
     print("\n[Organize State Structure]")
     driver = connect_to_app()
     try:
-        result = driver.execute_script("""
-            return new Promise(async (resolve) => {
-                try {
-                    const testState = JSON.stringify({
-                        version: 1,
-                        directoryPath: "/test/structure-check",
-                        updatedAt: new Date().toISOString(),
-                        items: {
-                            "item-1": {
-                                itemId: "item-1",
-                                path: "/test/structure-check/a.jpg",
-                                name: "a.jpg",
-                                kind: "File",
-                                decision: "keep",
-                                updatedAt: new Date().toISOString()
+        with cleaned_organize_state_keys(driver, ("webdriver-structure-test",)):
+            result = driver.execute_script("""
+                return new Promise(async (resolve) => {
+                    try {
+                        const testState = JSON.stringify({
+                            version: 1,
+                            directoryPath: "/test/structure-check",
+                            updatedAt: new Date().toISOString(),
+                            items: {
+                                "item-1": {
+                                    itemId: "item-1",
+                                    path: "/test/structure-check/a.jpg",
+                                    name: "a.jpg",
+                                    kind: "File",
+                                    decision: "keep",
+                                    updatedAt: new Date().toISOString()
+                                }
                             }
+                        });
+
+                        await window.__TAURI__.core.invoke('save_organize_state', {
+                            directoryKey: 'webdriver-structure-test',
+                            json: testState
+                        });
+
+                        const loaded = await window.__TAURI__.core.invoke(
+                            'load_organize_state',
+                            { directoryKey: 'webdriver-structure-test' }
+                        );
+
+                        if (!loaded) {
+                            resolve({ success: false, error: 'No state found' });
+                            return;
                         }
-                    });
 
-                    await window.__TAURI__.core.invoke('save_organize_state', {
-                        directoryKey: 'webdriver-structure-test',
-                        json: testState
-                    });
+                        const parsed = JSON.parse(loaded);
 
-                    const loaded = await window.__TAURI__.core.invoke(
-                        'load_organize_state',
-                        { directoryKey: 'webdriver-structure-test' }
-                    );
+                        const checks = {
+                            hasVersion: parsed.version === 1,
+                            hasDirectoryPath: typeof parsed.directoryPath === 'string',
+                            hasUpdatedAt: typeof parsed.updatedAt === 'string',
+                            hasItems: typeof parsed.items === 'object',
+                            itemsHaveItemId: Object.values(parsed.items).every(i => 'itemId' in i),
+                            itemsHavePath: Object.values(parsed.items).every(i => 'path' in i),
+                            itemsHaveName: Object.values(parsed.items).every(i => 'name' in i),
+                            itemsHaveKind: Object.values(parsed.items).every(i => 'kind' in i),
+                            itemsHaveDecision: Object.values(parsed.items).every(i => 'decision' in i),
+                            itemsHaveUpdatedAt: Object.values(parsed.items).every(i => 'updatedAt' in i),
+                            validDecisions: Object.values(parsed.items).every(
+                                i => i.decision === 'keep' || i.decision === 'discard'
+                            )
+                        };
 
-                    if (!loaded) {
-                        resolve({ success: false, error: 'No state found' });
-                        return;
+                        resolve({
+                            success: true,
+                            checks: checks,
+                            allPassed: Object.values(checks).every(v => v)
+                        });
+                    } catch (e) {
+                        resolve({ success: false, error: e.toString() });
                     }
-
-                    const parsed = JSON.parse(loaded);
-
-                    const checks = {
-                        hasVersion: parsed.version === 1,
-                        hasDirectoryPath: typeof parsed.directoryPath === 'string',
-                        hasUpdatedAt: typeof parsed.updatedAt === 'string',
-                        hasItems: typeof parsed.items === 'object',
-                        itemsHaveItemId: Object.values(parsed.items).every(i => 'itemId' in i),
-                        itemsHavePath: Object.values(parsed.items).every(i => 'path' in i),
-                        itemsHaveName: Object.values(parsed.items).every(i => 'name' in i),
-                        itemsHaveKind: Object.values(parsed.items).every(i => 'kind' in i),
-                        itemsHaveDecision: Object.values(parsed.items).every(i => 'decision' in i),
-                        itemsHaveUpdatedAt: Object.values(parsed.items).every(i => 'updatedAt' in i),
-                        validDecisions: Object.values(parsed.items).every(
-                            i => i.decision === 'keep' || i.decision === 'discard'
-                        )
-                    };
-
-                    resolve({
-                        success: true,
-                        checks: checks,
-                        allPassed: Object.values(checks).every(v => v)
-                    });
-                } catch (e) {
-                    resolve({ success: false, error: e.toString() });
-                }
-            });
-        """)
+                });
+            """)
         assert result["success"], f"Failed: {result.get('error')}"
         assert result["allPassed"], f"Checks failed: {result['checks']}"
 

@@ -63,6 +63,19 @@ pub async fn save_state_file(
         .map_err(|e| format!("Failed to rename organize state file: {}", e))
 }
 
+/// Deletes the organize state file for a directory key.
+///
+/// Missing files are ignored so callers can use this for best-effort cleanup.
+pub async fn delete_state_file(root: &Path, directory_key: &str) -> Result<(), String> {
+    let path = build_organize_state_path(root, directory_key)?;
+
+    match tokio::fs::remove_file(&path).await {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("Failed to delete organize state: {}", e)),
+    }
+}
+
 /// Tauri command: load organize state for a directory key.
 #[tauri::command]
 pub async fn load_organize_state(directory_key: String) -> Result<Option<String>, String> {
@@ -77,6 +90,14 @@ pub async fn save_organize_state(directory_key: String, json: String) -> Result<
     let data_dir = sd_tauri_core::default_data_dir()
         .map_err(|e| format!("Failed to get data directory: {}", e))?;
     save_state_file(&data_dir, &directory_key, &json).await
+}
+
+/// Tauri command: delete organize state for a directory key.
+#[tauri::command]
+pub async fn delete_organize_state(directory_key: String) -> Result<(), String> {
+    let data_dir = sd_tauri_core::default_data_dir()
+        .map_err(|e| format!("Failed to get data directory: {}", e))?;
+    delete_state_file(&data_dir, &directory_key).await
 }
 
 #[cfg(test)]
@@ -197,6 +218,23 @@ mod tests {
         let (_dir, root) = tmp_root();
         let result = save_state_file(&root, "../evil", "{}").await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_delete_removes_existing_file() {
+        let (_dir, root) = tmp_root();
+        save_state_file(&root, "delete-me", "{}").await.unwrap();
+
+        delete_state_file(&root, "delete-me").await.unwrap();
+
+        let loaded = load_state_file(&root, "delete-me").await.unwrap();
+        assert_eq!(loaded, None);
+    }
+
+    #[tokio::test]
+    async fn test_delete_missing_file_is_ok() {
+        let (_dir, root) = tmp_root();
+        delete_state_file(&root, "missing-key").await.unwrap();
     }
 
     #[tokio::test]

@@ -49,8 +49,10 @@ drives the real React UI, and asserts that:
    - The preview keeps the `autoplay` attribute
    - The preview hydrates `sd-video-muted` / `sd-video-volume` from `localStorage`
 13. **Organize state commands**: `save_organize_state` / `load_organize_state`
-     round-trip preserves version, path, items, and decisions, and the persisted
-     JSON shape passes 11 field-level structural checks
+     round-trip preserves version, path, items, and decisions, the persisted
+     JSON shape passes 11 field-level structural checks, and harness teardown
+     uses `delete_organize_state` so test-created keys do not linger in the
+     real app profile
 
 ## What This Does *Not* Prove
 
@@ -100,9 +102,12 @@ python tests/webdriver/test_real_tauri_app.py
 
 Each UI test temporarily seeds `sd-tabs-state` so the TabManager boots straight
 into organize view for a fresh temp directory, then restores the original
-`localStorage` keys before quitting the driver. The harness drives the real
-React UI and asserts on the rendered DOM (badge classes, dim classes, dialog
-title, selection ring, on-disk file presence, persisted organize JSON).
+`localStorage` keys before quitting the driver. The harness also registers the
+exact organize-state key for each temp directory or fixed save/load fixture key,
+deletes it before the test to clear stale residue, then deletes it again in
+teardown and verifies it is gone. The harness drives the real React UI and
+asserts on the rendered DOM (badge classes, dim classes, dialog title,
+selection ring, on-disk file presence, persisted organize JSON).
 
 ## Test Results
 
@@ -127,9 +132,6 @@ title, selection ring, on-disk file presence, persisted organize JSON).
 ## Known Limitations
 
 - Requires the app to be running before test execution.
-- Repeated runs reuse fixed test directory keys (`webdriver-e2e-test` and
-  `webdriver-structure-test`) and overwrite prior test state rather than
-  creating unbounded new entries.
 - The UI assertions key on Tailwind class names (`opacity-50`,
    `text-emerald-400`, `text-rose-400`, `ring-2`) and visible English strings;
   the harness temporarily forces `sd-language = en` to keep those strings

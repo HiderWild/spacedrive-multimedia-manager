@@ -2221,7 +2221,8 @@ fn main() {
 			keybinds::unregister_keybind,
 			keybinds::get_registered_keybinds,
 			organize::load_organize_state,
-			organize::save_organize_state
+			organize::save_organize_state,
+			organize::delete_organize_state
 		])
 		.setup(|app| {
 			// Setup native menu
