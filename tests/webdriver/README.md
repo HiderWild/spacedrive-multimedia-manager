@@ -27,29 +27,39 @@ drives the real React UI, and asserts that:
    badges and dim state reappear on the same cards with no further interaction
 8. **Delete dialog open/cancel on the real UI**:
    - Clicking *Delete now* opens the confirmation dialog with the expected
-     title and description
+      title and description
    - Clicking *Cancel* closes the dialog
-   - The file on disk is **not** removed and the card stays discarded
-9. **Preview pane wiring**:
+   - The file on disk is **not** removed
+   - The card stays discarded in the center pane
+   - The persisted organize JSON still carries the discard decision
+9. **Delete confirm on the real UI**:
+   - Pressing Enter on *Delete permanently* removes the discarded file from disk
+   - The file disappears from the left Discard list and the center pane
+   - The persisted organize JSON drops the deleted file's decision entry
+10. **Preview pane wiring**:
    - Empty placeholder renders with no selection
    - Selecting a card applies the selection ring (proves selection wiring)
    - For a leaf file with no supported renderer the placeholder is still shown
-10. **Organize state commands**: `save_organize_state` / `load_organize_state`
-    round-trip preserves version, path, items, and decisions, and the persisted
-    JSON shape passes 11 field-level structural checks
+11. **Directory preview branches on the real UI**:
+   - No-media directories render `Preview list` only
+   - Image-only directories render a disabled `Video` tab with the missing-video title
+   - Mixed-media directories default to the `Video` tab and mount a video preview first
+12. **Single-file video preview on the real UI**:
+   - Selecting a real `mp4` renders the `<video>` preview
+   - The preview keeps the `autoplay` attribute
+   - The preview hydrates `sd-video-muted` / `sd-video-volume` from `localStorage`
+13. **Organize state commands**: `save_organize_state` / `load_organize_state`
+     round-trip preserves version, path, items, and decisions, and the persisted
+     JSON shape passes 11 field-level structural checks
 
 ## What This Does *Not* Prove
 
 These intentionally remain out of scope of the harness:
 
-- **Actually deleting** via the dialog. The cancel path is asserted; the
-  confirm path would mutate real files via the indexed library and is left to
-  manual QA so this script can run repeatedly without destructive side effects.
-- **Image / video preview rendering** of arbitrary temp files. Single-file
-  preview routes through `platform.convertFileSrc`, which yields a Tauri asset
-  URL that the WebView2 loader can only resolve for paths inside an indexed
-  location — the harness creates ad-hoc temp directories, so it only asserts
-  the placeholder branches that *are* reachable.
+- **Codec-specific playback guarantees**. The single-file and mixed-media tests
+  prove the video preview mounts and hydrates state, but they do not prove that
+  every arbitrary local media file will decode, advance playback time, or pass
+  browser autoplay policy checks on every machine.
 - **Center-pane list-vs-grid layout toggle**. The layout state exists but has
   no user-facing trigger in the current UI surface.
 
@@ -88,10 +98,11 @@ python tests/webdriver/test_real_tauri_app.py
                                               └──────────────┘
 ```
 
-Each UI test seeds `sd-tabs-state` so the TabManager boots straight into
-organize view for a fresh temp directory, then drives the real React UI and
-asserts on the rendered DOM (badge classes, dim classes, dialog title,
-selection ring, on-disk file presence).
+Each UI test temporarily seeds `sd-tabs-state` so the TabManager boots straight
+into organize view for a fresh temp directory, then restores the original
+`localStorage` keys before quitting the driver. The harness drives the real
+React UI and asserts on the rendered DOM (badge classes, dim classes, dialog
+title, selection ring, on-disk file presence, persisted organize JSON).
 
 ## Test Results
 
@@ -102,8 +113,13 @@ selection ring, on-disk file presence).
 | Daemon Status | `is_running == true` |
 | Organize Real UI | Real organize controls + actual filenames render for a physical directory |
 | Decision Flow + Reload Restore | Keep/discard clicks dim cards and add badges; tabs filter correctly; full page reload restores both decisions |
-| Delete Dialog Open/Cancel | Delete dialog opens with the right title; cancel closes it; file survives on disk; card stays discarded |
+| Delete Dialog Open/Cancel | Delete dialog opens with the right title; cancel closes it; file survives on disk; card stays discarded; persisted state stays discard |
+| Delete Dialog Enter Confirms + Real Delete | Enter confirms deletion; file disappears from disk, left Discard list, center pane, and persisted organize state |
 | Preview Pane | Empty state renders; selecting a card applies the ring; unsupported-file placeholder shows |
+| Preview no-media branch | Selecting a no-media directory renders `Preview list` only |
+| Preview one-media disabled tab title | Image-only directory disables `Video` with the expected title |
+| Preview mixed-media priority | Mixed-media directory defaults to `Video` and mounts a video preview first |
+| Preview single-file video | Real `mp4` preview mounts with `autoplay` and saved muted/volume prefs |
 | Load Empty State | Returns `null` for nonexistent key |
 | Save/Load State | Round-trip: version=1, path, 2 items, decisions=keep+discard |
 | State Structure | 11 field-level checks on persisted items |
@@ -115,5 +131,6 @@ selection ring, on-disk file presence).
   `webdriver-structure-test`) and overwrite prior test state rather than
   creating unbounded new entries.
 - The UI assertions key on Tailwind class names (`opacity-50`,
-  `text-emerald-400`, `text-rose-400`, `ring-2`) and visible English strings;
-  the harness force-sets `sd-language = en` to keep those strings stable.
+   `text-emerald-400`, `text-rose-400`, `ring-2`) and visible English strings;
+  the harness temporarily forces `sd-language = en` to keep those strings
+  stable, then restores the original keys before the driver exits.

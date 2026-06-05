@@ -127,7 +127,6 @@ export function OrganizePreviewPane(props: { selectedFile: File | null }) {
 							disabled={!enabled}
 							onClick={() => enabled && setActiveTab(tab)}
 							title={tooltip}
-							aria-label={tooltip ?? label}
 							className={`rounded-md px-3 py-2 text-sm ${activeTab === tab ? "bg-accent/15 text-accent" : "text-ink-dull hover:bg-app-box"} disabled:cursor-not-allowed disabled:opacity-40`}
 						>
 							{label}
