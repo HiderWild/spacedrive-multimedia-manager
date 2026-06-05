@@ -74,6 +74,17 @@ export function removeDeletedOrganizeEntries(
   return changed ? { ...state, items, updatedAt: new Date().toISOString() } : state;
 }
 
+export function collectDiscardDeleteTargets(
+  files: File[],
+  state: OrganizeDirectoryState,
+): File[] {
+  return files.filter(
+    (file) =>
+      state.items[getOrganizeItemKey(file)]?.decision === "discard" &&
+      Boolean(file.sd_path),
+  );
+}
+
 export function clearOrganizeDecision(
   state: OrganizeDirectoryState,
   file: File,

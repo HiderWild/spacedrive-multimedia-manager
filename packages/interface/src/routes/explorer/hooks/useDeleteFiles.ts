@@ -42,3 +42,34 @@ export function useDeleteFiles() {
 
 	return { deleteFiles, isPending: mutation.isPending };
 }
+
+/**
+ * Confirmation-free delete mutation for callers that manage their own UI
+ * (e.g. the organize delete dialog).
+ */
+export function useDeleteFilesMutation() {
+	const mutation = useLibraryMutation("files.delete");
+
+	const deleteFilesDirect = useCallback(
+		async (files: File[], permanent: boolean) => {
+			if (files.length === 0) return false;
+			if (files.some((f) => !f.sd_path)) return false;
+			if (mutation.isPending) return false;
+
+			try {
+				await mutation.mutateAsync({
+					targets: { paths: files.map((f) => f.sd_path) },
+					permanent,
+					recursive: true,
+				});
+				return true;
+			} catch (err) {
+				console.error("Failed to delete:", err);
+				return false;
+			}
+		},
+		[mutation],
+	);
+
+	return { deleteFilesDirect, isPending: mutation.isPending };
+}

@@ -9,6 +9,7 @@ export function OrganizeLeftPane(props: {
 	keepFiles: File[];
 	discardFiles: File[];
 	onRevealItem: (file: File) => void;
+	onDeleteClick?: () => void;
 }) {
 	const { t } = useTranslation("explorer");
 	const items = props.leftTab === "keep" ? props.keepFiles : props.discardFiles;
@@ -29,6 +30,17 @@ export function OrganizeLeftPane(props: {
 					{t("organize.discardTab")}
 				</button>
 			</div>
+			{props.leftTab === "discard" ? (
+				<div className="border-b border-app-line p-2">
+					<button
+						className="w-full rounded-md bg-rose-500/15 px-3 py-2 text-sm text-rose-300 disabled:opacity-40"
+						disabled={props.discardFiles.length === 0}
+						onClick={props.onDeleteClick}
+					>
+						{t("organize.deleteNow")}
+					</button>
+				</div>
+			) : null}
 			<div className="min-h-0 flex-1 overflow-auto p-2">
 				{items.map((file) => (
 					<button
