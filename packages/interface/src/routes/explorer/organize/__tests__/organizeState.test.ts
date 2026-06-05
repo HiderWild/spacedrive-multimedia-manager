@@ -12,6 +12,7 @@ import {
   projectOrganizeBucket,
   buildOrganizePresentation,
   removeDeletedOrganizeEntries,
+  clearOrganizeDecision,
 } from "../organizeState";
 import type { OrganizeDecision } from "../organizeTypes";
 
@@ -277,5 +278,35 @@ describe("removeDeletedOrganizeEntries", () => {
 
     const cleaned = removeDeletedOrganizeEntries(updated, ["/nonexistent/path"]);
     expect(cleaned).toBe(updated);
+  });
+});
+
+describe("clearOrganizeDecision", () => {
+  it("removes a decided item from state", () => {
+    const state = createEmptyOrganizeDirectoryState("/photos");
+    const file = makeFile({ id: "file-1" });
+    const decided = upsertOrganizeDecision(state, file, "keep");
+
+    const cleared = clearOrganizeDecision(decided, file);
+    const key = getOrganizeItemKey(file);
+    expect(cleared.items[key]).toBeUndefined();
+  });
+
+  it("returns same reference when key not in state", () => {
+    const state = createEmptyOrganizeDirectoryState("/photos");
+    const file = makeFile({ id: "file-1" });
+
+    const result = clearOrganizeDecision(state, file);
+    expect(result).toBe(state);
+  });
+
+  it("produces a new state object on clear", () => {
+    const state = createEmptyOrganizeDirectoryState("/photos");
+    const file = makeFile({ id: "file-1" });
+    const decided = upsertOrganizeDecision(state, file, "discard");
+
+    const cleared = clearOrganizeDecision(decided, file);
+    expect(cleared).not.toBe(decided);
+    expect(Object.keys(cleared.items)).toHaveLength(0);
   });
 });
