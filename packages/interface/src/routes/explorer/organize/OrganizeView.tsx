@@ -10,16 +10,8 @@ import { useOrganizeState } from "./useOrganizeState";
 import { OrganizeLayout } from "./OrganizeLayout";
 import { OrganizeLeftPane } from "./OrganizeLeftPane";
 import { OrganizeCenterPane } from "./OrganizeCenterPane";
+import { OrganizePreviewPane } from "./OrganizePreviewPane";
 import type { OrganizeLeftTab, OrganizeCenterLayout } from "./organizeTypes";
-
-function OrganizePreviewPlaceholder() {
-	const { t } = useTranslation("explorer");
-	return (
-		<div className="flex h-full items-center justify-center p-4 text-sm text-ink-dull">
-			{t("organize.previewEmpty")}
-		</div>
-	);
-}
 
 export function OrganizeView() {
 	const { t } = useTranslation("explorer");
@@ -72,7 +64,7 @@ export function OrganizeView() {
 					onClearDecision={organize.clearDecision}
 				/>
 			}
-			right={<OrganizePreviewPlaceholder />}
+			right={<OrganizePreviewPane selectedFile={selectedFile} />}
 		/>
 	);
 }
