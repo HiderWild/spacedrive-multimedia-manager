@@ -65,3 +65,4 @@ python tests/webdriver/test_real_tauri_app.py
 
 - No frontend UI required (minimal dist) — tests exercise backend commands only
 - Requires the app to be running before test execution
+- Repeated runs reuse fixed test directory keys (`webdriver-e2e-test` and `webdriver-structure-test`) and overwrite prior test state rather than creating unbounded new entries

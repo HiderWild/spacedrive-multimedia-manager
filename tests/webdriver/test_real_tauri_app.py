@@ -44,6 +44,13 @@ def connect_to_app():
     return webdriver.Edge(options=options)
 
 
+def quit_driver(driver):
+    try:
+        driver.quit()
+    except Exception as e:
+        print(f"  WARNING: driver.quit() failed: {e}")
+
+
 def test_app_connection():
     """Test basic connection to the Tauri app."""
     print("\n[App Connection]")
@@ -61,7 +68,7 @@ def test_app_connection():
         assert "tauri.localhost" in url, f"Expected tauri.localhost URL, got '{url}'"
         print("  PASSED")
     finally:
-        driver.quit()
+        quit_driver(driver)
 
 
 def test_tauri_api():
@@ -95,7 +102,7 @@ def test_tauri_api():
 
         print("  PASSED")
     finally:
-        driver.quit()
+        quit_driver(driver)
 
 
 def test_daemon_status():
@@ -121,7 +128,7 @@ def test_daemon_status():
         assert status["is_running"], "Daemon should be running"
         print("  PASSED")
     finally:
-        driver.quit()
+        quit_driver(driver)
 
 
 def test_organize_load_empty():
@@ -147,7 +154,7 @@ def test_organize_load_empty():
         print(f"  Load nonexistent key: null (correct)")
         print("  PASSED")
     finally:
-        driver.quit()
+        quit_driver(driver)
 
 
 def test_organize_save_and_load():
@@ -224,7 +231,7 @@ def test_organize_save_and_load():
         print(f"  Decisions: {result['decisions']}")
         print("  PASSED")
     finally:
-        driver.quit()
+        quit_driver(driver)
 
 
 def test_organize_state_structure():
@@ -302,7 +309,7 @@ def test_organize_state_structure():
             print(f"    {check}: {'PASS' if passed else 'FAIL'}")
         print("  PASSED")
     finally:
-        driver.quit()
+        quit_driver(driver)
 
 
 def main():
