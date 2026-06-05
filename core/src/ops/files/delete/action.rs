@@ -29,6 +29,15 @@ impl FileDeleteAction {
 	pub fn with_defaults(targets: SdPathBatch) -> Self {
 		Self::new(targets, DeleteOptions::default())
 	}
+
+	fn into_job(self) -> DeleteJob {
+		if self.options.permanent {
+			// Permanent deletes must carry explicit confirmation or the job rejects them.
+			DeleteJob::permanent(self.targets, true)
+		} else {
+			DeleteJob::trash(self.targets)
+		}
+	}
 }
 
 // Implement the unified LibraryAction
@@ -51,17 +60,9 @@ impl LibraryAction for FileDeleteAction {
 		library: std::sync::Arc<crate::library::Library>,
 		context: Arc<CoreContext>,
 	) -> Result<Self::Output, ActionError> {
-		let mode = if self.options.permanent {
-			DeleteMode::Permanent
-		} else {
-			DeleteMode::Trash
-		};
-
-		let job = DeleteJob::new(self.targets, mode);
-
 		let job_handle = library
 			.jobs()
-			.dispatch(job)
+			.dispatch(self.into_job())
 			.await
 			.map_err(ActionError::Job)?;
 
@@ -91,3 +92,31 @@ impl LibraryAction for FileDeleteAction {
 
 // Register this action with the new registry
 crate::register_library_action!(FileDeleteAction, "files.delete");
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn permanent_actions_dispatch_confirmed_jobs() {
+		let job = FileDeleteAction::new(
+			SdPathBatch::default(),
+			DeleteOptions {
+				permanent: true,
+				recursive: true,
+			},
+		)
+		.into_job();
+
+		assert!(matches!(job.mode, DeleteMode::Permanent));
+		assert!(job.confirm_permanent);
+	}
+
+	#[test]
+	fn trash_actions_dispatch_trash_jobs() {
+		let job = FileDeleteAction::with_defaults(SdPathBatch::default()).into_job();
+
+		assert!(matches!(job.mode, DeleteMode::Trash));
+		assert!(!job.confirm_permanent);
+	}
+}

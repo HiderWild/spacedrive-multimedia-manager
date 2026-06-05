@@ -91,6 +91,8 @@
     "previewList": "预览列表",
     "previewVideo": "视频",
     "previewImage": "图片",
-    "previewEmpty": "没有可预览的项目"
+    "previewEmpty": "没有可预览的项目",
+    "previewMissingVideo": "此目录中没有视频文件",
+    "previewMissingImage": "此目录中没有图片文件"
   }
 }

@@ -116,12 +116,19 @@ export function OrganizePreviewPane(props: { selectedFile: File | null }) {
 				{availability.renderedTabs.map((tab) => {
 					const enabled = availability.enabledTabs.includes(tab);
 					const label = tab === "list" ? t("organize.previewList") : tab === "video" ? t("organize.previewVideo") : t("organize.previewImage");
+					const tooltip = !enabled
+						? tab === "video"
+							? t("organize.previewMissingVideo")
+							: t("organize.previewMissingImage")
+						: undefined;
 					return (
 						<button
 							key={tab}
 							disabled={!enabled}
 							onClick={() => enabled && setActiveTab(tab)}
-							className={`rounded-md px-3 py-2 text-sm ${activeTab === tab ? "bg-accent/15 text-accent" : "text-ink-dull hover:bg-app-box"} disabled:opacity-40`}
+							title={tooltip}
+							aria-label={tooltip ?? label}
+							className={`rounded-md px-3 py-2 text-sm ${activeTab === tab ? "bg-accent/15 text-accent" : "text-ink-dull hover:bg-app-box"} disabled:cursor-not-allowed disabled:opacity-40`}
 						>
 							{label}
 						</button>

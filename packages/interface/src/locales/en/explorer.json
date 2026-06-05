@@ -91,6 +91,8 @@
     "previewList": "Preview list",
     "previewVideo": "Video",
     "previewImage": "Image",
-    "previewEmpty": "No items to preview"
+    "previewEmpty": "No items to preview",
+    "previewMissingVideo": "No video files in this folder",
+    "previewMissingImage": "No image files in this folder"
   }
 }
