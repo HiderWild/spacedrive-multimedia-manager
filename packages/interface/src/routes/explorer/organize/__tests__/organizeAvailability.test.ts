@@ -117,6 +117,10 @@ describe("canUseOrganizeView", () => {
 			include_hidden: null,
 			include_archived: null,
 			at_risk: null,
+			on_volumes: null,
+			not_on_volumes: null,
+			min_volume_count: null,
+			max_volume_count: null,
 		};
 		expect(
 			canUseOrganizeView({
