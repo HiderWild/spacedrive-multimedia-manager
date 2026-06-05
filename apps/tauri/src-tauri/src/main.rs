@@ -5,6 +5,7 @@ mod drag;
 mod file_opening;
 mod files;
 mod keybinds;
+mod organize;
 mod server;
 mod windows;
 
@@ -2218,7 +2219,9 @@ fn main() {
 			file_opening::open_paths_with_app,
 			keybinds::register_keybind,
 			keybinds::unregister_keybind,
-			keybinds::get_registered_keybinds
+			keybinds::get_registered_keybinds,
+			organize::load_organize_state,
+			organize::save_organize_state
 		])
 		.setup(|app| {
 			// Setup native menu

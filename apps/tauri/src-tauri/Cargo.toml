@@ -56,6 +56,9 @@ file-opening-windows = { path = "../crates/file-opening-windows" }
 [target.'cfg(target_os = "linux")'.dependencies]
 file-opening-linux = { path = "../crates/file-opening-linux" }
 
+[dev-dependencies]
+tempfile = "3.13"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

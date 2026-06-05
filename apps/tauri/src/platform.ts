@@ -341,5 +341,13 @@ export const platform: Platform = {
 		if (window.__SPACEDRIVE__?.unregisterKeybind) {
 			await window.__SPACEDRIVE__.unregisterKeybind(id);
 		}
+	},
+
+	async loadOrganizeState(directoryKey: string) {
+		return await invoke<string | null>('load_organize_state', { directoryKey });
+	},
+
+	async saveOrganizeState(directoryKey: string, json: string) {
+		await invoke('save_organize_state', { directoryKey, json });
 	}
 };
