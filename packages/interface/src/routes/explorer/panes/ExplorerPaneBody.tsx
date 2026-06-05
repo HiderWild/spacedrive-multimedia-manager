@@ -9,7 +9,7 @@ import { KnowledgeView } from "../views/KnowledgeView";
 import { ListView } from "../views/ListView";
 import { MasonryView } from "../views/MasonryView";
 import { MediaView } from "../views/MediaView";
-import { OrganizeView } from "../views/OrganizeView/OrganizeView";
+import { OrganizeView } from "../organize/OrganizeView";
 import { SearchView } from "../views/SearchView";
 import { SizeView } from "../views/SizeView";
 

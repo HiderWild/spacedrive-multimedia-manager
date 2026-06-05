@@ -76,6 +76,15 @@
   },
   "favorites": "收藏（即将推出）",
   "organize": {
-    "placeholder": "整理视图即将推出"
+    "placeholder": "整理视图即将推出",
+    "title": "整理",
+    "keepTab": "保留",
+    "discardTab": "丢弃",
+    "keepAction": "保留此标签页",
+    "discardAction": "丢弃此标签页",
+    "clearAction": "清除决定",
+    "deleteNow": "立即删除",
+    "previewList": "预览列表",
+    "previewEmpty": "没有可预览的项目"
   }
 }

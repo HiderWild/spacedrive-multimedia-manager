@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { canUseOrganizeView } from "../organizeAvailability";
 import type { ExplorerMode } from "../../context";
-import type { SdPath } from "@sd/ts-client";
+import type { SdPath, SearchFilters } from "@sd/ts-client";
 
 describe("canUseOrganizeView", () => {
 	const browseMode: ExplorerMode = { type: "browse" };
@@ -107,9 +107,20 @@ describe("canUseOrganizeView", () => {
 	});
 
 	it("returns false for filtered mode", () => {
+		const emptyFilters: SearchFilters = {
+			file_types: null,
+			tags: null,
+			date_range: null,
+			size_range: null,
+			locations: null,
+			content_types: null,
+			include_hidden: null,
+			include_archived: null,
+			at_risk: null,
+		};
 		expect(
 			canUseOrganizeView({
-				mode: { type: "filtered", filters: {} as any, label: "test" },
+				mode: { type: "filtered", filters: emptyFilters, label: "test" },
 				currentPath: physicalPath,
 				platform: platformWithPersistence,
 			})

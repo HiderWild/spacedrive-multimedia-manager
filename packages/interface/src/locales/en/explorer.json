@@ -76,6 +76,15 @@
   },
   "favorites": "Favorites (coming soon)",
   "organize": {
-    "placeholder": "Organize view coming soon"
+    "placeholder": "Organize view coming soon",
+    "title": "Organize",
+    "keepTab": "Keep",
+    "discardTab": "Discard",
+    "keepAction": "Keep this tab",
+    "discardAction": "Discard this tab",
+    "clearAction": "Clear decisions",
+    "deleteNow": "Delete now",
+    "previewList": "Preview list",
+    "previewEmpty": "No items to preview"
   }
 }
