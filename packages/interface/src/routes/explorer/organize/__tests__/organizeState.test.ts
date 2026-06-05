@@ -228,6 +228,22 @@ describe("buildOrganizePresentation", () => {
       { file: file1, decision: null, dimmed: false },
     ]);
   });
+
+  it("keeps decided items in the center list while only matching decisions appear in left buckets", () => {
+    let state = createEmptyOrganizeDirectoryState("/photos");
+    state = upsertOrganizeDecision(
+      state,
+      makeFile({ id: "keep-1", sd_path: { Physical: { device_slug: "disk", path: "/photos/keep.mp4" } } }),
+      "keep",
+    );
+    const files = [
+      makeFile({ id: "keep-1", sd_path: { Physical: { device_slug: "disk", path: "/photos/keep.mp4" } } }),
+      makeFile({ id: "fresh-1", sd_path: { Physical: { device_slug: "disk", path: "/photos/fresh.mp4" } } }),
+    ];
+    const presentation = buildOrganizePresentation(files, state);
+    expect(presentation.find((item) => item.file.id === "keep-1")).toMatchObject({ decision: "keep", dimmed: true });
+    expect(presentation.find((item) => item.file.id === "fresh-1")).toMatchObject({ decision: null, dimmed: false });
+  });
 });
 
 describe("removeDeletedOrganizeEntries", () => {

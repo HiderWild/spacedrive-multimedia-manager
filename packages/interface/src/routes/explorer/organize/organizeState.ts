@@ -73,3 +73,14 @@ export function removeDeletedOrganizeEntries(
   }
   return changed ? { ...state, items, updatedAt: new Date().toISOString() } : state;
 }
+
+export function clearOrganizeDecision(
+  state: OrganizeDirectoryState,
+  file: Pick<File, "id" | "sd_path" | "name" | "kind">,
+): OrganizeDirectoryState {
+  const key = getOrganizeItemKey(file);
+  if (!(key in state.items)) return state;
+  const items = { ...state.items };
+  delete items[key];
+  return { ...state, items, updatedAt: new Date().toISOString() };
+}
