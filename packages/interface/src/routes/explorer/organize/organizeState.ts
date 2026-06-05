@@ -4,7 +4,7 @@ import { getOrganizeItemKey, getPhysicalPath, normalizeOrganizePath } from "./or
 
 export function upsertOrganizeDecision(
   state: OrganizeDirectoryState,
-  file: Pick<File, "id" | "sd_path" | "name" | "kind">,
+  file: File,
   decision: OrganizeDecision,
 ): OrganizeDirectoryState {
   const key = getOrganizeItemKey(file);
@@ -26,10 +26,10 @@ export function upsertOrganizeDecision(
 }
 
 export function projectOrganizeBucket(
-  files: Pick<File, "id" | "sd_path" | "name" | "kind">[],
+  files: File[],
   state: OrganizeDirectoryState,
   decision: OrganizeDecision,
-): Pick<File, "id" | "sd_path" | "name" | "kind">[] {
+): File[] {
   return files.filter((f) => {
     const key = getOrganizeItemKey(f);
     return state.items[key]?.decision === decision;
@@ -37,13 +37,13 @@ export function projectOrganizeBucket(
 }
 
 export interface OrganizePresentationEntry {
-  file: Pick<File, "id" | "sd_path" | "name" | "kind">;
+  file: File;
   decision: OrganizeDecision | null;
   dimmed: boolean;
 }
 
 export function buildOrganizePresentation(
-  files: Pick<File, "id" | "sd_path" | "name" | "kind">[],
+  files: File[],
   state: OrganizeDirectoryState,
 ): OrganizePresentationEntry[] {
   return files.map((file) => {
@@ -76,7 +76,7 @@ export function removeDeletedOrganizeEntries(
 
 export function clearOrganizeDecision(
   state: OrganizeDirectoryState,
-  file: Pick<File, "id" | "sd_path" | "name" | "kind">,
+  file: File,
 ): OrganizeDirectoryState {
   const key = getOrganizeItemKey(file);
   if (!(key in state.items)) return state;

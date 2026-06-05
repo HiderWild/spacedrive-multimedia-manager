@@ -7,15 +7,14 @@ import type { OrganizeDecision, OrganizeCenterLayout } from "./organizeTypes";
 import type { OrganizePresentationEntry } from "./organizeState";
 
 export function OrganizeCenterPane(props: {
-	files: Pick<File, "id" | "sd_path" | "name" | "kind">[];
 	layout: OrganizeCenterLayout;
 	onLayoutChange: (layout: OrganizeCenterLayout) => void;
 	presentation: OrganizePresentationEntry[];
 	selectedFileId: string | null;
-	onSelectFile: (file: Pick<File, "id" | "sd_path" | "name" | "kind">) => void;
-	onMarkKeep: (file: Pick<File, "id" | "sd_path" | "name" | "kind">) => void;
-	onMarkDiscard: (file: Pick<File, "id" | "sd_path" | "name" | "kind">) => void;
-	onClearDecision: (file: Pick<File, "id" | "sd_path" | "name" | "kind">) => void;
+	onSelectFile: (file: File) => void;
+	onMarkKeep: (file: File) => void;
+	onMarkDiscard: (file: File) => void;
+	onClearDecision: (file: File) => void;
 }) {
 	const { t } = useTranslation("explorer");
 	const selected = props.presentation.find((item) => item.file.id === props.selectedFileId)?.file ?? null;
@@ -64,7 +63,7 @@ export function OrganizeCenterPane(props: {
 							item.file.id === props.selectedFileId && "ring-2 ring-accent",
 						)}
 					>
-						<FileComponent.Thumb file={item.file as File} size={props.layout === "grid" ? 96 : 48} />
+						<FileComponent.Thumb file={item.file} size={props.layout === "grid" ? 96 : 48} />
 						<div className="mt-2 truncate text-sm text-ink">{item.file.name}</div>
 						{item.decision === "keep" ? (
 							<CheckCircle className="absolute bottom-2 right-2 text-emerald-400" size={20} weight="fill" />

@@ -6,10 +6,9 @@ import type { OrganizeLeftTab } from "./organizeTypes";
 export function OrganizeLeftPane(props: {
 	leftTab: OrganizeLeftTab;
 	onLeftTabChange: (tab: OrganizeLeftTab) => void;
-	keepFiles: Pick<File, "id" | "sd_path" | "name" | "kind">[];
-	discardFiles: Pick<File, "id" | "sd_path" | "name" | "kind">[];
-	onRevealItem: (file: Pick<File, "id" | "sd_path" | "name" | "kind">) => void;
-	onDeleteClick?: () => void;
+	keepFiles: File[];
+	discardFiles: File[];
+	onRevealItem: (file: File) => void;
 }) {
 	const { t } = useTranslation("explorer");
 	const items = props.leftTab === "keep" ? props.keepFiles : props.discardFiles;
@@ -30,17 +29,6 @@ export function OrganizeLeftPane(props: {
 					{t("organize.discardTab")}
 				</button>
 			</div>
-			{props.leftTab === "discard" ? (
-				<div className="border-b border-app-line p-2">
-					<button
-						className="w-full rounded-md bg-rose-500/15 px-3 py-2 text-sm text-rose-300 disabled:opacity-40"
-						disabled={props.discardFiles.length === 0}
-						onClick={props.onDeleteClick}
-					>
-						{t("organize.deleteNow")}
-					</button>
-				</div>
-			) : null}
 			<div className="min-h-0 flex-1 overflow-auto p-2">
 				{items.map((file) => (
 					<button
@@ -48,7 +36,7 @@ export function OrganizeLeftPane(props: {
 						className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-app-box"
 						onClick={() => props.onRevealItem(file)}
 					>
-						<FileComponent.Thumb file={file as File} size={32} />
+						<FileComponent.Thumb file={file} size={32} />
 						<span className="truncate text-sm text-ink">{file.name}</span>
 					</button>
 				))}

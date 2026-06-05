@@ -57,17 +57,16 @@ export function OrganizeView() {
 					onLeftTabChange={setLeftTab}
 					keepFiles={organize.keepFiles}
 					discardFiles={organize.discardFiles}
-					onRevealItem={(file) => selectFile(file as never, files as never, false, false)}
+					onRevealItem={(file) => selectFile(file, files, false, false)}
 				/>
 			}
 			center={
 				<OrganizeCenterPane
-					files={files}
 					selectedFileId={selectedFile?.id ?? null}
 					layout={layout}
 					onLayoutChange={setLayout}
 					presentation={organize.presentation}
-					onSelectFile={(file) => selectFile(file as never, files as never, false, false)}
+					onSelectFile={(file) => selectFile(file, files, false, false)}
 					onMarkKeep={organize.markKeep}
 					onMarkDiscard={organize.markDiscard}
 					onClearDecision={organize.clearDecision}

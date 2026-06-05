@@ -32,9 +32,7 @@ export function getPhysicalPath(
   return sdPath.Physical?.path ?? null;
 }
 
-export function getOrganizeItemKey(
-  file: Pick<File, "id" | "sd_path" | "name" | "kind">,
-): string {
+export function getOrganizeItemKey(file: File): string {
   if (file.id) {
     return `id:${file.id}`;
   }

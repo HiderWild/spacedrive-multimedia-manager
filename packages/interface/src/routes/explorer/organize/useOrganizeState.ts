@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { File, SdPath } from "@sd/ts-client";
 import { usePlatform } from "../../../contexts/PlatformContext";
 import type { OrganizeDecision, OrganizeDirectoryState } from "./organizeTypes";
@@ -11,12 +11,16 @@ import {
 	clearOrganizeDecision,
 } from "./organizeState";
 
-export function useOrganizeState(args: { currentPath: SdPath | null; files: Pick<File, "id" | "sd_path" | "name" | "kind">[] }) {
+export function useOrganizeState(args: { currentPath: SdPath | null; files: File[] }) {
 	const platform = usePlatform();
 	const directoryPath = getPhysicalPath(args.currentPath);
 	const [state, setState] = useState<OrganizeDirectoryState | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [hasPersistedFile, setHasPersistedFile] = useState(false);
+	const stateRef = useRef<OrganizeDirectoryState | null>(null);
+
+	// Keep ref in sync with state on every render.
+	stateRef.current = state;
 
 	useEffect(() => {
 		if (!directoryPath || !platform.loadOrganizeState) {
@@ -31,11 +35,23 @@ export function useOrganizeState(args: { currentPath: SdPath | null; files: Pick
 			.then((json) => {
 				if (cancelled) return;
 				if (json) {
-					setState(JSON.parse(json) as OrganizeDirectoryState);
-					setHasPersistedFile(true);
+					try {
+						const parsed = JSON.parse(json) as OrganizeDirectoryState;
+						setState(parsed);
+						setHasPersistedFile(true);
+					} catch (e) {
+						console.warn("Failed to parse organize state, resetting:", e);
+						setState(createEmptyOrganizeDirectoryState(directoryPath));
+						setHasPersistedFile(false);
+					}
 				} else {
 					setState(createEmptyOrganizeDirectoryState(directoryPath));
 				}
+			})
+			.catch((e) => {
+				if (cancelled) return;
+				console.warn("Failed to load organize state:", e);
+				setState(createEmptyOrganizeDirectoryState(directoryPath));
 			})
 			.finally(() => {
 				if (!cancelled) setIsLoading(false);
@@ -56,23 +72,39 @@ export function useOrganizeState(args: { currentPath: SdPath | null; files: Pick
 	);
 
 	const applyDecision = useCallback(
-		async (file: Pick<File, "id" | "sd_path" | "name" | "kind">, decision: OrganizeDecision | null) => {
-			if (!state) return;
-			const next = decision ? upsertOrganizeDecision(state, file, decision) : clearOrganizeDecision(state, file);
+		async (file: File, decision: OrganizeDecision | null) => {
+			const prev = stateRef.current;
+			if (!prev) return;
+			const next = decision ? upsertOrganizeDecision(prev, file, decision) : clearOrganizeDecision(prev, file);
 			setState(next);
-			await persist(next);
+			stateRef.current = next;
+			try {
+				await persist(next);
+			} catch (e) {
+				console.warn("Failed to save organize decision, reverting:", e);
+				setState(prev);
+				stateRef.current = prev;
+			}
 		},
-		[persist, state],
+		[persist],
 	);
 
 	const removeDeleted = useCallback(
 		async (deletedPaths: string[]) => {
-			if (!state) return;
-			const next = removeDeletedOrganizeEntries(state, deletedPaths);
+			const prev = stateRef.current;
+			if (!prev) return;
+			const next = removeDeletedOrganizeEntries(prev, deletedPaths);
 			setState(next);
-			await persist(next);
+			stateRef.current = next;
+			try {
+				await persist(next);
+			} catch (e) {
+				console.warn("Failed to save organize state after deletion, reverting:", e);
+				setState(prev);
+				stateRef.current = prev;
+			}
 		},
-		[persist, state],
+		[persist],
 	);
 
 	return {
@@ -82,9 +114,9 @@ export function useOrganizeState(args: { currentPath: SdPath | null; files: Pick
 		keepFiles: state ? projectOrganizeBucket(args.files, state, "keep") : [],
 		discardFiles: state ? projectOrganizeBucket(args.files, state, "discard") : [],
 		presentation: state ? buildOrganizePresentation(args.files, state) : [],
-		markKeep: (file: Pick<File, "id" | "sd_path" | "name" | "kind">) => applyDecision(file, "keep"),
-		markDiscard: (file: Pick<File, "id" | "sd_path" | "name" | "kind">) => applyDecision(file, "discard"),
-		clearDecision: (file: Pick<File, "id" | "sd_path" | "name" | "kind">) => applyDecision(file, null),
+		markKeep: (file: File) => applyDecision(file, "keep"),
+		markDiscard: (file: File) => applyDecision(file, "discard"),
+		clearDecision: (file: File) => applyDecision(file, null),
 		removeDeleted,
 	};
 }
