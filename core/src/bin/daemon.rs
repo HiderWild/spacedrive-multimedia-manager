@@ -83,6 +83,9 @@ fn run_internal_trash_helper(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 	let args = Args::parse();
+	let configured_socket_addr = std::env::var("SD_SOCKET_ADDR")
+		.ok()
+		.filter(|addr| !addr.trim().is_empty());
 
 	match args.requested_mode().map_err(|error| {
 		Box::<dyn std::error::Error + Send + Sync>::from(std::io::Error::new(
@@ -114,10 +117,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 		let port = 6970 + (instance.bytes().map(|b| b as u16).sum::<u16>() % 1000);
 		let socket_addr = format!("127.0.0.1:{}", port);
 
-		(instance_data_dir, socket_addr)
+		(
+			instance_data_dir,
+			configured_socket_addr.clone().unwrap_or_else(|| socket_addr),
+		)
 	} else {
-		// Default instance uses the base data directory and port 6969
-		let socket_addr = "127.0.0.1:6969".to_string();
+		// Default instance uses the base data directory and port 8488
+		let socket_addr = configured_socket_addr.unwrap_or_else(|| "127.0.0.1:8488".to_string());
 		(base_data_dir.clone(), socket_addr)
 	};
 

@@ -189,6 +189,7 @@ export function ViewSettings({ className, totalFileCount }: ViewSettingsProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, right: 0 });
+  const { t } = useTranslation("explorer");
   const { viewSettings, setViewSettings, viewMode } = useExplorer();
 
   // Update position when opened

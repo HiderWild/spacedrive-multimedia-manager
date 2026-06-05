@@ -3,10 +3,11 @@ param(
     [string] $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
     [string] $Cargo = "",
     [string] $Bun = "",
+    [int] $DaemonPort = 8488,
     [ValidateSet("Debug", "Release")]
     [string] $BuildProfile = "Debug",
     [switch] $SkipRebuild,
-    [int[]] $KillPorts = @(1420, 6969)
+    [string[]] $KillPorts = @("1420", "8488", "12917")
 )
 
 $ErrorActionPreference = "Stop"
@@ -124,6 +125,50 @@ function Stop-ProcessOnPort {
     }
 }
 
+function Convert-ToPortList {
+    param(
+        [Parameter(Mandatory)]
+        [string[]] $Values
+    )
+
+    $ports = [System.Collections.Generic.List[int]]::new()
+    foreach ($value in $Values) {
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            continue
+        }
+
+        $normalizedValue = $value.Trim().Trim("'", '"')
+        $parts = ($normalizedValue -split "[,;\\s]+") | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        foreach ($part in $parts) {
+            $normalizedPart = ($part -replace "[^0-9]", "")
+            if ([string]::IsNullOrWhiteSpace($normalizedPart)) {
+                Write-Host "Ignoring invalid port value '$part' in KillPorts."
+                continue
+            }
+
+            $portParsed = 0
+            if (-not [int]::TryParse($normalizedPart, [ref]$portParsed)) {
+                Write-Host "Ignoring invalid port value '$part' in KillPorts."
+                continue
+            }
+
+            if ($portParsed -lt 1 -or $portParsed -gt 65535) {
+                Write-Host "Ignoring out-of-range port '$part' in KillPorts."
+                continue
+            }
+            $ports.Add($portParsed)
+        }
+    }
+
+    $uniquePorts = $ports | Sort-Object -Unique
+    if (-not $uniquePorts -or $uniquePorts.Count -eq 0) {
+        Write-Host "No valid ports in KillPorts; using default fallback: 1420, 8488, 12917."
+        return @(1420, 8488, 12917)
+    }
+
+    return $uniquePorts
+}
+
 function Resolve-BuildTool {
     param(
         [Parameter(Mandatory)]
@@ -179,7 +224,16 @@ function Resolve-BuildTool {
     return ""
 }
 
-$project = Resolve-Path $RepoRoot | Select-Object -ExpandProperty Path
+$project = Resolve-Path -LiteralPath $RepoRoot -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
+if (-not $project) {
+    Write-Host "Invalid RepoRoot '$RepoRoot'. Falling back to script parent directory."
+    $project = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+Write-Host "Resolved repo root: $project"
+
+$killPortsList = Convert-ToPortList -Values $KillPorts
+Write-Host "Configured kill ports: $($killPortsList -join ', ')"
+
 Write-Host "Stopping debug instances under: $project"
 
 $candidates = Get-RepoProcessCandidates -ProjectPath $project
@@ -192,7 +246,7 @@ if (-not $candidates) {
 }
 
 Stop-ProcessOnPort -Port 1420
-foreach ($port in $KillPorts) {
+foreach ($port in $killPortsList) {
     if ($port -ne 1420) {
         Stop-ProcessOnPort -Port $port
     }
@@ -245,6 +299,7 @@ if (-not $SkipRebuild) {
 
 Write-Host "Starting Tauri desktop UI (native app, not webui)..."
 $env:HOST = "127.0.0.1"
+$env:SD_SOCKET_ADDR = "127.0.0.1:${DaemonPort}"
 $tauriDir = Join-Path $project "apps\tauri"
 Set-Location $tauriDir
 Write-Host "Running: bun run tauri:dev"

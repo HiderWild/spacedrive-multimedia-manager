@@ -25,6 +25,17 @@ const IS_WIN = platform() === 'win32';
 // Script is at: PROJECT_ROOT/apps/tauri/scripts/
 // So PROJECT_ROOT is: ../../../
 const PROJECT_ROOT = resolve(__dirname, '../../../');
+const DEFAULT_DAEMON_ADDR = '127.0.0.1:8488';
+
+function parseDaemonAddress(): {host: string; port: number; address: string} {
+	const raw = process.env.SD_SOCKET_ADDR ?? DEFAULT_DAEMON_ADDR;
+	const [host = '127.0.0.1', portValue = '8488'] = raw.split(':');
+	const port = Number(portValue);
+	if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+		throw new Error(`Invalid SD_SOCKET_ADDR port: ${raw}`);
+	}
+	return {host, port, address: `${host}:${port}`};
+}
 
 // Resolve target directory from Cargo config (supports custom target-dir)
 function getCargoTargetDir(): string {
@@ -43,9 +54,7 @@ function getCargoTargetDir(): string {
 
 const BIN_NAME = IS_WIN ? 'sd-daemon.exe' : 'sd-daemon';
 const DAEMON_BIN = join(getCargoTargetDir(), 'debug', BIN_NAME);
-
-const DAEMON_PORT = 6969;
-const DAEMON_ADDR = `127.0.0.1:${DAEMON_PORT}`;
+const {host: DAEMON_HOST, port: DAEMON_PORT, address: DAEMON_ADDR} = parseDaemonAddress();
 
 const DATA_DIR = join(homedir(), '.spacedrive');
 
@@ -83,7 +92,7 @@ async function main() {
 	try {
 		const {connect} = await import('net');
 		await new Promise<void>((resolve, reject) => {
-			const client = connect(DAEMON_PORT, '127.0.0.1');
+			const client = connect(DAEMON_PORT, DAEMON_HOST);
 			client.on('connect', () => {
 				daemonAlreadyRunning = true;
 				client.end();
@@ -175,7 +184,7 @@ async function main() {
 			try {
 				const {connect} = await import('net');
 				await new Promise<void>((resolve, reject) => {
-					const client = connect(DAEMON_PORT, '127.0.0.1');
+				const client = connect(DAEMON_PORT, DAEMON_HOST);
 					client.on('connect', () => {
 						client.end();
 						resolve();

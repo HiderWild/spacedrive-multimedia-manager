@@ -21,6 +21,12 @@ use tokio::sync::oneshot;
 use tokio::sync::RwLock;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+fn resolve_daemon_socket_addr(default_port: u16) -> String {
+	let host = "127.0.0.1";
+	let default_addr = format!("{}:{}", host, default_port);
+	std::env::var("SD_SOCKET_ADDR").unwrap_or(default_addr)
+}
+
 /// Default event subscription list - mirrors packages/ts-client/src/event-filter.ts
 /// Excludes noisy events: LogMessage, JobProgress, IndexingProgress
 fn get_default_event_subscription() -> Vec<&'static str> {
@@ -2310,7 +2316,7 @@ fn main() {
 			let data_dir =
 				sd_tauri_core::default_data_dir().expect("Failed to get default data directory");
 
-			let socket_addr = "127.0.0.1:6969".to_string();
+			let socket_addr = resolve_daemon_socket_addr(8488);
 
 			// Initialize state immediately (before async operations)
 			let daemon_state = Arc::new(RwLock::new(DaemonState {
