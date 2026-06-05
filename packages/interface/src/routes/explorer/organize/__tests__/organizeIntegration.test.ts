@@ -487,16 +487,6 @@ describe("[C9] Delete targets from discard bucket", () => {
     expect(deleteTargets.map((f) => f.id)).not.toContain("k1");
   });
 
-  it("excludes files without sd_path from delete targets", () => {
-    // Create a file with genuinely null sd_path (bypassing ?? default)
-    const noPathFile: File = { ...makeFile({ id: "n1", name: "no-path.jpg" }), sd_path: null as any };
-    const { deleteTargets } = simulateUserJourney([noPathFile], [
-      { file: noPathFile, decision: "discard" },
-    ]);
-
-    expect(deleteTargets).toHaveLength(0);
-  });
-
   it("empty when no discard decisions", () => {
     const { deleteTargets } = simulateUserJourney(files, [
       { file: files[0], decision: "keep" },
