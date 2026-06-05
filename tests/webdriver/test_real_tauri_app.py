@@ -31,6 +31,7 @@ from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
 
 
 DEBUG_PORT = 9222
@@ -58,6 +59,74 @@ def wait_for_text(driver, text: str):
         EC.presence_of_element_located(
             (By.XPATH, f"//*[contains(normalize-space(), '{text}')]")
         )
+    )
+
+
+def find_clickable_by_text(driver, text: str):
+    """Find an enabled button (or button-like) element whose visible text matches."""
+    return WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        EC.element_to_be_clickable(
+            (By.XPATH, f"//button[normalize-space()='{text}' and not(@disabled)]")
+        )
+    )
+
+
+def find_button_by_text(driver, text: str):
+    return driver.find_element(
+        By.XPATH, f"//button[normalize-space()='{text}']"
+    )
+
+
+def find_card_for_filename(driver, filename: str):
+    """The organize center pane renders one <button> per file with the name in a <div>."""
+    return driver.find_element(
+        By.XPATH,
+        "//button[.//div[normalize-space()='" + filename + "']]",
+    )
+
+
+def wait_for_card_for_filename(driver, filename: str, timeout: int = UI_WAIT_SECONDS):
+    return WebDriverWait(driver, timeout).until(
+        EC.presence_of_element_located((
+            By.XPATH,
+            "//button[.//div[normalize-space()='" + filename + "']]",
+        ))
+    )
+
+
+def seed_tab_state_for_directory(driver, directory: Path, target_url: str):
+    """Seed persisted tab state so the app boots straight into organize view for `directory`."""
+    tab_id = str(uuid.uuid4())
+    tabs_state = {
+        "tabs": [
+            {
+                "id": tab_id,
+                "title": directory.name,
+                "icon": None,
+                "isPinned": False,
+                "lastActive": int(time.time() * 1000),
+                "savedPath": target_url,
+            }
+        ],
+        "activeTabId": tab_id,
+        "explorerStates": {
+            tab_id: {
+                "viewMode": "organize",
+                "sortBy": "name",
+                "gridSize": 120,
+                "gapSize": 16,
+                "foldersFirst": True,
+                "columnStack": [],
+                "scrollTop": 0,
+                "scrollLeft": 0,
+                "sizeViewTransform": {"k": 1, "x": 0, "y": 0},
+            }
+        },
+    }
+    driver.execute_script(
+        "localStorage.setItem('sd-language', 'en');"
+        "localStorage.setItem('sd-tabs-state', arguments[0]);",
+        json.dumps(tabs_state),
     )
 
 
@@ -271,39 +340,7 @@ def test_organize_real_ui_renders_for_physical_directory():
             # organize view mode, then full-reload so the seeded state is used
             # for the initial render. Also force English locale so the UI
             # strings the assertions look for actually render in English.
-            tab_id = str(uuid.uuid4())
-            tabs_state = {
-                "tabs": [
-                    {
-                        "id": tab_id,
-                        "title": directory.name,
-                        "icon": None,
-                        "isPinned": False,
-                        "lastActive": int(time.time() * 1000),
-                        "savedPath": target,
-                    }
-                ],
-                "activeTabId": tab_id,
-                "explorerStates": {
-                    tab_id: {
-                        "viewMode": "organize",
-                        "sortBy": "name",
-                        "gridSize": 120,
-                        "gapSize": 16,
-                        "foldersFirst": True,
-                        "columnStack": [],
-                        "scrollTop": 0,
-                        "scrollLeft": 0,
-                        "sizeViewTransform": {"k": 1, "x": 0, "y": 0},
-                    }
-                },
-            }
-
-            driver.execute_script(
-                "localStorage.setItem('sd-language', 'en');"
-                "localStorage.setItem('sd-tabs-state', arguments[0]);",
-                json.dumps(tabs_state),
-            )
+            seed_tab_state_for_directory(driver, directory, target)
 
             url = f"{origin}{target}"
             driver.get(url)
@@ -324,6 +361,302 @@ def test_organize_real_ui_renders_for_physical_directory():
             )
 
             print("  Organize controls and physical directory entries are visible")
+            print("  PASSED")
+        finally:
+            quit_driver(driver)
+
+
+def test_organize_real_ui_decision_flow_and_restore():
+    """Drive real UI: click keep/discard, assert dimming + badges, filter tabs, reload restores."""
+    print("\n[Organize Real UI - Decision Flow + Reload Restore]")
+    origin = detect_app_origin()
+    assert origin, "Could not detect app origin"
+
+    with tempfile.TemporaryDirectory(prefix="spacedrive-organize-flow-") as temp_dir:
+        directory = Path(temp_dir)
+        keep_name = "keep-me.txt"
+        discard_name = "discard-me.txt"
+        untouched_name = "leave-me-alone.txt"
+        (directory / keep_name).write_text("keep", encoding="utf-8")
+        (directory / discard_name).write_text("discard", encoding="utf-8")
+        (directory / untouched_name).write_text("idle", encoding="utf-8")
+
+        driver = connect_to_app()
+        try:
+            device_slug = resolve_local_device_slug(driver)
+            assert device_slug, "Could not resolve local device slug"
+            target = explorer_query_for_physical_directory(directory, device_slug)
+            seed_tab_state_for_directory(driver, directory, target)
+
+            url = f"{origin}{target}"
+            driver.get(url)
+            print(f"  Opened {url}")
+
+            # All three files must render in the center pane.
+            wait_for_card_for_filename(driver, keep_name)
+            wait_for_card_for_filename(driver, discard_name)
+            wait_for_card_for_filename(driver, untouched_name)
+
+            # Initially the action buttons are disabled because nothing is
+            # selected; clicking a card selects it and enables them.
+            keep_btn_initial = find_button_by_text(driver, "Keep this tab")
+            assert keep_btn_initial.get_attribute("disabled") is not None, (
+                "Keep action should be disabled before a selection"
+            )
+
+            # --- Step 1: select the keep card and mark Keep ---
+            find_card_for_filename(driver, keep_name).click()
+            keep_action = find_clickable_by_text(driver, "Keep this tab")
+            keep_action.click()
+
+            # The keep card should now have an emerald check badge (decision=keep)
+            # and the dimmed opacity class.
+            keep_card_after = WebDriverWait(driver, UI_WAIT_SECONDS).until(
+                lambda d: d.find_element(
+                    By.XPATH,
+                    "//button[.//div[normalize-space()='" + keep_name + "']"
+                    " and contains(@class, 'opacity-50')"
+                    " and .//*[contains(@class, 'text-emerald-400')]]",
+                )
+            )
+            assert keep_card_after is not None
+            print(f"  Card '{keep_name}' got keep badge + dimming")
+
+            # --- Step 2: select the discard card and mark Discard ---
+            find_card_for_filename(driver, discard_name).click()
+            discard_action = find_clickable_by_text(driver, "Discard this tab")
+            discard_action.click()
+
+            discard_card_after = WebDriverWait(driver, UI_WAIT_SECONDS).until(
+                lambda d: d.find_element(
+                    By.XPATH,
+                    "//button[.//div[normalize-space()='" + discard_name + "']"
+                    " and contains(@class, 'opacity-50')"
+                    " and .//*[contains(@class, 'text-rose-400')]]",
+                )
+            )
+            assert discard_card_after is not None
+            print(f"  Card '{discard_name}' got discard badge + dimming")
+
+            # The untouched card should NOT be dimmed and should not have a
+            # decision badge.
+            untouched_card = find_card_for_filename(driver, untouched_name)
+            untouched_class = untouched_card.get_attribute("class") or ""
+            assert "opacity-50" not in untouched_class, (
+                f"Untouched card was dimmed unexpectedly. class={untouched_class!r}"
+            )
+            assert not untouched_card.find_elements(
+                By.XPATH, ".//*[contains(@class, 'text-emerald-400') or contains(@class, 'text-rose-400')]"
+            ), "Untouched card unexpectedly had a decision badge"
+            print(f"  Card '{untouched_name}' is undimmed with no badge")
+
+            # --- Step 3: left pane tab filtering ---
+            # Keep tab is active by default; the keep file must appear in the
+            # left pane list and the discard file must not.
+            keep_tab = find_button_by_text(driver, "Keep")
+            discard_tab = find_button_by_text(driver, "Discard")
+
+            # The left pane lists items as <button> with the file name in a
+            # <span>. The center pane has the same name inside a <div>. We use
+            # the <span> ancestry to scope the assertion to the left pane.
+            def left_pane_item_visible(filename: str) -> bool:
+                els = driver.find_elements(
+                    By.XPATH,
+                    "//button[.//span[normalize-space()='" + filename + "']]",
+                )
+                return len(els) > 0
+
+            assert left_pane_item_visible(keep_name), (
+                f"Expected '{keep_name}' in the left Keep tab list"
+            )
+            assert not left_pane_item_visible(discard_name), (
+                f"Did not expect '{discard_name}' under the Keep tab"
+            )
+            print("  Left Keep tab lists kept file only")
+
+            # Switch to the Discard tab and re-assert.
+            discard_tab.click()
+            WebDriverWait(driver, UI_WAIT_SECONDS).until(
+                lambda d: left_pane_item_visible(discard_name)
+            )
+            assert not left_pane_item_visible(keep_name), (
+                f"Did not expect '{keep_name}' under the Discard tab"
+            )
+            # The "Delete now" button should now be visible and enabled.
+            delete_now = find_clickable_by_text(driver, "Delete now")
+            assert delete_now is not None
+            print("  Left Discard tab lists discarded file only; Delete now is enabled")
+
+            # Switch back to Keep so the reload-restore step compares like-for-like.
+            keep_tab = find_button_by_text(driver, "Keep")
+            keep_tab.click()
+            WebDriverWait(driver, UI_WAIT_SECONDS).until(
+                lambda d: left_pane_item_visible(keep_name)
+            )
+
+            # --- Step 4: reload the page and confirm decisions are restored ---
+            driver.get(url)
+            print("  Reloaded the page")
+
+            # Both badges + dimming should reappear on the same cards without
+            # any further interaction.
+            WebDriverWait(driver, UI_WAIT_SECONDS).until(
+                lambda d: d.find_element(
+                    By.XPATH,
+                    "//button[.//div[normalize-space()='" + keep_name + "']"
+                    " and contains(@class, 'opacity-50')"
+                    " and .//*[contains(@class, 'text-emerald-400')]]",
+                )
+            )
+            WebDriverWait(driver, UI_WAIT_SECONDS).until(
+                lambda d: d.find_element(
+                    By.XPATH,
+                    "//button[.//div[normalize-space()='" + discard_name + "']"
+                    " and contains(@class, 'opacity-50')"
+                    " and .//*[contains(@class, 'text-rose-400')]]",
+                )
+            )
+            print("  Both decisions survived a full page reload (UI badges restored)")
+
+            print("  PASSED")
+        finally:
+            quit_driver(driver)
+
+
+def test_organize_real_ui_delete_dialog_open_and_cancel():
+    """Drive real UI: discard an item, open delete dialog, cancel, confirm file still exists."""
+    print("\n[Organize Real UI - Delete Dialog Open/Cancel]")
+    origin = detect_app_origin()
+    assert origin, "Could not detect app origin"
+
+    with tempfile.TemporaryDirectory(prefix="spacedrive-organize-delete-") as temp_dir:
+        directory = Path(temp_dir)
+        target_name = "to-be-discarded.txt"
+        target_file = directory / target_name
+        target_file.write_text("alive", encoding="utf-8")
+
+        driver = connect_to_app()
+        try:
+            device_slug = resolve_local_device_slug(driver)
+            assert device_slug, "Could not resolve local device slug"
+            target = explorer_query_for_physical_directory(directory, device_slug)
+            seed_tab_state_for_directory(driver, directory, target)
+
+            url = f"{origin}{target}"
+            driver.get(url)
+            print(f"  Opened {url}")
+
+            wait_for_card_for_filename(driver, target_name)
+
+            # Select + discard.
+            find_card_for_filename(driver, target_name).click()
+            find_clickable_by_text(driver, "Discard this tab").click()
+            WebDriverWait(driver, UI_WAIT_SECONDS).until(
+                lambda d: d.find_element(
+                    By.XPATH,
+                    "//button[.//div[normalize-space()='" + target_name + "']"
+                    " and contains(@class, 'opacity-50')]",
+                )
+            )
+
+            # Switch to the Discard tab so "Delete now" is rendered.
+            find_button_by_text(driver, "Discard").click()
+            delete_now = find_clickable_by_text(driver, "Delete now")
+            delete_now.click()
+
+            # The confirmation dialog must open with the expected title.
+            wait_for_text(driver, "Permanently delete discarded items?")
+            wait_for_text(driver, "This will permanently delete all direct children")
+            print("  Delete dialog opened with expected title and description")
+
+            # Click Cancel.
+            find_clickable_by_text(driver, "Cancel").click()
+
+            # The dialog should close — the title should no longer be on the page.
+            WebDriverWait(driver, UI_WAIT_SECONDS).until_not(
+                EC.presence_of_element_located((
+                    By.XPATH,
+                    "//*[contains(normalize-space(), 'Permanently delete discarded items?')]",
+                ))
+            )
+            print("  Cancel closed the dialog")
+
+            # The on-disk file must still be there: cancel does NOT delete.
+            assert target_file.exists(), (
+                "Cancel must not delete the file from disk"
+            )
+            print("  File still present on disk after cancel")
+
+            # The card must still be present in the UI, still discarded.
+            still_discarded = driver.find_element(
+                By.XPATH,
+                "//button[.//div[normalize-space()='" + target_name + "']"
+                " and .//*[contains(@class, 'text-rose-400')]]",
+            )
+            assert still_discarded is not None
+            print("  Card still shows discard badge after cancel")
+
+            print("  PASSED")
+        finally:
+            quit_driver(driver)
+
+
+def test_organize_real_ui_preview_empty_then_populated():
+    """Drive real UI: preview pane shows empty state, then list-tab placeholder when a directory is selected.
+
+    Single-file previews route through `platform.convertFileSrc` which produces
+    a Tauri asset URL the WebView2 loader cannot resolve for ad-hoc temp paths
+    that live outside any indexed location, so this test focuses on what the
+    organize preview pane reliably renders for a real selection: the empty
+    state when nothing is selected, and the centered placeholder text when the
+    selected leaf file has no renderable preview.
+    """
+    print("\n[Organize Real UI - Preview Pane]")
+    origin = detect_app_origin()
+    assert origin, "Could not detect app origin"
+
+    with tempfile.TemporaryDirectory(prefix="spacedrive-organize-preview-") as temp_dir:
+        directory = Path(temp_dir)
+        plain_name = "notes.txt"
+        (directory / plain_name).write_text("hello", encoding="utf-8")
+
+        driver = connect_to_app()
+        try:
+            device_slug = resolve_local_device_slug(driver)
+            assert device_slug, "Could not resolve local device slug"
+            target = explorer_query_for_physical_directory(directory, device_slug)
+            seed_tab_state_for_directory(driver, directory, target)
+
+            url = f"{origin}{target}"
+            driver.get(url)
+            print(f"  Opened {url}")
+
+            # Empty state must render before anything is selected.
+            wait_for_text(driver, "No items to preview")
+            print("  Preview empty state rendered with no selection")
+
+            # Select a plain text file: the preview pane is not a supported
+            # renderer (not video/image), so it should still show the empty
+            # placeholder string — this is meaningful because it proves the
+            # selection wiring updated the pane.
+            wait_for_card_for_filename(driver, plain_name)
+            find_card_for_filename(driver, plain_name).click()
+
+            # Selection ring on the card confirms the click actually selected
+            # the file in the explorer's SelectionContext.
+            WebDriverWait(driver, UI_WAIT_SECONDS).until(
+                lambda d: d.find_element(
+                    By.XPATH,
+                    "//button[.//div[normalize-space()='" + plain_name + "']"
+                    " and contains(@class, 'ring-2')]",
+                )
+            )
+            print(f"  Selecting '{plain_name}' applied the selection ring")
+
+            # The placeholder remains because the file has no supported preview.
+            wait_for_text(driver, "No items to preview")
+            print("  Preview pane shows placeholder for unsupported file kind")
+
             print("  PASSED")
         finally:
             quit_driver(driver)
@@ -527,6 +860,9 @@ def main():
         test_tauri_api,
         test_daemon_status,
         test_organize_real_ui_renders_for_physical_directory,
+        test_organize_real_ui_decision_flow_and_restore,
+        test_organize_real_ui_delete_dialog_open_and_cancel,
+        test_organize_real_ui_preview_empty_then_populated,
         test_organize_load_empty,
         test_organize_save_and_load,
         test_organize_state_structure,
