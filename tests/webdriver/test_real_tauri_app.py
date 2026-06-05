@@ -78,6 +78,7 @@ def test_tauri_api():
         has_internals = driver.execute_script(
             "return window.__TAURI_INTERNALS__ !== undefined;"
         )
+        assert has_internals, "Tauri internals not found (required for invoke)"
         print(f"  window.__TAURI_INTERNALS__ available: {has_internals}")
 
         has_core = driver.execute_script(
@@ -234,9 +235,30 @@ def test_organize_state_structure():
         result = driver.execute_script("""
             return new Promise(async (resolve) => {
                 try {
+                    const testState = JSON.stringify({
+                        version: 1,
+                        directoryPath: "/test/structure-check",
+                        updatedAt: new Date().toISOString(),
+                        items: {
+                            "item-1": {
+                                itemId: "item-1",
+                                path: "/test/structure-check/a.jpg",
+                                name: "a.jpg",
+                                kind: "File",
+                                decision: "keep",
+                                updatedAt: new Date().toISOString()
+                            }
+                        }
+                    });
+
+                    await window.__TAURI__.core.invoke('save_organize_state', {
+                        directoryKey: 'webdriver-structure-test',
+                        json: testState
+                    });
+
                     const loaded = await window.__TAURI__.core.invoke(
                         'load_organize_state',
-                        { directoryKey: 'webdriver-e2e-test' }
+                        { directoryKey: 'webdriver-structure-test' }
                     );
 
                     if (!loaded) {
