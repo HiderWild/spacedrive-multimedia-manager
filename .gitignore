@@ -470,6 +470,7 @@ chunk-stream*.m4s
 
 # OMC (oh-my-claudecode) state directories
 .omc/
+.superpowers/
 
 # iOS build artifacts
 apps/ios/sd-ios-core/sd_ios_core.xcframework/
