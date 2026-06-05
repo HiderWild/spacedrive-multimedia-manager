@@ -16,7 +16,7 @@
 			],
 			"@spacebot/api-client/*": ["../../../spacebot/packages/api-client/src/*"]
 		},
-		"types": ["@react-three/fiber"]
+		"types": ["@react-three/fiber", "bun"]
 	},
 	"include": ["src", "src/vite-env.d.ts"]
 }
