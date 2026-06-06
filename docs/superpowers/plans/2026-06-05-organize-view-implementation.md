@@ -8,6 +8,8 @@
 
 **Tech Stack:** React 19, TypeScript, Tauri 2, Rust async commands, TanStack Query via `useNormalizedQuery`, Bun test, Cargo test.
 
+> **Scope update (2026-06-06):** Current agent execution scope covers logic, persistence, Explorer wiring, preview resolution, and delete-flow code. UI debugging and unified manual UI verification are user-owned and out of current execution scope for this plan.
+
 ---
 
 ## File Map
@@ -974,6 +976,8 @@ git commit -m "feat: add organize delete workflow"
 
 ## Final Verification
 
+Agent execution for this plan stops at automated logic/code verification. Manual UI verification stays user-owned, and any UI debugging discovered there stays outside the current execution scope.
+
 - [ ] **Automated checks**
 
 Run: `cargo test --manifest-path apps/tauri/src-tauri/Cargo.toml organize::tests`
@@ -982,11 +986,11 @@ Run: `bun test packages/interface/src/routes/explorer/organize/__tests__/organiz
 
 Run: `bun run --filter @sd/interface typecheck`
 
-- [ ] **Manual verification in Tauri**
+- [ ] **User-owned manual verification in Tauri (out of current execution scope)**
 
 From `apps/tauri/`, run: `bun run tauri:dev`
 
-Check:
+User checks:
 - Browse to a physical directory and switch to `Organize`.
 - Mark one item `Keep` and one item `Discard`; confirm the JSON file appears under `.spacedrive/organize/v1/` only after the first decision.
 - Leave and re-enter the directory; confirm both decisions restore.
