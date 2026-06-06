@@ -349,5 +349,9 @@ export const platform: Platform = {
 
 	async saveOrganizeState(directoryKey: string, json: string) {
 		await invoke('save_organize_state', { directoryKey, json });
+	},
+
+	async deleteOrganizeState(directoryKey: string) {
+		await invoke('delete_organize_state', { directoryKey });
 	}
 };

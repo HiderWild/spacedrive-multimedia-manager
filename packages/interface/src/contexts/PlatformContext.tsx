@@ -186,6 +186,9 @@ export type Platform = {
 
 	/** Save organize state JSON for a directory key */
 	saveOrganizeState?(directoryKey: string, json: string): Promise<void>;
+
+	/** Delete organize state JSON for a directory key */
+	deleteOrganizeState?(directoryKey: string): Promise<void>;
 };
 
 /** Application that can open a file */
