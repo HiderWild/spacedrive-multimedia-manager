@@ -39,6 +39,8 @@ export interface VideoControlsCallbacks {
 	onVolumeChange: (volume: number) => void;
 	onMuteToggle: () => void;
 	onLoopToggle: () => void;
+	onSeekBy: (seconds: number) => void;
+	onStepFrames: (frames: number) => void;
 	onZoomIn: () => void;
 	onZoomOut: () => void;
 	onZoomReset: () => void;

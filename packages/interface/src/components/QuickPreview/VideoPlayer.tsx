@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { File } from "@sd/ts-client";
+import { useServer } from "../../contexts/ServerContext";
 import { Subtitles, type SubtitleSettings } from "./Subtitles";
 import { SubtitleSettingsMenu } from "./SubtitleSettingsMenu";
 import { useZoomPan } from "./useZoomPan";
+import { buildPosterUrl } from "./mediaPreview";
 import type {
 	VideoControlsState,
 	VideoControlsCallbacks,
@@ -15,6 +17,8 @@ interface VideoPlayerProps {
 	onControlsStateChange?: (state: VideoControlsState) => void;
 	onShowControlsChange?: (show: boolean) => void;
 	getCallbacks?: (callbacks: VideoControlsCallbacks) => void;
+	keyboardShortcutsEnabled?: boolean;
+	wheelZoomEnabled?: boolean;
 }
 
 export function VideoPlayer({
@@ -24,7 +28,10 @@ export function VideoPlayer({
 	onControlsStateChange,
 	onShowControlsChange,
 	getCallbacks,
+	keyboardShortcutsEnabled = true,
+	wheelZoomEnabled = true,
 }: VideoPlayerProps) {
+	const { buildSidecarUrl } = useServer();
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const videoContainerRef = useRef<HTMLDivElement>(null);
@@ -55,7 +62,16 @@ export function VideoPlayer({
 	} | null>(null);
 	const hideControlsTimeout = useRef<number | undefined>(undefined);
 	const { zoom, zoomIn, zoomOut, reset, isZoomed, transform } =
-		useZoomPan(videoContainerRef as React.RefObject<HTMLElement>);
+		useZoomPan(videoContainerRef as React.RefObject<HTMLElement>, {
+			wheelZoomEnabled,
+		});
+	const posterSrc = buildPosterUrl(file, buildSidecarUrl);
+	const frameDuration =
+		file.video_media_data?.fps_num &&
+		file.video_media_data?.fps_den &&
+		file.video_media_data.fps_num > 0
+			? file.video_media_data.fps_den / file.video_media_data.fps_num
+			: 1 / 30;
 
 	// Expose controls state to parent
 	useEffect(() => {
@@ -105,6 +121,34 @@ export function VideoPlayer({
 			videoRef.current.play();
 		}
 	}, [playing]);
+
+	const seekBy = useCallback(
+		(seconds: number) => {
+			if (!videoRef.current) return;
+
+			videoRef.current.currentTime = Math.max(
+				0,
+				Math.min(duration, videoRef.current.currentTime + seconds),
+			);
+		},
+		[duration],
+	);
+
+	const stepFrames = useCallback(
+		(frames: number) => {
+			if (!videoRef.current) return;
+
+			videoRef.current.pause();
+			videoRef.current.currentTime = Math.max(
+				0,
+				Math.min(
+					duration,
+					videoRef.current.currentTime + frames * frameDuration,
+				),
+			);
+		},
+		[duration, frameDuration],
+	);
 
 	const handleSeek = useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
@@ -177,6 +221,8 @@ export function VideoPlayer({
 			onVolumeChange: setVolume,
 			onMuteToggle: handleMuteToggle,
 			onLoopToggle: handleLoopToggle,
+			onSeekBy: seekBy,
+			onStepFrames: stepFrames,
 			onZoomIn: zoomIn,
 			onZoomOut: zoomOut,
 			onZoomReset: reset,
@@ -194,6 +240,8 @@ export function VideoPlayer({
 		handleSeekingEnd,
 		handleMuteToggle,
 		handleLoopToggle,
+		seekBy,
+		stepFrames,
 		handleSubtitlesToggle,
 		handleSubtitleSettingsToggle,
 		toggleFullscreen,
@@ -206,6 +254,10 @@ export function VideoPlayer({
 
 	// Keyboard shortcuts
 	useEffect(() => {
+		if (!keyboardShortcutsEnabled) {
+			return;
+		}
+
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (!videoRef.current) return;
 
@@ -216,17 +268,11 @@ export function VideoPlayer({
 					break;
 				case "ArrowLeft":
 					e.preventDefault();
-					videoRef.current.currentTime = Math.max(
-						0,
-						videoRef.current.currentTime - 5,
-					);
+					seekBy(-5);
 					break;
 				case "ArrowRight":
 					e.preventDefault();
-					videoRef.current.currentTime = Math.min(
-						duration,
-						videoRef.current.currentTime + 5,
-					);
+					seekBy(5);
 					break;
 				case "ArrowUp":
 					e.preventDefault();
@@ -258,12 +304,13 @@ export function VideoPlayer({
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [
-		duration,
+		keyboardShortcutsEnabled,
 		togglePlay,
-		toggleFullscreen,
+		seekBy,
 		handleMuteToggle,
 		handleSubtitlesToggle,
 		handleLoopToggle,
+		toggleFullscreen,
 	]);
 
 	// Sync video element state and persist to localStorage
@@ -309,9 +356,11 @@ export function VideoPlayer({
 					<video
 						ref={videoRef}
 						src={src}
+						poster={posterSrc ?? undefined}
 						autoPlay
 						playsInline
 						className="max-h-screen max-w-screen"
+						onClick={togglePlay}
 						onPlay={() => setPlaying(true)}
 						onPause={() => setPlaying(false)}
 						onTimeUpdate={(e) =>

@@ -1,17 +1,4 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import {
-	Dialog,
-	Input,
-	Label,
-	Select,
-	SelectOption,
-	Switch,
-	dialogManager,
-	toast,
-	useDialog
-} from '@spacedrive/primitives';
-import { useLibraryMutation } from '@sd/ts-client';
+import {useLibraryMutation} from '@sd/ts-client';
 import type {
 	File,
 	HwAccel,
@@ -19,6 +6,19 @@ import type {
 	TranscodeContainer,
 	TranscodeInput
 } from '@sd/ts-client';
+import {
+	Dialog,
+	dialogManager,
+	Input,
+	Label,
+	Select,
+	SelectOption,
+	Switch,
+	toast,
+	useDialog
+} from '@spacedrive/primitives';
+import {useState} from 'react';
+import {useForm} from 'react-hook-form';
 
 // UI-only selection state. These are not backend types: they map onto the
 // numeric `max_dimension` / `crf` / `bitrate_kbps` fields of `TranscodeInput`.
@@ -67,6 +67,21 @@ const PRESET_OPTIONS = [
 	'slower',
 	'veryslow'
 ] as const;
+const CODEC_VALUES = Object.keys(CODEC_LABELS) as TranscodeCodec[];
+const CONTAINER_VALUES = Object.keys(CONTAINER_LABELS) as TranscodeContainer[];
+const HW_ACCEL_VALUES = Object.keys(HW_ACCEL_LABELS) as HwAccel[];
+const RESOLUTION_VALUES = Object.keys(RESOLUTION_LABELS) as ResolutionMode[];
+const QUALITY_MODE_VALUES = [
+	'crf',
+	'bitrate'
+] as const satisfies readonly QualityMode[];
+
+function isSelectValue<T extends string>(
+	values: readonly T[],
+	value: string
+): value is T {
+	return values.includes(value as T);
+}
 
 interface TranscodeDialogProps {
 	id: number;
@@ -88,6 +103,31 @@ function TranscodeDialog(props: TranscodeDialogProps) {
 	const [force, setForce] = useState(false);
 
 	const transcode = useLibraryMutation('media.transcode');
+	const handleCodecChange = (value: string) => {
+		if (isSelectValue(CODEC_VALUES, value)) {
+			setCodec(value);
+		}
+	};
+	const handleContainerChange = (value: string) => {
+		if (isSelectValue(CONTAINER_VALUES, value)) {
+			setContainer(value);
+		}
+	};
+	const handleResolutionChange = (value: string) => {
+		if (isSelectValue(RESOLUTION_VALUES, value)) {
+			setResolution(value);
+		}
+	};
+	const handleQualityModeChange = (value: string) => {
+		if (isSelectValue(QUALITY_MODE_VALUES, value)) {
+			setQualityMode(value);
+		}
+	};
+	const handleHwAccelChange = (value: string) => {
+		if (isSelectValue(HW_ACCEL_VALUES, value)) {
+			setHwAccel(value);
+		}
+	};
 
 	const onSubmit = form.handleSubmit(async () => {
 		if (props.files.length === 0) return;
@@ -142,25 +182,19 @@ function TranscodeDialog(props: TranscodeDialogProps) {
 			<div className="space-y-4">
 				<div>
 					<Label>Codec</Label>
-					<Select value={codec} onChange={setCodec}>
-						{(Object.keys(CODEC_LABELS) as TranscodeCodec[]).map(
-							(value) => (
-								<SelectOption key={value} value={value}>
-									{CODEC_LABELS[value]}
-								</SelectOption>
-							)
-						)}
+					<Select value={codec} onChange={handleCodecChange}>
+						{CODEC_VALUES.map((value) => (
+							<SelectOption key={value} value={value}>
+								{CODEC_LABELS[value]}
+							</SelectOption>
+						))}
 					</Select>
 				</div>
 
 				<div>
 					<Label>Container</Label>
-					<Select value={container} onChange={setContainer}>
-						{(
-							Object.keys(
-								CONTAINER_LABELS
-							) as TranscodeContainer[]
-						).map((value) => (
+					<Select value={container} onChange={handleContainerChange}>
+						{CONTAINER_VALUES.map((value) => (
 							<SelectOption key={value} value={value}>
 								{CONTAINER_LABELS[value]}
 							</SelectOption>
@@ -170,10 +204,11 @@ function TranscodeDialog(props: TranscodeDialogProps) {
 
 				<div>
 					<Label>Resolution</Label>
-					<Select value={resolution} onChange={setResolution}>
-						{(
-							Object.keys(RESOLUTION_LABELS) as ResolutionMode[]
-						).map((value) => (
+					<Select
+						value={resolution}
+						onChange={handleResolutionChange}
+					>
+						{RESOLUTION_VALUES.map((value) => (
 							<SelectOption key={value} value={value}>
 								{RESOLUTION_LABELS[value]}
 							</SelectOption>
@@ -183,7 +218,10 @@ function TranscodeDialog(props: TranscodeDialogProps) {
 
 				<div>
 					<Label>Quality</Label>
-					<Select value={qualityMode} onChange={setQualityMode}>
+					<Select
+						value={qualityMode}
+						onChange={handleQualityModeChange}
+					>
 						<SelectOption value="crf">
 							Constant quality (CRF)
 						</SelectOption>
@@ -230,14 +268,12 @@ function TranscodeDialog(props: TranscodeDialogProps) {
 
 				<div>
 					<Label>Hardware acceleration</Label>
-					<Select value={hwAccel} onChange={setHwAccel}>
-						{(Object.keys(HW_ACCEL_LABELS) as HwAccel[]).map(
-							(value) => (
-								<SelectOption key={value} value={value}>
-									{HW_ACCEL_LABELS[value]}
-								</SelectOption>
-							)
-						)}
+					<Select value={hwAccel} onChange={handleHwAccelChange}>
+						{HW_ACCEL_VALUES.map((value) => (
+							<SelectOption key={value} value={value}>
+								{HW_ACCEL_LABELS[value]}
+							</SelectOption>
+						))}
 					</Select>
 				</div>
 

@@ -44,6 +44,49 @@ interface ContentRendererProps {
 	onVideoControlsStateChange?: (state: VideoControlsState) => void;
 	onShowVideoControlsChange?: (show: boolean) => void;
 	getVideoCallbacks?: (callbacks: VideoControlsCallbacks) => void;
+	videoKeyboardShortcutsEnabled?: boolean;
+	videoWheelZoomEnabled?: boolean;
+}
+
+function getPhysicalPath(file: File): string | null {
+	const sdPath = file.sd_path as { Physical?: { path?: string } } | null;
+	return sdPath?.Physical?.path ?? null;
+}
+
+async function resolveLocalFileUrl(
+	platform: {
+		convertFileSrc?(filePath: string): string;
+		allowLocalFileAccess?(filePath: string): Promise<void>;
+	},
+	file: File,
+	logPrefix: string,
+	assetKind: string,
+) {
+	if (!platform.convertFileSrc) {
+		return null;
+	}
+
+	const physicalPath = getPhysicalPath(file);
+
+	if (!physicalPath) {
+		console.log(`[${logPrefix}] No physical path available`);
+		return null;
+	}
+
+	try {
+		await platform.allowLocalFileAccess?.(physicalPath);
+	} catch (error) {
+		console.error(`[${logPrefix}] Failed to allow local file access:`, error);
+	}
+
+	const url = platform.convertFileSrc(physicalPath);
+	console.log(
+		`[${logPrefix}] Loading ${assetKind} from:`,
+		physicalPath,
+		"-> URL:",
+		url,
+	);
+	return url;
 }
 
 function ImageRenderer({ file, onZoomChange }: ContentRendererProps) {
@@ -115,30 +158,27 @@ function ImageRenderer({ file, onZoomChange }: ContentRendererProps) {
 	}, [imageFileId]);
 
 	useEffect(() => {
-		if (!shouldLoadOriginal || !platform.convertFileSrc) {
+		if (!shouldLoadOriginal) {
 			return;
 		}
 
-		const sdPath = file.sd_path as any;
-		const physicalPath = sdPath?.Physical?.path;
+		let cancelled = false;
 
-		if (!physicalPath) {
-			console.log(
-				"[ImageRenderer] No physical path available, sd_path:",
-				file.sd_path,
-			);
-			return;
-		}
+		void resolveLocalFileUrl(
+			platform,
+			file,
+			"ImageRenderer",
+			"original",
+		).then((url) => {
+			if (!cancelled) {
+				setOriginalUrl(url);
+			}
+		});
 
-		const url = platform.convertFileSrc(physicalPath);
-		console.log(
-			"[ImageRenderer] Loading original from:",
-			physicalPath,
-			"-> URL:",
-			url,
-		);
-		setOriginalUrl(url);
-	}, [shouldLoadOriginal, imageFileId, file.sd_path, platform]);
+		return () => {
+			cancelled = true;
+		};
+	}, [shouldLoadOriginal, imageFileId, file, platform]);
 
 	// Get highest resolution thumbnail first
 	const getHighestResThumbnail = () => {
@@ -408,6 +448,8 @@ function VideoRenderer({
 	onVideoControlsStateChange,
 	onShowVideoControlsChange,
 	getVideoCallbacks,
+	videoKeyboardShortcutsEnabled,
+	videoWheelZoomEnabled,
 }: ContentRendererProps) {
 	const platform = usePlatform();
 	const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -429,27 +471,24 @@ function VideoRenderer({
 	}, [videoFileId]);
 
 	useEffect(() => {
-		if (!shouldLoadVideo || !platform.convertFileSrc) {
+		if (!shouldLoadVideo) {
 			return;
 		}
 
-		const sdPath = file.sd_path as any;
-		const physicalPath = sdPath?.Physical?.path;
+		let cancelled = false;
 
-		if (!physicalPath) {
-			console.log("[VideoRenderer] No physical path available");
-			return;
-		}
-
-		const url = platform.convertFileSrc(physicalPath);
-		console.log(
-			"[VideoRenderer] Loading video from:",
-			physicalPath,
-			"-> URL:",
-			url,
+		void resolveLocalFileUrl(platform, file, "VideoRenderer", "video").then(
+			(url) => {
+				if (!cancelled) {
+					setVideoUrl(url);
+				}
+			},
 		);
-		setVideoUrl(url);
-	}, [shouldLoadVideo, videoFileId, file.sd_path, platform]);
+
+		return () => {
+			cancelled = true;
+		};
+	}, [shouldLoadVideo, videoFileId, file, platform]);
 
 	if (!videoUrl) {
 		return (
@@ -471,6 +510,8 @@ function VideoRenderer({
 			onControlsStateChange={onVideoControlsStateChange}
 			onShowControlsChange={onShowVideoControlsChange}
 			getCallbacks={getVideoCallbacks}
+			keyboardShortcutsEnabled={videoKeyboardShortcutsEnabled}
+			wheelZoomEnabled={videoWheelZoomEnabled}
 		/>
 	);
 }
@@ -496,27 +537,24 @@ function AudioRenderer({ file }: ContentRendererProps) {
 	}, [audioFileId]);
 
 	useEffect(() => {
-		if (!shouldLoadAudio || !platform.convertFileSrc) {
+		if (!shouldLoadAudio) {
 			return;
 		}
 
-		const sdPath = file.sd_path as any;
-		const physicalPath = sdPath?.Physical?.path;
+		let cancelled = false;
 
-		if (!physicalPath) {
-			console.log("[AudioRenderer] No physical path available");
-			return;
-		}
-
-		const url = platform.convertFileSrc(physicalPath);
-		console.log(
-			"[AudioRenderer] Loading audio from:",
-			physicalPath,
-			"-> URL:",
-			url,
+		void resolveLocalFileUrl(platform, file, "AudioRenderer", "audio").then(
+			(url) => {
+				if (!cancelled) {
+					setAudioUrl(url);
+				}
+			},
 		);
-		setAudioUrl(url);
-	}, [shouldLoadAudio, audioFileId, file.sd_path, platform]);
+
+		return () => {
+			cancelled = true;
+		};
+	}, [shouldLoadAudio, audioFileId, file, platform]);
 
 	if (!audioUrl) {
 		return (
@@ -572,27 +610,24 @@ function TextRenderer({ file }: ContentRendererProps) {
 	}, [textFileId]);
 
 	useEffect(() => {
-		if (!shouldLoadText || !platform.convertFileSrc) {
+		if (!shouldLoadText) {
 			return;
 		}
 
-		const sdPath = file.sd_path as any;
-		const physicalPath = sdPath?.Physical?.path;
+		let cancelled = false;
 
-		if (!physicalPath) {
-			console.log("[TextRenderer] No physical path available");
-			return;
-		}
-
-		const url = platform.convertFileSrc(physicalPath);
-		console.log(
-			"[TextRenderer] Loading text from:",
-			physicalPath,
-			"-> URL:",
-			url,
+		void resolveLocalFileUrl(platform, file, "TextRenderer", "text").then(
+			(url) => {
+				if (!cancelled) {
+					setTextUrl(url);
+				}
+			},
 		);
-		setTextUrl(url);
-	}, [shouldLoadText, textFileId, file.sd_path, platform]);
+
+		return () => {
+			cancelled = true;
+		};
+	}, [shouldLoadText, textFileId, file, platform]);
 
 	const extension = file.name.split(".").pop()?.toLowerCase();
 
@@ -647,6 +682,8 @@ export function ContentRenderer({
 	onVideoControlsStateChange,
 	onShowVideoControlsChange,
 	getVideoCallbacks,
+	videoKeyboardShortcutsEnabled = true,
+	videoWheelZoomEnabled = true,
 }: ContentRendererProps) {
 	// Handle directories with grid preview of subdirectories
 	if (file.kind === "Directory") {
@@ -666,6 +703,10 @@ export function ContentRenderer({
 					onVideoControlsStateChange={onVideoControlsStateChange}
 					onShowVideoControlsChange={onShowVideoControlsChange}
 					getVideoCallbacks={getVideoCallbacks}
+					videoKeyboardShortcutsEnabled={
+						videoKeyboardShortcutsEnabled
+					}
+					videoWheelZoomEnabled={videoWheelZoomEnabled}
 				/>
 			);
 		case "audio":

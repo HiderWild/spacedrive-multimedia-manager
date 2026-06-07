@@ -37,6 +37,9 @@ export type Platform = {
 	/** Convert a file path to a URL that can be loaded in the webview */
 	convertFileSrc?(filePath: string): string;
 
+	/** Ensure a local file path is readable through the native asset protocol */
+	allowLocalFileAccess?(filePath: string): Promise<void>;
+
 	/** Reveal a file in the native file manager (Finder on macOS, Explorer on Windows, etc.) */
 	revealFile?(filePath: string): Promise<void>;
 

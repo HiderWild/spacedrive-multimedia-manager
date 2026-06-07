@@ -4,13 +4,19 @@ interface UseZoomPanOptions {
 	minZoom?: number;
 	maxZoom?: number;
 	zoomStep?: number;
+	wheelZoomEnabled?: boolean;
 }
 
 export function useZoomPan(
 	containerRef: RefObject<HTMLElement>,
 	options: UseZoomPanOptions = {},
 ) {
-	const { minZoom = 1, maxZoom = 5, zoomStep = 0.1 } = options;
+	const {
+		minZoom = 1,
+		maxZoom = 5,
+		zoomStep = 0.1,
+		wheelZoomEnabled = true,
+	} = options;
 
 	const [zoom, setZoom] = useState(1);
 	const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -41,6 +47,8 @@ export function useZoomPan(
 
 	// Mouse wheel zoom
 	useEffect(() => {
+		if (!wheelZoomEnabled) return;
+
 		const container = containerRef.current;
 		if (!container) return;
 
@@ -75,7 +83,7 @@ export function useZoomPan(
 
 		container.addEventListener("wheel", handleWheel, { passive: false });
 		return () => container.removeEventListener("wheel", handleWheel);
-	}, [containerRef, minZoom, maxZoom]);
+	}, [containerRef, minZoom, maxZoom, wheelZoomEnabled]);
 
 	// Pan with mouse drag (only when zoomed in)
 	useEffect(() => {
