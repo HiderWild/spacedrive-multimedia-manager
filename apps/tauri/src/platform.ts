@@ -79,6 +79,10 @@ export const platform: Platform = {
 		return tauriConvertFileSrc(filePath);
 	},
 
+	async allowLocalFileAccess(filePath: string) {
+		await invoke('allow_local_file_access', {path: filePath});
+	},
+
 	async revealFile(filePath: string) {
 		await invoke('reveal_file', {path: filePath});
 	},

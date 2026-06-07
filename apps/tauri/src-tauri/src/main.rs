@@ -381,7 +381,10 @@ fn record_daemon_failure_and_get_restart_delay(
 }
 
 #[cfg(target_os = "windows")]
-fn build_windows_daemon_task_xml(daemon_path: &std::path::Path, data_dir: &std::path::Path) -> String {
+fn build_windows_daemon_task_xml(
+	daemon_path: &std::path::Path,
+	data_dir: &std::path::Path,
+) -> String {
 	format!(
 		r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -465,10 +468,13 @@ async fn ensure_daemon_watchdog_started(
 				if !state.started_by_us {
 					None
 				} else {
-					state
-						.daemon_process
-						.clone()
-						.map(|process_arc| (state.data_dir.clone(), state.socket_addr.clone(), process_arc))
+					state.daemon_process.clone().map(|process_arc| {
+						(
+							state.data_dir.clone(),
+							state.socket_addr.clone(),
+							process_arc,
+						)
+					})
 				}
 			}) else {
 				continue;
@@ -534,9 +540,8 @@ async fn ensure_daemon_watchdog_started(
 					{
 						let mut state = daemon_state.write().await;
 						state.started_by_us = true;
-						state.daemon_process = Some(std::sync::Arc::new(
-							tokio::sync::Mutex::new(Some(child)),
-						));
+						state.daemon_process =
+							Some(std::sync::Arc::new(tokio::sync::Mutex::new(Some(child))));
 					}
 
 					connection_pool.reset().await;
@@ -2212,6 +2217,7 @@ fn main() {
 			drag::force_clear_drag_state,
 			files::reveal_file,
 			files::share_files,
+			files::allow_local_file_access,
 			files::get_sidecar_path,
 			file_opening::get_apps_for_paths,
 			file_opening::open_path_default,
@@ -2412,21 +2418,21 @@ fn main() {
 				};
 
 				// Update daemon state
-	let mut state = daemon_state.write().await;
-	state.started_by_us = started_by_us;
-	state.daemon_process = child_process;
-	drop(state);
+				let mut state = daemon_state.write().await;
+				state.started_by_us = started_by_us;
+				state.daemon_process = child_process;
+				drop(state);
 
-	if let Some(app_state) = app_handle.try_state::<AppState>() {
-		ensure_daemon_watchdog_started(
-			app_handle.clone(),
-			daemon_state.clone(),
-			app_state.connection_pool.clone(),
-		)
-		.await;
-	}
+				if let Some(app_state) = app_handle.try_state::<AppState>() {
+					ensure_daemon_watchdog_started(
+						app_handle.clone(),
+						daemon_state.clone(),
+						app_state.connection_pool.clone(),
+					)
+					.await;
+				}
 
-	tracing::info!("Daemon connection established");
+				tracing::info!("Daemon connection established");
 
 				// Validate persisted library ID in background (non-blocking)
 				// If library no longer exists, reset the state
@@ -2502,8 +2508,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
 	use super::{
-		record_daemon_failure_and_get_restart_delay, DAEMON_RESTART_DELAYS,
-		DAEMON_RESTART_WINDOW,
+		record_daemon_failure_and_get_restart_delay, DAEMON_RESTART_DELAYS, DAEMON_RESTART_WINDOW,
 	};
 	use std::collections::VecDeque;
 	use std::time::Duration;

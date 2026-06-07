@@ -1,4 +1,6 @@
 use std::path::{Path, PathBuf};
+use tauri::{Manager, Window};
+use tauri_plugin_fs::FsExt;
 use tracing::error;
 
 /// Reveal a file in the native file manager (Finder on macOS, Explorer on Windows, etc.)
@@ -46,6 +48,31 @@ pub async fn share_files(paths: Vec<String>) -> Result<(), String> {
 	{
 		Err("Share sheet is only supported on macOS".to_string())
 	}
+}
+
+/// Allow a local file to be loaded through the Tauri asset protocol at runtime.
+#[tauri::command]
+pub async fn allow_local_file_access(window: Window, path: String) -> Result<(), String> {
+	let path = PathBuf::from(path);
+
+	if let Some(scope) = window.try_fs_scope() {
+		scope.allow_file(&path).map_err(|e| {
+			format!(
+				"Failed to allow filesystem access for '{}': {}",
+				path.display(),
+				e
+			)
+		})?;
+	}
+
+	let tauri_scope = window.state::<tauri::scope::Scopes>();
+	tauri_scope.allow_file(&path).map_err(|e| {
+		format!(
+			"Failed to allow asset protocol access for '{}': {}",
+			path.display(),
+			e
+		)
+	})
 }
 
 /// Get the physical path to a sidecar file
