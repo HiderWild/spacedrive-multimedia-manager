@@ -1,74 +1,98 @@
 {
-  "general": {
-    "title": "General",
-    "description": "Configure general application settings.",
-    "language": "Language",
-    "languageDescription": "Select your preferred language"
-  },
-  "device": {
-    "title": "Device",
-    "name": "Device Name",
-    "nameDescription": "User-friendly name for this device",
-    "slug": "Device Slug",
-    "slugDescription": "Unique identifier for this device (alphanumeric and hyphens only)"
-  },
-  "version": {
-    "title": "Version Information",
-    "version": "Version",
-    "built": "Built"
-  },
-  "dataDirectory": {
-    "title": "Data Directory",
-    "description": "Where Spacedrive stores its data"
-  },
-  "resetData": {
-    "title": "Reset All Data",
-    "description": "Permanently delete all libraries and settings",
-    "confirmTitle": "Reset All Data",
-    "confirmMessage": "This will permanently delete all libraries, settings, and cached data. The app will need to be restarted. Are you sure?",
-    "successMessage": "Data has been reset. Please restart the application."
-  },
-  "sidebar": {
-    "general": "General",
-    "appearance": "Appearance",
-    "library": "Library",
-    "indexer": "Indexer",
-    "services": "Services",
-    "privacy": "Privacy",
-    "advanced": "Advanced",
-    "about": "About",
-    "settings": "Settings"
-  },
-  "fileKinds": {
-    "title": "File Kinds",
-    "subtitle": "Browse your files by content type",
-    "totalFiles": "Total Files",
-    "file": "file",
-    "files": "files",
-    "loading": "Loading file kinds..."
-  },
-  "sources": {
-    "title": "Sources",
-    "searchPlaceholder": "Search sources...",
-    "loading": "Loading...",
-    "loadError": "Failed to load sources: {{error}}",
-    "noSources": "No sources yet",
-    "noSourcesDescription": "Add a data source to get started",
-    "addSource": "Add Source"
-  },
-  "redundancy": {
-    "title": "Redundancy",
-    "loading": "Loading redundancy data...",
-    "replicationScore": "Replication Score",
-    "safelyReplicated": "safely replicated",
-    "atRisk": "at risk (single copy)",
-    "uniqueContent": "unique content total",
-    "filesAtRisk": "{{count}} files at risk",
-    "oneVolumeData": "of data exists on only one volume",
-    "perVolumeBreakdown": "Per-Volume Breakdown",
-    "noVolumes": "No volumes with indexed content found.",
-    "indexVolumeHint": "Index a volume to see redundancy data.",
-    "compareVolumes": "Compare Volumes",
-    "viewAtRiskFiles": "View At-Risk Files"
-  }
+	"general": {
+		"title": "General",
+		"description": "Configure general application settings.",
+		"language": "Language",
+		"languageDescription": "Select your preferred language"
+	},
+	"device": {
+		"title": "Device",
+		"name": "Device Name",
+		"nameDescription": "User-friendly name for this device",
+		"slug": "Device Slug",
+		"slugDescription": "Unique identifier for this device (alphanumeric and hyphens only)"
+	},
+	"version": {
+		"title": "Version Information",
+		"version": "Version",
+		"built": "Built"
+	},
+	"dataDirectory": {
+		"title": "Data Directory",
+		"description": "Where Spacedrive stores its data"
+	},
+	"resetData": {
+		"title": "Reset All Data",
+		"description": "Permanently delete all libraries and settings",
+		"confirmTitle": "Reset All Data",
+		"confirmMessage": "This will permanently delete all libraries, settings, and cached data. The app will need to be restarted. Are you sure?",
+		"successMessage": "Data has been reset. Please restart the application."
+	},
+	"sidebar": {
+		"general": "General",
+		"appearance": "Appearance",
+		"library": "Library",
+		"indexer": "Indexer",
+		"services": "Services",
+		"privacy": "Privacy",
+		"advanced": "Advanced",
+		"help": "Help",
+		"about": "About",
+		"settings": "Settings"
+	},
+	"help": {
+		"title": "Help",
+		"description": "Keyboard and mouse controls for the organize preview sidebar.",
+		"organizeTitle": "Organize preview shortcuts",
+		"organizeDescription": "These shortcuts apply while an image or video preview tab is active in the organize inspector.",
+		"sections": {
+			"layout": "Layout",
+			"image": "Image preview",
+			"video": "Video preview"
+		},
+		"items": {
+			"resizeInspector": "Drag the divider between the browser and the sidebar to resize the preview column.",
+			"imagePrevious": "Move to the previous image in the current organize selection.",
+			"imageNext": "Move to the next image in the current organize selection.",
+			"imageZoom": "Zoom the image preview. Scroll up zooms in, scroll down zooms out.",
+			"imageOpenWindow": "Open the selected image in a detached global preview window.",
+			"videoPrevious": "Move to the previous or next video in the current organize selection.",
+			"videoNext": "Move to the previous or next video in the current organize selection.",
+			"videoSeek": "Seek backward or forward by 5 seconds without pausing playback.",
+			"videoFrameStep": "Step a single frame and pause playback. Scroll up moves backward, scroll down moves forward.",
+			"videoToggle": "Toggle playback by pressing Space or clicking the video surface."
+		}
+	},
+	"fileKinds": {
+		"title": "File Kinds",
+		"subtitle": "Browse your files by content type",
+		"totalFiles": "Total Files",
+		"file": "file",
+		"files": "files",
+		"loading": "Loading file kinds..."
+	},
+	"sources": {
+		"title": "Sources",
+		"searchPlaceholder": "Search sources...",
+		"loading": "Loading...",
+		"loadError": "Failed to load sources: {{error}}",
+		"noSources": "No sources yet",
+		"noSourcesDescription": "Add a data source to get started",
+		"addSource": "Add Source"
+	},
+	"redundancy": {
+		"title": "Redundancy",
+		"loading": "Loading redundancy data...",
+		"replicationScore": "Replication Score",
+		"safelyReplicated": "safely replicated",
+		"atRisk": "at risk (single copy)",
+		"uniqueContent": "unique content total",
+		"filesAtRisk": "{{count}} files at risk",
+		"oneVolumeData": "of data exists on only one volume",
+		"perVolumeBreakdown": "Per-Volume Breakdown",
+		"noVolumes": "No volumes with indexed content found.",
+		"indexVolumeHint": "Index a volume to see redundancy data.",
+		"compareVolumes": "Compare Volumes",
+		"viewAtRiskFiles": "View At-Risk Files"
+	}
 }

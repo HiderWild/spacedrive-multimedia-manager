@@ -1,7 +1,7 @@
 import type {Location} from '@sd/ts-client';
 import clsx from 'clsx';
 import {AnimatePresence, motion} from 'framer-motion';
-import {useEffect, useMemo} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Outlet, useLocation, useParams} from 'react-router-dom';
 import {Inspector} from './components/Inspector/Inspector';
 import {JobsProvider} from './components/JobManager/hooks/JobsContext';
@@ -21,13 +21,21 @@ import {useNormalizedQuery} from './contexts/SpacedriveContext';
 import {WebContextMenuProvider} from './contexts/WebContextMenuContext';
 import {ExplorerProvider, useExplorer} from './routes/explorer';
 import {KeyboardHandler} from './routes/explorer/KeyboardHandler';
+import {PaneResizer} from './routes/explorer/panes/PaneResizer';
 import {SelectionProvider} from './routes/explorer/SelectionContext';
 import {TagAssignmentMode} from './routes/explorer/TagAssignmentMode';
+import {
+	clampInspectorWidth,
+	getInspectorReservedWidth,
+	INSPECTOR_RESIZER_WIDTH,
+	INSPECTOR_SHELL_PADDING
+} from './shellLayoutSizing';
 import {TopBar, TopBarProvider} from './TopBar';
 
 function ShellLayoutContent() {
 	const location = useLocation();
 	const params = useParams();
+	const shellRef = useRef<HTMLDivElement>(null);
 	const platform = usePlatform();
 	const {
 		sidebarVisible,
@@ -37,12 +45,21 @@ function ShellLayoutContent() {
 		tagModeActive,
 		setTagModeActive,
 		viewMode,
+		sortBy,
+		viewSettings,
 		currentPath
 	} = useExplorer();
+	const [inspectorWidth, setInspectorWidth] = useState(280);
 
 	// Check if we're on Overview (hide inspector) or in Knowledge view (has its own inspector)
 	const isOverview = location.pathname === '/';
 	const isKnowledgeView = viewMode === 'knowledge';
+	const sidebarWidth = sidebarVisible ? 220 : 0;
+	const showEmbeddedInspector =
+		inspectorVisible && !isOverview && !isKnowledgeView;
+	const inspectorReservedWidth = showEmbeddedInspector
+		? getInspectorReservedWidth(inspectorWidth)
+		: 0;
 
 	// Fetch locations to get current location info
 	const locationsQuery = useNormalizedQuery<null, {locations: Location[]}>({
@@ -132,12 +149,67 @@ function ShellLayoutContent() {
 
 	const isPreviewActive = !!quickPreviewFileId;
 	const isSizeViewActive = viewMode === 'size';
+	const organizePreview =
+		viewMode === 'organize'
+			? {
+					sortBy,
+					foldersFirst: viewSettings.foldersFirst
+				}
+			: null;
+	const resizeInspectorTo = useCallback(
+		(requestedWidth: number) => {
+			const containerWidth =
+				shellRef.current?.getBoundingClientRect().width;
+			if (!containerWidth) {
+				return;
+			}
+
+			setInspectorWidth(
+				clampInspectorWidth({
+					containerWidth,
+					sidebarWidth,
+					requestedWidth
+				})
+			);
+		},
+		[sidebarWidth]
+	);
+
+	const handleInspectorResize = useCallback(
+		(clientX: number) => {
+			const containerRect = shellRef.current?.getBoundingClientRect();
+			if (!containerRect) {
+				return;
+			}
+
+			resizeInspectorTo(
+				containerRect.right -
+					clientX -
+					INSPECTOR_SHELL_PADDING -
+					INSPECTOR_RESIZER_WIDTH
+			);
+		},
+		[resizeInspectorTo]
+	);
+
+	useEffect(() => {
+		if (!showEmbeddedInspector) {
+			return;
+		}
+
+		const handleResize = () => resizeInspectorTo(inspectorWidth);
+		handleResize();
+		window.addEventListener('resize', handleResize);
+
+		return () => window.removeEventListener('resize', handleResize);
+	}, [inspectorWidth, resizeInspectorTo, showEmbeddedInspector]);
 
 	return (
 		<div
+			ref={shellRef}
 			className={clsx(
 				'text-sidebar-ink bg-app relative flex h-screen select-none flex-col overflow-hidden border border-transparent',
-				platform.platform === 'tauri' && 'rounded-[10px]',
+				platform.platform === 'tauri' && 'rounded-[10px]'
 			)}
 		>
 			{/* Preview layer - portal target for fullscreen preview, sits between content and sidebar/inspector */}
@@ -153,17 +225,11 @@ function ShellLayoutContent() {
 			/>
 
 			{/* Top fade mask - spans full width beyond sidebar/inspector */}
-			<div
-				className="pointer-events-none absolute left-0 right-0 top-0 z-[37] h-32 bg-gradient-to-b from-app to-transparent"
-			/>
+			<div className="from-app pointer-events-none absolute left-0 right-0 top-0 z-[37] h-32 bg-gradient-to-b to-transparent" />
 
 			<TopBar
 				sidebarWidth={sidebarVisible ? 224 : 0}
-				inspectorWidth={
-					inspectorVisible && !isOverview && !isKnowledgeView
-						? 284
-						: 0
-				}
+				inspectorWidth={inspectorReservedWidth}
 				isPreviewActive={isPreviewActive || isSizeViewActive}
 			/>
 
@@ -174,10 +240,7 @@ function ShellLayoutContent() {
 					style={{
 						top: 48, // TopBar height
 						paddingLeft: sidebarVisible ? 220 : 0,
-						paddingRight:
-							inspectorVisible && !isOverview && !isKnowledgeView
-								? 280
-								: 0,
+						paddingRight: inspectorReservedWidth,
 						transition: 'padding 0.3s ease-out'
 					}}
 				>
@@ -238,24 +301,26 @@ function ShellLayoutContent() {
 
 				<AnimatePresence initial={false}>
 					{/* Hide inspector on Overview screen and Knowledge view (has its own) */}
-					{inspectorVisible && !isOverview && !isKnowledgeView && (
+					{showEmbeddedInspector && (
 						<motion.div
 							initial={{width: 0}}
-							animate={{width: 280}}
+							animate={{width: inspectorReservedWidth}}
 							exit={{width: 0}}
 							transition={{
 								duration: 0.3,
 								ease: [0.25, 1, 0.5, 1]
 							}}
-							className="relative z-[65] overflow-hidden"
+							className="relative z-[65] flex overflow-visible"
 						>
-							<div className="flex h-full w-[280px] min-w-[280px] flex-col bg-transparent p-2">
+							<PaneResizer onDrag={handleInspectorResize} />
+							<div className="flex min-w-0 flex-1 flex-col bg-transparent p-2">
 								<Inspector
 									currentLocation={currentLocation}
 									onPopOut={handlePopOutInspector}
 									isPreviewActive={
 										isPreviewActive || isSizeViewActive
 									}
+									organizePreview={organizePreview}
 								/>
 							</div>
 						</motion.div>
@@ -265,12 +330,8 @@ function ShellLayoutContent() {
 
 			{/* Quick Preview - isolated component to prevent frame rerenders on selection change */}
 			<QuickPreviewController
-				sidebarWidth={sidebarVisible ? 220 : 0}
-				inspectorWidth={
-					inspectorVisible && !isOverview && !isKnowledgeView
-						? 280
-						: 0
-				}
+				sidebarWidth={sidebarWidth}
+				inspectorWidth={inspectorReservedWidth}
 			/>
 		</div>
 	);

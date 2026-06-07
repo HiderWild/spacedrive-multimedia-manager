@@ -1,74 +1,98 @@
 {
-  "general": {
-    "title": "通用",
-    "description": "配置通用应用程序设置。",
-    "language": "语言",
-    "languageDescription": "选择您的首选语言"
-  },
-  "device": {
-    "title": "设备",
-    "name": "设备名称",
-    "nameDescription": "此设备的用户友好名称",
-    "slug": "设备标识",
-    "slugDescription": "此设备的唯一标识符（仅限字母数字和连字符）"
-  },
-  "version": {
-    "title": "版本信息",
-    "version": "版本",
-    "built": "构建时间"
-  },
-  "dataDirectory": {
-    "title": "数据目录",
-    "description": "Spacedrive 存储数据的位置"
-  },
-  "resetData": {
-    "title": "重置所有数据",
-    "description": "永久删除所有资料库和设置",
-    "confirmTitle": "重置所有数据",
-    "confirmMessage": "此操作将永久删除所有资料库、设置和缓存数据。应用程序需要重新启动。确定要继续吗？",
-    "successMessage": "数据已重置。请重新启动应用程序。"
-  },
-  "sidebar": {
-    "general": "通用",
-    "appearance": "外观",
-    "library": "资料库",
-    "indexer": "索引器",
-    "services": "服务",
-    "privacy": "隐私",
-    "advanced": "高级",
-    "about": "关于",
-    "settings": "设置"
-  },
-  "fileKinds": {
-    "title": "文件类型",
-    "subtitle": "按内容类型浏览文件",
-    "totalFiles": "总文件数",
-    "file": "个文件",
-    "files": "个文件",
-    "loading": "加载文件类型..."
-  },
-  "sources": {
-    "title": "来源",
-    "searchPlaceholder": "搜索来源...",
-    "loading": "加载中...",
-    "loadError": "加载来源失败：{{error}}",
-    "noSources": "暂无来源",
-    "noSourcesDescription": "添加数据源以开始使用",
-    "addSource": "添加来源"
-  },
-  "redundancy": {
-    "title": "冗余",
-    "loading": "加载冗余数据...",
-    "replicationScore": "复制分数",
-    "safelyReplicated": "安全复制",
-    "atRisk": "有风险（单副本）",
-    "uniqueContent": "唯一内容总计",
-    "filesAtRisk": "{{count}} 个文件有风险",
-    "oneVolumeData": "数据仅存在于一个卷上",
-    "perVolumeBreakdown": "各卷明细",
-    "noVolumes": "未找到已索引内容的卷。",
-    "indexVolumeHint": "索引一个卷以查看冗余数据。",
-    "compareVolumes": "比较卷",
-    "viewAtRiskFiles": "查看风险文件"
-  }
+	"general": {
+		"title": "通用",
+		"description": "配置通用应用程序设置。",
+		"language": "语言",
+		"languageDescription": "选择您的首选语言"
+	},
+	"device": {
+		"title": "设备",
+		"name": "设备名称",
+		"nameDescription": "此设备的用户友好名称",
+		"slug": "设备标识",
+		"slugDescription": "此设备的唯一标识符（仅限字母数字和连字符）"
+	},
+	"version": {
+		"title": "版本信息",
+		"version": "版本",
+		"built": "构建时间"
+	},
+	"dataDirectory": {
+		"title": "数据目录",
+		"description": "Spacedrive 存储数据的位置"
+	},
+	"resetData": {
+		"title": "重置所有数据",
+		"description": "永久删除所有资料库和设置",
+		"confirmTitle": "重置所有数据",
+		"confirmMessage": "此操作将永久删除所有资料库、设置和缓存数据。应用程序需要重新启动。确定要继续吗？",
+		"successMessage": "数据已重置。请重新启动应用程序。"
+	},
+	"sidebar": {
+		"general": "通用",
+		"appearance": "外观",
+		"library": "资料库",
+		"indexer": "索引器",
+		"services": "服务",
+		"privacy": "隐私",
+		"advanced": "高级",
+		"help": "帮助",
+		"about": "关于",
+		"settings": "设置"
+	},
+	"help": {
+		"title": "帮助",
+		"description": "整理视图预览侧栏的键盘和鼠标操作说明。",
+		"organizeTitle": "整理预览快捷操作",
+		"organizeDescription": "以下操作在整理视图右侧检查器中的图片或视频预览页签激活时生效。",
+		"sections": {
+			"layout": "布局",
+			"image": "图片预览",
+			"video": "视频预览"
+		},
+		"items": {
+			"resizeInspector": "拖动文件浏览区和侧栏之间的分隔线，调整预览栏宽度。",
+			"imagePrevious": "切换到当前整理选择中的上一张图片。",
+			"imageNext": "切换到当前整理选择中的下一张图片。",
+			"imageZoom": "缩放图片预览。向上滚动放大，向下滚动缩小。",
+			"imageOpenWindow": "在新的全局预览窗口中打开当前图片。",
+			"videoPrevious": "切换到当前整理选择中的上一个或下一个视频。",
+			"videoNext": "切换到当前整理选择中的上一个或下一个视频。",
+			"videoSeek": "在不暂停播放的情况下前进或后退 5 秒。",
+			"videoFrameStep": "逐帧调整并暂停播放。向上滚动后退一帧，向下滚动前进一帧。",
+			"videoToggle": "按空格或点击视频画面切换播放与暂停。"
+		}
+	},
+	"fileKinds": {
+		"title": "文件类型",
+		"subtitle": "按内容类型浏览文件",
+		"totalFiles": "总文件数",
+		"file": "个文件",
+		"files": "个文件",
+		"loading": "加载文件类型..."
+	},
+	"sources": {
+		"title": "来源",
+		"searchPlaceholder": "搜索来源...",
+		"loading": "加载中...",
+		"loadError": "加载来源失败：{{error}}",
+		"noSources": "暂无来源",
+		"noSourcesDescription": "添加数据源以开始使用",
+		"addSource": "添加来源"
+	},
+	"redundancy": {
+		"title": "冗余",
+		"loading": "加载冗余数据...",
+		"replicationScore": "复制分数",
+		"safelyReplicated": "安全复制",
+		"atRisk": "有风险（单副本）",
+		"uniqueContent": "唯一内容总计",
+		"filesAtRisk": "{{count}} 个文件有风险",
+		"oneVolumeData": "数据仅存在于一个卷上",
+		"perVolumeBreakdown": "各卷明细",
+		"noVolumes": "未找到已索引内容的卷。",
+		"indexVolumeHint": "索引一个卷以查看冗余数据。",
+		"compareVolumes": "比较卷",
+		"viewAtRiskFiles": "查看风险文件"
+	}
 }
