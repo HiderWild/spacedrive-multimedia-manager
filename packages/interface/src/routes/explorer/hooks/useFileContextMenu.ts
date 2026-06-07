@@ -24,7 +24,7 @@ import {
 } from '@phosphor-icons/react';
 import type {File} from '@sd/ts-client';
 import {getContentKind, isVirtualFile} from '@sd/ts-client';
-import { toast } from '@spacedrive/primitives';
+import {toast} from '@spacedrive/primitives';
 import {useFileOperationDialog} from '../../../components/modals/FileOperationModal';
 import {usePlatform} from '../../../contexts/PlatformContext';
 import {useLibraryMutation} from '../../../contexts/SpacedriveContext';
@@ -33,6 +33,13 @@ import {useContextMenu} from '../../../hooks/useContextMenu';
 import {useOpenWith} from '../../../hooks/useOpenWith';
 import {useRefetchTagQueries} from '../../../hooks/useRefetchTagQueries';
 import {useExplorer} from '../context';
+import {
+	buildExtractTextInput,
+	buildGenerateProxyInput,
+	buildGenerateThumbstripInput,
+	buildRegenerateThumbnailInput,
+	buildTranscribeAudioInput
+} from '../mediaActionInputs';
 import {useSelection} from '../SelectionContext';
 import {useDeleteFiles} from './useDeleteFiles';
 
@@ -86,7 +93,10 @@ export function useFileContextMenu({
 		const targets =
 			selected && selectedFiles.length > 0 ? selectedFiles : [file];
 		return targets
-			.filter((f): f is File => f != null && f.sd_path != null && 'Physical' in f.sd_path)
+			.filter(
+				(f): f is File =>
+					f != null && f.sd_path != null && 'Physical' in f.sd_path
+			)
 			.map((f) => (f.sd_path as any).Physical.path);
 	};
 
@@ -380,10 +390,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								regenerateThumbnail.mutateAsync({
-									entry_uuid: f.id,
-									force: false
-								})
+								regenerateThumbnail.mutateAsync(
+									buildRegenerateThumbnailInput(f.id, false)
+								)
 							);
 						},
 						condition: () =>
@@ -395,10 +404,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								regenerateThumbnail.mutateAsync({
-									entry_uuid: f.id,
-									force: true
-								})
+								regenerateThumbnail.mutateAsync(
+									buildRegenerateThumbnailInput(f.id, true)
+								)
 							);
 						}
 					},
@@ -408,10 +416,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								extractText.mutateAsync({
-									entry_uuid: f.id,
-									force: false
-								})
+								extractText.mutateAsync(
+									buildExtractTextInput(f.id, false)
+								)
 							);
 						},
 						keybind: '⌘⇧T'
@@ -430,10 +437,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								generateThumbstrip.mutateAsync({
-									entry_uuid: f.id,
-									force: false
-								})
+								generateThumbstrip.mutateAsync(
+									buildGenerateThumbstripInput(f.id, false)
+								)
 							);
 						},
 						condition: () =>
@@ -446,10 +452,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								regenerateThumbnail.mutateAsync({
-									entry_uuid: f.id,
-									force: false
-								})
+								regenerateThumbnail.mutateAsync(
+									buildRegenerateThumbnailInput(f.id, false)
+								)
 							);
 						},
 						condition: () =>
@@ -461,10 +466,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								regenerateThumbnail.mutateAsync({
-									entry_uuid: f.id,
-									force: true
-								})
+								regenerateThumbnail.mutateAsync(
+									buildRegenerateThumbnailInput(f.id, true)
+								)
 							);
 						}
 					},
@@ -474,9 +478,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								transcribeAudio.mutateAsync({
-									entry_uuid: f.id
-								})
+								transcribeAudio.mutateAsync(
+									buildTranscribeAudioInput(f.id)
+								)
 							);
 						}
 					},
@@ -486,10 +490,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								generateProxy.mutateAsync({
-									entry_uuid: f.id,
-									force: false
-								})
+								generateProxy.mutateAsync(
+									buildGenerateProxyInput(f.id, false)
+								)
 							);
 						},
 						keybind: '⌘⇧P'
@@ -508,10 +511,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								transcribeAudio.mutateAsync({
-									entry_uuid: f.id,
-									model: 'whisper-base'
-								})
+								transcribeAudio.mutateAsync(
+									buildTranscribeAudioInput(f.id)
+								)
 							);
 						},
 						keybind: '⌘⇧T'
@@ -533,10 +535,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								extractText.mutateAsync({
-									entry_uuid: f.id,
-									force: false
-								})
+								extractText.mutateAsync(
+									buildExtractTextInput(f.id, false)
+								)
 							);
 						},
 						keybind: '⌘⇧T'
@@ -547,10 +548,9 @@ export function useFileContextMenu({
 						onClick: async () => {
 							const targets = getTargetFiles();
 							await forEachTarget(targets, (f) =>
-								regenerateThumbnail.mutateAsync({
-									entry_uuid: f.id,
-									force: true
-								})
+								regenerateThumbnail.mutateAsync(
+									buildRegenerateThumbnailInput(f.id, true)
+								)
 							);
 						}
 					}
@@ -568,10 +568,9 @@ export function useFileContextMenu({
 						label: 'Regenerate All Thumbnails',
 						onClick: async () => {
 							await forEachTarget(selectedFiles, (f) =>
-								regenerateThumbnail.mutateAsync({
-									entry_uuid: f.id,
-									force: true
-								})
+								regenerateThumbnail.mutateAsync(
+									buildRegenerateThumbnailInput(f.id, true)
+								)
 							);
 						}
 					},
@@ -580,10 +579,9 @@ export function useFileContextMenu({
 						label: 'Generate Blurhashes',
 						onClick: async () => {
 							await forEachTarget(selectedFiles, (f) =>
-								regenerateThumbnail.mutateAsync({
-									entry_uuid: f.id,
-									force: false
-								})
+								regenerateThumbnail.mutateAsync(
+									buildRegenerateThumbnailInput(f.id, false)
+								)
 							);
 						},
 						keybind: '⌘⇧B'
@@ -593,10 +591,9 @@ export function useFileContextMenu({
 						label: 'Extract Text (OCR)',
 						onClick: async () => {
 							await forEachTarget(selectedFiles, (f) =>
-								extractText.mutateAsync({
-									entry_uuid: f.id,
-									force: false
-								})
+								extractText.mutateAsync(
+									buildExtractTextInput(f.id, false)
+								)
 							);
 						}
 					}

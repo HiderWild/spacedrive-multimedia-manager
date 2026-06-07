@@ -1,7 +1,6 @@
 import {
 	ArrowsClockwise,
 	Calendar,
-	ChatCircle,
 	ClockCounterClockwise,
 	Cube,
 	DotsThree,
@@ -26,35 +25,98 @@ import {
 	VideoCamera
 } from '@phosphor-icons/react';
 import {getIcon} from '@sd/assets/util';
-import type {File, SdPath} from '@sd/ts-client';
+import {getContentKind, type File, type SdPath} from '@sd/ts-client';
 import {toast} from '@spacedrive/primitives';
 import clsx from 'clsx';
-import {LocationMap} from '../LocationMap';
-import {useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
+import {useTranslation} from 'react-i18next';
 import {useJobsContext} from '../../../components/JobManager/hooks/JobsContext';
 import {TagSelectorButton} from '../../../components/Tags';
+import {EffectiveTagsList} from '../../../components/Tags/EffectiveTagsList';
 import {usePlatform} from '../../../contexts/PlatformContext';
 import {useServer} from '../../../contexts/ServerContext';
-import { getContentKind } from "@sd/ts-client";
 import {
 	getDeviceIcon,
 	useLibraryMutation,
 	useNormalizedQuery
 } from '../../../contexts/SpacedriveContext';
 import {useContextMenu} from '../../../hooks/useContextMenu';
-import {File as FileComponent} from '../../../routes/explorer/File';
-import { formatBytes } from '../../../routes/explorer/utils';
-import {Divider, InfoRow, Section, TabContent, Tabs} from '../Inspector';
 import {useRefetchTagQueries} from '../../../hooks/useRefetchTagQueries';
-import {EffectiveTagsList} from '../../../components/Tags/EffectiveTagsList';
+import {File as FileComponent} from '../../../routes/explorer/File';
+import {
+	deriveDirectoryPreviewAvailability,
+	deriveOrganizeInspectorPreview,
+	toMediaSortBy,
+	type OrganizeInspectorPreviewContext
+} from '../../../routes/explorer/organize/organizePreview';
+import {OrganizePreviewContent} from '../../../routes/explorer/organize/OrganizePreviewContent';
+import {formatBytes} from '../../../routes/explorer/utils';
+import {Divider, InfoRow, Section, TabContent, Tabs} from '../Inspector';
+import {LocationMap} from '../LocationMap';
+import {
+	buildFileInspectorTabs,
+	type FileInspectorTab
+} from './fileInspectorTabs';
 
 interface FileInspectorProps {
 	file: File;
+	organizePreview?: OrganizeInspectorPreviewContext | null;
 }
 
-export function FileInspector({file}: FileInspectorProps) {
+function previewTabLabel(
+	tabId: 'video' | 'image' | 'list',
+	t: (key: string) => string
+): string {
+	switch (tabId) {
+		case 'video':
+			return t('organize.previewVideo');
+		case 'image':
+			return t('organize.previewImage');
+		case 'list':
+			return t('organize.previewList');
+	}
+}
+
+function previewTabTooltip(
+	tab: {
+		id: 'video' | 'image' | 'list';
+		disabledReason: 'missing-video' | 'missing-image' | null;
+	},
+	t: (key: string) => string
+): string {
+	if (tab.disabledReason === 'missing-video') {
+		return t('organize.previewMissingVideo');
+	}
+
+	if (tab.disabledReason === 'missing-image') {
+		return t('organize.previewMissingImage');
+	}
+
+	return previewTabLabel(tab.id, t);
+}
+
+function previewTabIcon(tabId: 'video' | 'image' | 'list') {
+	switch (tabId) {
+		case 'video':
+			return FilmStrip;
+		case 'image':
+			return Image;
+		case 'list':
+			return HardDrive;
+	}
+}
+
+export function FileInspector({
+	file,
+	organizePreview = null
+}: FileInspectorProps) {
+	const {t} = useTranslation('explorer');
 	const [activeTab, setActiveTab] = useState('overview');
-	const isDev = import.meta.env.DEV;
+	const isDev = import.meta.env.DEV === 'true';
+	const organizePreviewContext = organizePreview ?? {
+		sortBy: 'name' as const,
+		foldersFirst: true
+	};
 
 	// Extract parent directory for pathScope to enable reactive sidecar updates
 	const getParentPath = (): SdPath | undefined => {
@@ -100,19 +162,62 @@ export function FileInspector({file}: FileInspectorProps) {
 	});
 
 	const fileData = fileQuery.data || file;
+	const selectedDirectory =
+		organizePreview && fileData.kind === 'Directory' ? fileData : null;
+	const directoryMediaQuery = useNormalizedQuery({
+		query: 'files.media_listing',
+		input: selectedDirectory?.sd_path
+			? {
+					path: selectedDirectory.sd_path,
+					include_descendants: true,
+					media_types: null,
+					limit: 10000,
+					sort_by: toMediaSortBy(organizePreviewContext.sortBy)
+				}
+			: null!,
+		resourceType: 'file',
+		pathScope: selectedDirectory?.sd_path ?? undefined,
+		includeDescendants: true,
+		enabled: !!selectedDirectory
+	});
+	const directoryMediaFiles =
+		(directoryMediaQuery.data as {files: File[]} | undefined)?.files ?? [];
+	const directoryAvailability = useMemo(
+		() =>
+			selectedDirectory
+				? deriveDirectoryPreviewAvailability(directoryMediaFiles)
+				: null,
+		[selectedDirectory, directoryMediaFiles]
+	);
+	const organizePreviewState = useMemo(
+		() =>
+			organizePreview
+				? deriveOrganizeInspectorPreview({
+						selectedFile: fileData,
+						directoryAvailability
+					})
+				: {tabs: [], defaultTabId: null},
+		[organizePreview, fileData, directoryAvailability]
+	);
+	const previewTabs = useMemo(
+		() =>
+			organizePreviewState.tabs.map((tab) => ({
+				id: tab.id,
+				label: previewTabLabel(tab.id, t),
+				icon: previewTabIcon(tab.id),
+				disabled: tab.disabled,
+				tooltip: previewTabTooltip(tab, t)
+			})),
+		[organizePreviewState, t]
+	);
+	const tabs = useMemo(
+		() => buildFileInspectorTabs({isDev, previewTabs}),
+		[isDev, previewTabs]
+	);
 
-	const tabs = [
-		{id: 'overview', label: 'Overview', icon: Info},
-		{id: 'sidecars', label: 'Sidecars', icon: Image},
-		{id: 'instances', label: 'Instances', icon: MapPin},
-		...(isDev
-			? [{id: 'chat', label: 'Chat', icon: ChatCircle, badge: 3}]
-			: []),
-		...(isDev
-			? [{id: 'activity', label: 'Activity', icon: ClockCounterClockwise}]
-			: []),
-		{id: 'details', label: 'More', icon: DotsThree}
-	];
+	useEffect(() => {
+		setActiveTab(organizePreviewState.defaultTabId ?? 'overview');
+	}, [fileData.id, organizePreviewState.defaultTabId]);
 
 	return (
 		<>
@@ -121,6 +226,21 @@ export function FileInspector({file}: FileInspectorProps) {
 
 			{/* Tab Content */}
 			<div className="mt-2.5 flex flex-1 flex-col overflow-hidden">
+				{organizePreview &&
+					organizePreviewState.tabs.map((tab) => (
+						<TabContent
+							key={tab.id}
+							id={tab.id}
+							activeTab={activeTab}
+						>
+							<OrganizePreviewContent
+								selectedFile={fileData}
+								activeTab={tab.id}
+								context={organizePreview}
+							/>
+						</TabContent>
+					))}
+
 				<TabContent id="overview" activeTab={activeTab}>
 					<OverviewTab file={fileData} />
 				</TabContent>
@@ -162,7 +282,9 @@ function FileQuickActions({file}: {file: File}) {
 	const extractText = useLibraryMutation('media.ocr.extract');
 	const transcribeAudio = useLibraryMutation('media.speech.transcribe');
 	const generateSplat = useLibraryMutation('media.splat.generate');
-	const regenerateThumbnail = useLibraryMutation('media.thumbnail.regenerate');
+	const regenerateThumbnail = useLibraryMutation(
+		'media.thumbnail.regenerate'
+	);
 	const generateThumbstrip = useLibraryMutation('media.thumbstrip.generate');
 	const generateProxy = useLibraryMutation('media.proxy.generate');
 
@@ -303,7 +425,9 @@ function FileQuickActions({file}: {file: File}) {
 						? 'border-accent/30 bg-accent/20 text-accent'
 						: 'border-sidebar-line/30 bg-sidebar-box/20 text-sidebar-inkDull hover:bg-sidebar-box/30 hover:text-sidebar-ink'
 				)}
-				title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+				title={
+					isFavorite ? 'Remove from Favorites' : 'Add to Favorites'
+				}
 			>
 				<Heart size={14} weight={isFavorite ? 'fill' : 'bold'} />
 			</button>
@@ -507,7 +631,8 @@ function MediaMetadataCard({file}: {file: File}) {
 	};
 
 	const mediaDate = formatMediaDate(
-		imageData?.date_taken?.toString() || videoData?.date_captured?.toString()
+		imageData?.date_taken?.toString() ||
+			videoData?.date_captured?.toString()
 	);
 	const cameraDisplay = getCameraDisplay();
 	const format = getFormat();
@@ -610,13 +735,16 @@ function MediaMetadataCard({file}: {file: File}) {
 			)}
 
 			{/* Location Map */}
-			{hasLocation && imageData && imageData.latitude && imageData.longitude && (
-				<LocationMap
-					latitude={imageData.latitude}
-					longitude={imageData.longitude}
-					className="bg-app-box/60 border-app-line/50 mx-2 overflow-hidden rounded-xl border"
-				/>
-			)}
+			{hasLocation &&
+				imageData &&
+				imageData.latitude &&
+				imageData.longitude && (
+					<LocationMap
+						latitude={imageData.latitude}
+						longitude={imageData.longitude}
+						className="bg-app-box/60 border-app-line/50 mx-2 overflow-hidden rounded-xl border"
+					/>
+				)}
 		</div>
 	);
 }
@@ -633,7 +761,9 @@ function OverviewTab({file}: {file: File}) {
 
 	// Tag mutations — refetch queries on success to update the UI
 	const refetchTagQueries = useRefetchTagQueries();
-	const applyTag = useLibraryMutation('tags.apply', { onSuccess: refetchTagQueries });
+	const applyTag = useLibraryMutation('tags.apply', {
+		onSuccess: refetchTagQueries
+	});
 
 	// AI Processing mutations
 	const extractText = useLibraryMutation('media.ocr.extract');
@@ -917,7 +1047,9 @@ function OverviewTab({file}: {file: File}) {
 									targets: file.content_identity?.uuid
 										? {
 												type: 'Content',
-												ids: [file.content_identity.uuid]
+												ids: [
+													file.content_identity.uuid
+												]
 											}
 										: {
 												type: 'EntryUuid',
@@ -1560,7 +1692,12 @@ function InstancesTab({file}: {file: File}) {
 		enabled: !!file?.id && !!file?.content_identity
 	});
 
-	const instances = (instancesQuery.data as {instances: File[]; total_count: number} | undefined)?.instances || [];
+	const instances =
+		(
+			instancesQuery.data as
+				| {instances: File[]; total_count: number}
+				| undefined
+		)?.instances || [];
 
 	// Query devices to get proper names and icons
 	const devicesQuery = useNormalizedQuery<any, any[]>({

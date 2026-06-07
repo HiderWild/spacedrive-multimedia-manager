@@ -1,11 +1,12 @@
 import {ArrowSquareOut} from '@phosphor-icons/react';
 import type {File, Location} from '@sd/ts-client';
+import {isVirtualFile} from '@sd/ts-client';
 import clsx from 'clsx';
 import {useEffect, useMemo, useState} from 'react';
 import {usePlatform} from '../../contexts/PlatformContext';
 import {useLibraryQuery} from '../../contexts/SpacedriveContext';
+import type {OrganizeInspectorPreviewContext} from '../../routes/explorer/organize/organizePreview';
 import {useSelection} from '../../routes/explorer/SelectionContext';
-import {isVirtualFile} from '@sd/ts-client';
 import {FileInspector} from './variants/FileInspector';
 import {LocationInspector} from './variants/LocationInspector';
 import {MultiFileInspector} from './variants/MultiFileInspector';
@@ -25,13 +26,15 @@ interface InspectorProps {
 	showPopOutButton?: boolean;
 	currentLocation?: Location | null;
 	isPreviewActive?: boolean;
+	organizePreview?: OrganizeInspectorPreviewContext | null;
 }
 
 export function Inspector({
 	onPopOut,
 	showPopOutButton = true,
 	currentLocation,
-	isPreviewActive = false
+	isPreviewActive = false,
+	organizePreview = null
 }: InspectorProps) {
 	const {selectedFiles} = useSelection();
 
@@ -69,6 +72,7 @@ export function Inspector({
 			onPopOut={onPopOut}
 			showPopOutButton={showPopOutButton}
 			isPreviewActive={isPreviewActive}
+			organizePreview={organizePreview}
 		/>
 	);
 }
@@ -79,6 +83,7 @@ interface InspectorViewProps {
 	showPopOutButton?: boolean;
 	isPreviewActive?: boolean;
 	hideDragRegion?: boolean;
+	organizePreview?: OrganizeInspectorPreviewContext | null;
 }
 
 function InspectorView({
@@ -86,12 +91,13 @@ function InspectorView({
 	onPopOut,
 	showPopOutButton = true,
 	isPreviewActive = false,
-	hideDragRegion = false
+	hideDragRegion = false,
+	organizePreview = null
 }: InspectorViewProps) {
 	return (
 		<div
 			className={clsx(
-				'flex h-full flex-col overflow-hidden rounded-2xl relative',
+				'relative flex h-full flex-col overflow-hidden rounded-2xl',
 				isPreviewActive
 					? 'bg-sidebar/80 backdrop-blur-2xl'
 					: 'bg-sidebar/65'
@@ -101,7 +107,7 @@ function InspectorView({
 			{!hideDragRegion && (
 				<div
 					data-tauri-drag-region
-					className="absolute inset-x-0 top-0 h-[52px] z-[60] pointer-events-none"
+					className="pointer-events-none absolute inset-x-0 top-0 z-[60] h-[52px]"
 				/>
 			)}
 
@@ -110,7 +116,10 @@ function InspectorView({
 				{!variant || variant.type === 'empty' ? (
 					<EmptyState />
 				) : variant.type === 'file' ? (
-					<FileInspector file={variant.file} />
+					<FileInspector
+						file={variant.file}
+						organizePreview={organizePreview}
+					/>
 				) : variant.type === 'multi-file' ? (
 					<MultiFileInspector files={variant.files} />
 				) : variant.type === 'location' ? (
@@ -241,5 +250,11 @@ export function PopoutInspector() {
 		);
 	}
 
-	return <InspectorView variant={variant} showPopOutButton={false} hideDragRegion={true} />;
+	return (
+		<InspectorView
+			variant={variant}
+			showPopOutButton={false}
+			hideDragRegion={true}
+		/>
+	);
 }
