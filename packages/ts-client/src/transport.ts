@@ -3,8 +3,8 @@
  * Uses Bun APIs for Unix sockets and Tauri invoke for browser
  */
 
-import { DEFAULT_EVENT_SUBSCRIPTION } from "./event-filter";
-import type { SdPath } from "./generated/types";
+import {DEFAULT_EVENT_SUBSCRIPTION} from './event-filter';
+import type {SdPath} from './generated/types';
 
 export interface EventFilter {
 	library_id?: string;
@@ -24,8 +24,41 @@ export interface Transport {
 	sendRequest(request: any): Promise<any>;
 	subscribe(
 		callback: (event: any) => void,
-		options?: SubscriptionOptions,
+		options?: SubscriptionOptions
 	): Promise<() => void>;
+}
+
+type SocketChunk = string | ArrayBuffer | ArrayBufferView;
+
+export function createLineBuffer(onLine: (line: string) => void) {
+	const decoder = new TextDecoder();
+	let buffer = '';
+
+	return {
+		push(chunk: SocketChunk) {
+			buffer +=
+				typeof chunk === 'string'
+					? chunk
+					: decoder.decode(
+							chunk instanceof ArrayBuffer
+								? new Uint8Array(chunk)
+								: chunk
+						);
+
+			let newlineIndex: number;
+			while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+				const line = buffer.slice(0, newlineIndex).trim();
+				buffer = buffer.slice(newlineIndex + 1);
+
+				if (line) {
+					onLine(line);
+				}
+			}
+		},
+		getRemaining() {
+			return buffer;
+		}
+	};
 }
 
 /**
@@ -36,44 +69,44 @@ export class TauriTransport implements Transport {
 	private invoke: (cmd: string, args?: any) => Promise<any>;
 	private listen: (
 		event: string,
-		handler: (event: any) => void,
+		handler: (event: any) => void
 	) => Promise<() => void>;
 
 	constructor(
 		invoke: (cmd: string, args?: any) => Promise<any>,
 		listen: (
 			event: string,
-			handler: (event: any) => void,
-		) => Promise<() => void>,
+			handler: (event: any) => void
+		) => Promise<() => void>
 	) {
 		this.invoke = invoke;
 		this.listen = listen;
 	}
 
 	async sendRequest(request: any): Promise<any> {
-		const response = await this.invoke("daemon_request", { request });
+		const response = await this.invoke('daemon_request', {request});
 		return response;
 	}
 
 	async subscribe(
 		callback: (event: any) => void,
-		options?: SubscriptionOptions,
+		options?: SubscriptionOptions
 	): Promise<() => void> {
 		const args = {
 			eventTypes: options?.event_types ?? DEFAULT_EVENT_SUBSCRIPTION,
-			filter: options?.filter ?? null,
+			filter: options?.filter ?? null
 		};
 
 		// Listen FIRST so buffered events replayed by the daemon are not lost.
 		// subscribe_to_events creates a TCP connection that may emit events
 		// before the invoke promise resolves.
-		const unlisten = await this.listen("core-event", (tauriEvent: any) => {
+		const unlisten = await this.listen('core-event', (tauriEvent: any) => {
 			callback(tauriEvent.payload);
 		});
 
 		let subscriptionId: any;
 		try {
-			subscriptionId = await this.invoke("subscribe_to_events", args);
+			subscriptionId = await this.invoke('subscribe_to_events', args);
 		} catch (e) {
 			unlisten();
 			throw e;
@@ -83,11 +116,11 @@ export class TauriTransport implements Transport {
 		return async () => {
 			unlisten();
 			try {
-				await this.invoke("unsubscribe_from_events", {
-					subscriptionId,
+				await this.invoke('unsubscribe_from_events', {
+					subscriptionId
 				});
 			} catch (e) {
-				console.warn("[TauriTransport] Failed to unsubscribe:", e);
+				console.warn('[TauriTransport] Failed to unsubscribe:', e);
 			}
 		};
 	}
@@ -102,11 +135,11 @@ export class TcpSocketTransport implements Transport {
 
 	async sendRequest(request: any): Promise<any> {
 		// Parse socket address (e.g., "127.0.0.1:6969")
-		const [hostname, portStr] = this.socketAddr.split(":");
+		const [hostname, portStr] = this.socketAddr.split(':');
 		const port = parseInt(portStr, 10);
 
 		return new Promise((resolve, reject) => {
-			let buffer = "";
+			let buffer = '';
 
 			// @ts-ignore - Bun global
 			Bun.connect({
@@ -116,7 +149,7 @@ export class TcpSocketTransport implements Transport {
 					data(socket: any, data: any) {
 						buffer += new TextDecoder().decode(data);
 
-						const newlineIndex = buffer.indexOf("\n");
+						const newlineIndex = buffer.indexOf('\n');
 						if (newlineIndex !== -1) {
 							const line = buffer.slice(0, newlineIndex).trim();
 							socket.end();
@@ -128,39 +161,43 @@ export class TcpSocketTransport implements Transport {
 						}
 					},
 					open(socket: any) {
-						const requestLine = JSON.stringify(request) + "\n";
+						const requestLine = JSON.stringify(request) + '\n';
 						socket.write(requestLine);
 					},
 					error(_socket: any, error: Error) {
 						reject(error);
 					},
 					close(_socket: any) {
-						if (buffer && !buffer.includes("\n")) {
-							reject(new Error("Connection closed without complete response"));
+						if (buffer && !buffer.includes('\n')) {
+							reject(
+								new Error(
+									'Connection closed without complete response'
+								)
+							);
 						}
-					},
-				},
+					}
+				}
 			});
 		});
 	}
 
 	async subscribe(
 		callback: (event: any) => void,
-		options?: SubscriptionOptions,
+		options?: SubscriptionOptions
 	): Promise<() => void> {
 		// Parse socket address
-		const [hostname, portStr] = this.socketAddr.split(":");
+		const [hostname, portStr] = this.socketAddr.split(':');
 		const port = parseInt(portStr, 10);
 
 		let socketInstance: any = null;
-		let buffer = "";
+		let buffer = '';
 
 		// Subscribe to relevant events
 		const subscribeRequest = {
 			Subscribe: {
 				event_types: options?.event_types ?? DEFAULT_EVENT_SUBSCRIPTION,
-				filter: options?.filter ?? null,
-			},
+				filter: options?.filter ?? null
+			}
 		};
 
 		// @ts-ignore - Bun global
@@ -172,7 +209,7 @@ export class TcpSocketTransport implements Transport {
 					buffer += new TextDecoder().decode(data);
 
 					let newlineIndex: number;
-					while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+					while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
 						const line = buffer.slice(0, newlineIndex).trim();
 						buffer = buffer.slice(newlineIndex + 1);
 
@@ -181,7 +218,10 @@ export class TcpSocketTransport implements Transport {
 								const response = JSON.parse(line);
 
 								// Handle DaemonResponse variants
-								if (response === "Subscribed" || response.Subscribed !== undefined) {
+								if (
+									response === 'Subscribed' ||
+									response.Subscribed !== undefined
+								) {
 									// Subscription acknowledgment, don't forward
 								} else if (response.Event) {
 									// Event message, forward to callback
@@ -191,27 +231,30 @@ export class TcpSocketTransport implements Transport {
 									callback(response.LogMessage);
 								} else {
 									console.warn(
-										"[TcpSocketTransport] Unexpected response:",
-										response,
+										'[TcpSocketTransport] Unexpected response:',
+										response
 									);
 								}
 							} catch (e) {
-								console.error("[TcpSocketTransport] Parse error:", e);
+								console.error(
+									'[TcpSocketTransport] Parse error:',
+									e
+								);
 							}
 						}
 					}
 				},
 				open(socket: any) {
 					// Send subscription request once connected
-					socket.write(JSON.stringify(subscribeRequest) + "\n");
+					socket.write(JSON.stringify(subscribeRequest) + '\n');
 				},
 				error(_socket: any, error: Error) {
-					console.error("[TcpSocketTransport] Socket error:", error);
+					console.error('[TcpSocketTransport] Socket error:', error);
 				},
 				close(_socket: any) {
-					console.log("[TcpSocketTransport] Connection closed");
-				},
-			},
+					console.log('[TcpSocketTransport] Connection closed');
+				}
+			}
 		});
 
 		// Return unsubscribe function
@@ -241,22 +284,22 @@ export class HttpTransport implements Transport {
 	private sharedSource: EventSource | null = null;
 	private sharedCallbacks = new Set<(event: any) => void>();
 
-	constructor(baseUrl: string = "") {
+	constructor(baseUrl: string = '') {
 		// Strip trailing slash so `${baseUrl}/rpc` is well-formed.
-		this.baseUrl = baseUrl.replace(/\/$/, "");
+		this.baseUrl = baseUrl.replace(/\/$/, '');
 	}
 
 	async sendRequest(request: any): Promise<any> {
 		const response = await fetch(`${this.baseUrl}/rpc`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(request),
+			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify(request)
 		});
 
 		if (!response.ok) {
-			const text = await response.text().catch(() => "");
+			const text = await response.text().catch(() => '');
 			throw new Error(
-				`RPC ${response.status} ${response.statusText}${text ? `: ${text}` : ""}`,
+				`RPC ${response.status} ${response.statusText}${text ? `: ${text}` : ''}`
 			);
 		}
 
@@ -265,7 +308,7 @@ export class HttpTransport implements Transport {
 
 	async subscribe(
 		callback: (event: any) => void,
-		_options?: SubscriptionOptions,
+		_options?: SubscriptionOptions
 	): Promise<() => void> {
 		this.sharedCallbacks.add(callback);
 		this.ensureSharedSource();
@@ -289,11 +332,14 @@ export class HttpTransport implements Transport {
 			try {
 				parsed = JSON.parse(e.data);
 			} catch (err) {
-				console.error("[HttpTransport] Failed to parse SSE event:", err);
+				console.error(
+					'[HttpTransport] Failed to parse SSE event:',
+					err
+				);
 				return;
 			}
 
-			if (!parsed || typeof parsed !== "object") return;
+			if (!parsed || typeof parsed !== 'object') return;
 
 			// Match the shape the existing transports forward: callback gets
 			// the inner Event payload (or LogMessage payload), not the
@@ -311,7 +357,10 @@ export class HttpTransport implements Transport {
 				try {
 					cb(payload);
 				} catch (err) {
-					console.error("[HttpTransport] Subscriber callback threw:", err);
+					console.error(
+						'[HttpTransport] Subscriber callback threw:',
+						err
+					);
 				}
 			}
 		};
@@ -320,7 +369,7 @@ export class HttpTransport implements Transport {
 			// EventSource auto-reconnects on transient failures. We log once
 			// and let the browser retry — there's nothing useful to do at
 			// this layer beyond surfacing it.
-			console.warn("[HttpTransport] SSE connection error", e);
+			console.warn('[HttpTransport] SSE connection error', e);
 		};
 
 		this.sharedSource = source;
@@ -335,77 +384,97 @@ export class UnixSocketTransport implements Transport {
 	constructor(private socketPath: string) {}
 
 	async sendRequest(request: any): Promise<any> {
-		// This uses Bun.connect which only works in Bun runtime
-		// @ts-ignore - Bun global
-		const socket = await Bun.connect({
-			unix: this.socketPath,
+		return new Promise((resolve, reject) => {
+			let settled = false;
+			const lineBuffer = createLineBuffer((line) => {
+				if (settled) return;
+
+				try {
+					settled = true;
+					resolve(JSON.parse(line));
+				} catch (error) {
+					settled = true;
+					reject(error);
+				}
+			});
+
+			const fail = (error: Error) => {
+				if (settled) return;
+				settled = true;
+				reject(error);
+			};
+
+			// This uses Bun.connect which only works in Bun runtime
+			// @ts-ignore - Bun global
+			void Bun.connect({
+				unix: this.socketPath,
+				socket: {
+					open(socket: any) {
+						socket.write(JSON.stringify(request) + '\n');
+					},
+					data(socket: any, data: any) {
+						lineBuffer.push(data);
+						if (settled) {
+							socket.end();
+						}
+					},
+					error(_socket: any, error: Error) {
+						fail(error);
+					},
+					close(_socket: any) {
+						if (!settled) {
+							const remaining = lineBuffer.getRemaining().trim();
+							fail(
+								new Error(
+									remaining
+										? 'Connection closed without complete response'
+										: 'Connection closed without response'
+								)
+							);
+						}
+					}
+				}
+			}).catch(fail);
 		});
-
-		const requestLine = JSON.stringify(request) + "\n";
-		await socket.write(requestLine);
-
-		// Read response
-		const reader = socket.reader;
-		let buffer = "";
-
-		for await (const chunk of reader) {
-			buffer += new TextDecoder().decode(chunk);
-
-			const newlineIndex = buffer.indexOf("\n");
-			if (newlineIndex !== -1) {
-				const line = buffer.slice(0, newlineIndex).trim();
-				socket.end();
-				return JSON.parse(line);
-			}
-		}
-
-		throw new Error("Connection closed without response");
 	}
 
 	async subscribe(
 		callback: (event: any) => void,
-		options?: SubscriptionOptions,
+		options?: SubscriptionOptions
 	): Promise<() => void> {
-		// @ts-ignore - Bun global
-		const socket = await Bun.connect({
-			unix: this.socketPath,
-		});
-
 		// Subscribe to relevant events (excludes spammy LogMessage/JobProgress)
 		const subscribeRequest = {
 			Subscribe: {
 				event_types: options?.event_types ?? DEFAULT_EVENT_SUBSCRIPTION,
-				filter: options?.filter ?? null,
-			},
+				filter: options?.filter ?? null
+			}
 		};
+		const lineBuffer = createLineBuffer((line) => {
+			try {
+				const response = JSON.parse(line);
+				if ('Event' in response) {
+					callback(response.Event);
+				}
+			} catch (error) {
+				console.error('Failed to parse event:', error);
+			}
+		});
 
-		await socket.write(JSON.stringify(subscribeRequest) + "\n");
-
-		// Listen for events
-		const reader = socket.reader;
-		let buffer = "";
-
-		(async () => {
-			for await (const chunk of reader) {
-				buffer += new TextDecoder().decode(chunk);
-
-				const lines = buffer.split("\n");
-				buffer = lines.pop() || "";
-
-				for (const line of lines) {
-					if (!line.trim()) continue;
-
-					try {
-						const response = JSON.parse(line);
-						if ("Event" in response) {
-							callback(response.Event);
-						}
-					} catch (error) {
-						console.error("Failed to parse event:", error);
-					}
+		// @ts-ignore - Bun global
+		const socket = await Bun.connect({
+			unix: this.socketPath,
+			socket: {
+				open(socket: any) {
+					socket.write(JSON.stringify(subscribeRequest) + '\n');
+				},
+				data(_socket: any, data: any) {
+					lineBuffer.push(data);
+				},
+				error(_socket: any, error: Error) {
+					console.error('[UnixSocketTransport] Socket error:', error);
 				}
 			}
-		})();
+		});
 
 		return () => socket.end();
 	}

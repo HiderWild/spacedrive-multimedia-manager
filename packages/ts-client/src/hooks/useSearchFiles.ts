@@ -1,15 +1,15 @@
-import { useMemo } from "react";
+import {useMemo} from 'react';
 import type {
 	ContentKind,
 	File,
 	FileSearchInput,
 	FileSearchOutput,
-	SearchScope as TSSearchScope,
 	SdPath,
-} from "../generated/types";
-import { useNormalizedQuery } from "./useNormalizedQuery";
+	SearchScope as TSSearchScope
+} from '../generated/types';
+import {useNormalizedQuery} from './useNormalizedQuery';
 
-export type SearchScopeUI = "folder" | "location" | "library";
+export type SearchScopeUI = 'folder' | 'location' | 'library';
 
 export interface UseSearchFilesOptions {
 	/** Search query string (minimum 2 characters to search) */
@@ -21,26 +21,13 @@ export interface UseSearchFilesOptions {
 	/** Location ID (required for "location" scope) */
 	locationId?: string | null;
 	/** Sort field: "Relevance", "Name", "Size", "ModifiedAt", "CreatedAt" */
-	sortBy?: "Relevance" | "Name" | "Size" | "ModifiedAt" | "CreatedAt";
+	sortBy?: 'Relevance' | 'Name' | 'Size' | 'ModifiedAt' | 'CreatedAt';
 	/** Sort direction */
-	sortDirection?: "Asc" | "Desc";
+	sortDirection?: 'Asc' | 'Desc';
 	/** Search mode */
-	mode?: "Fast" | "Normal" | "Full";
+	mode?: 'Fast' | 'Normal' | 'Full';
 	/** Search filters */
-	filters?: {
-		file_types?: string[] | null;
-		tags?: { include: string[]; exclude: string[] } | null;
-		date_range?: {
-			field: "CreatedAt" | "ModifiedAt" | "AccessedAt" | "IndexedAt";
-			start?: string | null;
-			end?: string | null;
-		} | null;
-		size_range?: { min?: number | null; max?: number | null } | null;
-		locations?: string[] | null;
-		content_types?: ContentKind[] | null;
-		include_hidden?: boolean | null;
-		include_archived?: boolean | null;
-	};
+	filters?: UseSearchFilesFilters;
 	/** Pagination limit */
 	limit?: number;
 	/** Whether query is enabled */
@@ -54,6 +41,67 @@ export interface UseSearchFilesReturn {
 	isLoading: boolean;
 	/** Error state */
 	error: Error | null;
+}
+
+export interface UseSearchFilesFilters {
+	file_types?: string[] | null;
+	tags?: {
+		include: string[];
+		exclude: string[];
+		include_inherited?: boolean;
+	} | null;
+	date_range?: {
+		field: 'CreatedAt' | 'ModifiedAt' | 'AccessedAt' | 'IndexedAt';
+		start?: string | null;
+		end?: string | null;
+	} | null;
+	size_range?: {min?: number | null; max?: number | null} | null;
+	locations?: string[] | null;
+	content_types?: ContentKind[] | null;
+	include_hidden?: boolean | null;
+	include_archived?: boolean | null;
+	at_risk?: boolean | null;
+	on_volumes?: string[] | null;
+	not_on_volumes?: string[] | null;
+	min_volume_count?: number | null;
+	max_volume_count?: number | null;
+}
+
+export function buildSearchFilters(
+	filters?: UseSearchFilesFilters
+): FileSearchInput['filters'] {
+	return {
+		file_types: filters?.file_types ?? null,
+		tags: filters?.tags
+			? {
+					include: filters.tags.include,
+					exclude: filters.tags.exclude,
+					include_inherited: filters.tags.include_inherited ?? false
+				}
+			: null,
+		date_range: filters?.date_range
+			? {
+					field: filters.date_range.field,
+					start: filters.date_range.start ?? null,
+					end: filters.date_range.end ?? null
+				}
+			: null,
+		size_range: filters?.size_range
+			? {
+					min: filters.size_range.min ?? null,
+					max: filters.size_range.max ?? null
+				}
+			: null,
+		locations: filters?.locations ?? null,
+		content_types: filters?.content_types ?? null,
+		include_hidden: filters?.include_hidden ?? null,
+		include_archived: filters?.include_archived ?? null,
+		at_risk: filters?.at_risk ?? null,
+		on_volumes: filters?.on_volumes ?? null,
+		not_on_volumes: filters?.not_on_volumes ?? null,
+		min_volume_count: filters?.min_volume_count ?? null,
+		max_volume_count: filters?.max_volume_count ?? null
+	};
 }
 
 /**
@@ -70,30 +118,30 @@ export interface UseSearchFilesReturn {
  * ```
  */
 export function useSearchFiles(
-	options: UseSearchFilesOptions,
+	options: UseSearchFilesOptions
 ): UseSearchFilesReturn {
 	const {
 		query,
 		scope,
 		currentPath,
 		locationId,
-		sortBy = "Relevance",
-		sortDirection = "Desc",
-		mode = "Normal",
+		sortBy = 'Relevance',
+		sortDirection = 'Desc',
+		mode = 'Normal',
 		filters,
 		limit = 1000,
-		enabled = true,
+		enabled = true
 	} = options;
 
 	// Map scope to TS SearchScope type
 	const tsScope: TSSearchScope = useMemo(() => {
-		if (scope === "folder" && currentPath) {
-			return { Path: { path: currentPath } };
+		if (scope === 'folder' && currentPath) {
+			return {Path: {path: currentPath}};
 		}
-		if (scope === "location" && locationId) {
-			return { Location: { location_id: locationId } };
+		if (scope === 'location' && locationId) {
+			return {Location: {location_id: locationId}};
 		}
-		return "Library";
+		return 'Library';
 	}, [scope, currentPath, locationId]);
 
 	// Build search input
@@ -102,54 +150,26 @@ export function useSearchFiles(
 			query,
 			scope: tsScope,
 			mode,
-			filters: {
-				file_types: filters?.file_types ?? null,
-				tags: filters?.tags ?? null,
-				date_range: filters?.date_range
-				? {
-						field: filters.date_range.field,
-						start: filters.date_range.start ?? null,
-						end: filters.date_range.end ?? null,
-					}
-				: null,
-				size_range: filters?.size_range
-				? {
-						min: filters.size_range.min ?? null,
-						max: filters.size_range.max ?? null,
-					}
-				: null,
-				locations: filters?.locations ?? null,
-				content_types: filters?.content_types ?? null,
-				include_hidden: filters?.include_hidden ?? null,
-				include_archived: filters?.include_archived ?? null,
-			},
+			filters: buildSearchFilters(filters),
 			sort: {
 				field: sortBy,
-				direction: sortDirection,
+				direction: sortDirection
 			},
 			pagination: {
 				limit,
-				offset: 0,
-			},
+				offset: 0
+			}
 		}),
-		[
-			query,
-			tsScope,
-			mode,
-			filters,
-			sortBy,
-			sortDirection,
-			limit,
-		],
+		[query, tsScope, mode, filters, sortBy, sortDirection, limit]
 	);
 
 	// Execute search query
 	const searchQuery = useNormalizedQuery<FileSearchInput, FileSearchOutput>({
-		query: "search.files",
+		query: 'search.files',
 		input: searchInput,
-		resourceType: "file",
-		pathScope: scope === "folder" && currentPath ? currentPath : undefined,
-		enabled: enabled && query.length >= 2,
+		resourceType: 'file',
+		pathScope: scope === 'folder' && currentPath ? currentPath : undefined,
+		enabled: enabled && query.length >= 2
 	});
 
 	const files =
@@ -157,5 +177,5 @@ export function useSearchFiles(
 	const isLoading = searchQuery.isLoading;
 	const error = searchQuery.error;
 
-	return { files, isLoading, error };
+	return {files, isLoading, error};
 }
