@@ -6,7 +6,7 @@ param(
     [ValidateSet("Debug", "Release")]
     [string] $BuildProfile = "Debug",
     [switch] $SkipRebuild,
-    [string[]] $KillPorts = @("1420", "8488", "12917")
+    [string[]] $KillPorts = @("1420", "6969", "8488", "12917")
 )
 
 $ErrorActionPreference = "Stop"
