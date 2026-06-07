@@ -7,14 +7,88 @@ param(
     [ValidateSet("Debug", "Release")]
     [string] $BuildProfile = "Debug",
     [switch] $SkipRebuild,
-    [string[]] $KillPorts = @("1420", "8488", "12917")
+    [string[]] $KillPorts = @("1420", "6969", "8488", "12917")
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$knownBinaryNames = @("Spacedrive", "Spacedrive.exe", "sd-daemon", "sd-daemon.exe", "sd-desktop", "sd-desktop.exe")
+
+function Get-TcpExcludedPortRanges {
+    param([ValidateSet("ipv4", "ipv6")][string] $Protocol = "ipv4")
+
+    $ranges = @()
+    try {
+        $raw = netsh interface $Protocol show excludedportrange protocol=tcp 2>$null | Out-String
+    } catch {
+        return $ranges
+    }
+
+    foreach ($line in ($raw -split "`r?`n")) {
+        if ($line -match "^\s*(\d+)\s+(\d+)\s*$") {
+            $start = [int]$Matches[1]
+            $end = [int]$Matches[2]
+            if ($start -gt 0 -and $end -ge $start -and $end -le 65535) {
+                $ranges += [PSCustomObject]@{ Start = $start; End = $end }
+            }
+        }
+    }
+    return $ranges
+}
+
+function Test-PortIsExcluded {
+    param([int]$Port)
+
+    if ($Port -le 0 -or $Port -gt 65535) {
+        return $false
+    }
+
+    $ranges = Get-TcpExcludedPortRanges -Protocol ipv4
+    $ranges += Get-TcpExcludedPortRanges -Protocol ipv6
+    foreach ($range in $ranges) {
+        if ($Port -ge $range.Start -and $Port -le $range.End) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Get-ListeningPids {
+    param([int]$Port)
+
+    $pids = @()
+    try {
+        $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        if ($listeners) {
+            $pids += $listeners | Select-Object -ExpandProperty OwningProcess
+        }
+    } catch {
+        # Fallback for environments where Get-NetTCPConnection is unavailable.
+        try {
+            $netstatLines = netstat -ano -p tcp 2>$null | Select-String -Pattern '\bLISTENING\b' |
+                ForEach-Object { $_.Line }
+            foreach ($line in $netstatLines) {
+                if ($line -notmatch ":$Port") {
+                    continue
+                }
+                if ($line -match '^\s*TCP\s+([^\s]+)\s+([^\s]+)\s+LISTENING\s+(\d+)') {
+                    $pids += [int]$Matches[3]
+                }
+            }
+        } catch {
+            Write-Host "Port probe failed for ${Port}: $($_.Exception.Message)"
+        }
+    }
+    return ($pids | Sort-Object -Unique)
+}
+
 function Stop-ProcessTree {
     param([int[]]$ProcessIds)
+
+    if (-not $ProcessIds -or $ProcessIds.Count -eq 0) {
+        return
+    }
 
     foreach ($id in ($ProcessIds | Sort-Object -Unique)) {
         try {
@@ -36,45 +110,91 @@ function Get-RepoProcessCandidates {
     $tauriDirEscaped = [Regex]::Escape((Join-Path $ProjectPath "apps\tauri"))
     $webDirEscaped = [Regex]::Escape((Join-Path $ProjectPath "apps\web"))
     $daemonNamePatterns = @("sd-daemon.exe", "sd-daemon", "Spacedrive.exe", "Spacedrive", "sd-desktop.exe", "sd-desktop")
-    $scriptRunnerNames = @("bun.exe", "node.exe", "cargo.exe", "rustc.exe", "pnpm.exe", "tauri.exe")
+    $scriptRunnerNames = @("bun.exe", "bun", "node.exe", "node", "cargo.exe", "cargo", "rustc.exe", "rustc", "pnpm.exe", "pnpm", "tauri.exe", "tauri", "vite.exe", "vite")
     $cliPattern = 'bun run tauri:dev|bun run dev:with-daemon|bun run tauri|@tauri-apps\\cli\\tauri|tauri dev|sd-daemon|cargo run --bin sd-daemon|cargo build .*--bin sd-daemon|cargo build .* --bin sd-daemon|vite dev|bun run dev|cargo build --bin sd-daemon'
+    $spacedriveHintPattern = 'spacedrive|Spacedrive'
 
     $results = @()
+    $debugNamePattern = '^((?i)(Spacedrive|sd-daemon|sd-desktop|bun|node|cargo|rustc|pnpm|tauri|vite))(\.exe)?$'
 
     foreach ($proc in $processes) {
-        if ($proc.ProcessId -eq $PID -or -not $proc.CommandLine) {
+        if ($proc.ProcessId -eq $PID -or (-not $proc.Name)) {
             continue
         }
 
         $name = $proc.Name
         $cmd = $proc.CommandLine
+        $execPath = $proc.ExecutablePath
 
         if ($daemonNamePatterns -contains $name) {
             $results += $proc
             continue
         }
 
-        if (($name -in $scriptRunnerNames) -and (
-                ($cmd -match $projectEscaped) -or
-                (($name -ieq "cargo.exe") -and ($cmd -match "sd-daemon")) -or
-                (($name -ieq "tauri.exe") -and ($cmd -match "tauri dev|@tauri-apps\\cli\\tauri|bun run tauri:dev"))
-            ) -and ($cmd -match $cliPattern)
-        ) {
+        if ($name -notmatch $debugNamePattern) {
+            continue
+        }
+
+        $matchesProject = ($cmd -and ($cmd -match $projectEscaped -or $cmd -match $spacedriveHintPattern)) -or
+            ($execPath -and $execPath -match $projectEscaped)
+
+        if (($name -in $scriptRunnerNames) -and $matchesProject -and ($cmd -match $cliPattern)) {
+            $results += $proc
+            continue
+        }
+
+        # For lightweight helper processes that may not include a command line pattern, still allow
+        # matching when project path appears in the executable path or command line.
+        if ($matchesProject -and ($name -in $scriptRunnerNames)) {
+            $results += $proc
+            continue
+        }
+
+        if (($name -in $daemonNamePatterns) -and $matchesProject) {
             $results += $proc
             continue
         }
 
         if (
-            $cmd -match $projectEscaped -and (
+            $name -match $debugNamePattern -and (
+                ($cmd -match $projectEscaped) -or
                 ($cmd -match $tauriDirEscaped -and $cmd -match "bun run tauri:dev|tauri dev|dev:with-daemon|@tauri-apps\\cli\\tauri") -or
                 ($cmd -match $webDirEscaped -and $cmd -match "bun run dev|vite")
             )
         ) {
             $results += $proc
         }
+
+        # Keep compatibility with previous behavior where command line may exist but not match
+        # any explicit pattern yet still belongs to current repo process tree.
+        if (
+            $matchesProject -and ($cmd -match $cliPattern)
+        ) {
+            $results += $proc
+        }
     }
 
-    return $results
+    return $results | Select-Object -Unique ProcessId, Name, CommandLine, ExecutablePath
+}
+
+function Stop-ProcessByNameCandidates {
+    param([string[]]$ProcessNames)
+
+    foreach ($name in ($ProcessNames | Sort-Object -Unique)) {
+        try {
+            $procs = Get-CimInstance Win32_Process -Filter "Name='$name'" -ErrorAction SilentlyContinue
+            if (-not $procs) {
+                continue
+            }
+            $ids = @($procs | Select-Object -ExpandProperty ProcessId | Sort-Object -Unique)
+            if ($ids) {
+                Write-Host "Stopping processes by exact name '$name': $($ids -join ', ')"
+                Stop-ProcessTree -ProcessIds $ids
+            }
+        } catch {
+            Write-Host "Unable to stop by name '$name': $($_.Exception.Message)"
+        }
+    }
 }
 
 function Wait-ForStop {
@@ -98,17 +218,16 @@ function Stop-ProcessOnPort {
     param([int]$Port)
 
     try {
-        $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        $processIds = Get-ListeningPids -Port $Port
     } catch {
         Write-Host "Unable to query listeners on port ${Port}: $($_.Exception.Message)"
         return
     }
 
-    if (-not $listeners) {
+    if (-not $processIds) {
         return
     }
 
-    $processIds = @($listeners | Select-Object -ExpandProperty OwningProcess | Sort-Object -Unique)
     if ($processIds.Count -gt 0) {
         Write-Host "Port ${Port} is used by PIDs: $($processIds -join ', '). Stopping them."
         Stop-ProcessTree -ProcessIds $processIds
@@ -162,8 +281,8 @@ function Convert-ToPortList {
 
     $uniquePorts = $ports | Sort-Object -Unique
     if (-not $uniquePorts -or $uniquePorts.Count -eq 0) {
-        Write-Host "No valid ports in KillPorts; using default fallback: 1420, 8488, 12917."
-        return @(1420, 8488, 12917)
+        Write-Host "No valid ports in KillPorts; using default fallback: 1420, 6969, 8488, 12917."
+        return @(1420, 6969, 8488, 12917)
     }
 
     return $uniquePorts
@@ -231,6 +350,15 @@ if (-not $project) {
 }
 Write-Host "Resolved repo root: $project"
 
+if (Test-PortIsExcluded -Port $DaemonPort) {
+    Write-Host "Warning: TCP port ${DaemonPort} is in an OS excluded range. Falling back to 8488."
+    $DaemonPort = 8488
+    if (Test-PortIsExcluded -Port $DaemonPort) {
+        throw "Port 8488 is excluded on this machine. Pick another non-reserved port, e.g. -DaemonPort 8580."
+    }
+    $env:SD_SOCKET_ADDR = "127.0.0.1:${DaemonPort}"
+}
+
 $killPortsList = Convert-ToPortList -Values $KillPorts
 Write-Host "Configured kill ports: $($killPortsList -join ', ')"
 
@@ -244,6 +372,8 @@ if (-not $candidates) {
     Stop-ProcessTree -ProcessIds $candidates.ProcessId
     Wait-ForStop -ProcessIds $candidates.ProcessId
 }
+
+Stop-ProcessByNameCandidates -ProcessNames $knownBinaryNames
 
 Stop-ProcessOnPort -Port 1420
 foreach ($port in $killPortsList) {
