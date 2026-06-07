@@ -7,13 +7,24 @@ param(
     [ValidateSet("Debug", "Release")]
     [string] $BuildProfile = "Debug",
     [switch] $SkipRebuild,
-    [string[]] $KillPorts = @("1420", "6969", "8488", "12917")
+    [string[]] $KillPorts = @("1420", "8488", "12917"),
+    [switch] $RunSecretScan,
+    [switch] $StopOnly
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$knownBinaryNames = @("Spacedrive", "Spacedrive.exe", "sd-daemon", "sd-daemon.exe", "sd-desktop", "sd-desktop.exe")
+$knownBinaryNames = @(
+    "Spacedrive",
+    "Spacedrive.exe",
+    "sd-daemon",
+    "sd-daemon.exe",
+    "sd-desktop",
+    "sd-desktop.exe",
+    "spacedrive-web",
+    "spacedrive-web.exe"
+)
 
 function Get-TcpExcludedPortRanges {
     param([ValidateSet("ipv4", "ipv6")][string] $Protocol = "ipv4")
@@ -197,6 +208,22 @@ function Stop-ProcessByNameCandidates {
     }
 }
 
+function Invoke-SecretScan {
+    param([string] $ProjectPath)
+
+    $scanner = Join-Path $PSScriptRoot "check-sensitive-secrets.ps1"
+    if (-not (Test-Path $scanner)) {
+        Write-Host "Sensitive scan script not found, skip check: $scanner"
+        return
+    }
+
+    Write-Host "Running sensitive pattern scan on changed/untracked files..."
+    & (Resolve-Path $scanner).Path -RepoRoot $ProjectPath -FailOnFindings
+    if ($LASTEXITCODE -ne 0) {
+        throw "Sensitive scan failed, aborting restart."
+    }
+}
+
 function Wait-ForStop {
     param([int[]]$ProcessIds, [int]$TimeoutSec = 8)
 
@@ -281,8 +308,8 @@ function Convert-ToPortList {
 
     $uniquePorts = $ports | Sort-Object -Unique
     if (-not $uniquePorts -or $uniquePorts.Count -eq 0) {
-        Write-Host "No valid ports in KillPorts; using default fallback: 1420, 6969, 8488, 12917."
-        return @(1420, 6969, 8488, 12917)
+        Write-Host "No valid ports in KillPorts; using default fallback: 1420, 8488, 12917."
+        return @(1420, 8488, 12917)
     }
 
     return $uniquePorts
@@ -400,6 +427,15 @@ if ($cargoDir -and ($env:PATH -notmatch [regex]::Escape($cargoDir))) {
 }
 if ($bunDir -and ($env:PATH -notmatch [regex]::Escape($bunDir))) {
     $env:PATH = "${bunDir};$($env:PATH)"
+}
+
+if ($RunSecretScan) {
+    Invoke-SecretScan -ProjectPath $project
+}
+
+if ($StopOnly) {
+    Write-Host "StopOnly specified; skip rebuild/start."
+    exit 0
 }
 
 $cargoArgs = @(

@@ -6,7 +6,9 @@ param(
     [ValidateSet("Debug", "Release")]
     [string] $BuildProfile = "Debug",
     [switch] $SkipRebuild,
-    [string[]] $KillPorts = @("1420", "6969", "8488", "12917")
+    [string[]] $KillPorts = @("1420", "8488", "12917"),
+    [switch] $RunSecretScan,
+    [switch] $StopOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +25,8 @@ $launcherArgs = @{
     BuildProfile = $BuildProfile
     SkipRebuild = $SkipRebuild
     KillPorts   = @($KillPorts)
+    RunSecretScan = $RunSecretScan
+    StopOnly = $StopOnly
 }
 
 & (Resolve-Path $launcher).Path @launcherArgs
