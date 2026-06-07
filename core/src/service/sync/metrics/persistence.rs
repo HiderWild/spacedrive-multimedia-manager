@@ -6,7 +6,10 @@
 use crate::service::sync::metrics::snapshot::SyncMetricsSnapshot;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+	ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+	QuerySelect, Set,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 

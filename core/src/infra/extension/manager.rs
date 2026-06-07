@@ -273,16 +273,14 @@ impl PluginManager {
 							let wasm_path =
 								self.plugin_dir.join(plugin_id).join(&manifest.wasm_file);
 							match std::fs::read(&wasm_path) {
-								Ok(wasm_bytes) => {
-									Self::call_plugin_cleanup(
-										&mut self.store,
-										&manifest,
-										&wasm_bytes,
-										&self.core_context,
-										&self.api_dispatcher,
-										&self.job_registry,
-									)
-								}
+								Ok(wasm_bytes) => Self::call_plugin_cleanup(
+									&mut self.store,
+									&manifest,
+									&wasm_bytes,
+									&self.core_context,
+									&self.api_dispatcher,
+									&self.job_registry,
+								),
 								Err(e) => {
 									tracing::warn!(
 										"Could not read WASM for cleanup of {}: {}",
@@ -451,22 +449,16 @@ impl PluginManager {
 		match instance.exports.get_function("plugin_cleanup") {
 			Ok(cleanup_fn) => match cleanup_fn.call(store, &[]) {
 				Ok(_) => {
-					tracing::info!(
-						"Plugin '{}' cleanup completed successfully",
-						manifest.id
-					);
+					tracing::info!("Plugin '{}' cleanup completed successfully", manifest.id);
 					Ok(())
 				}
 				Err(e) => Err(PluginError::InstantiationFailed(format!(
 					"plugin_cleanup() failed: {}",
 					e
 				))),
-			}
+			},
 			Err(_) => {
-				tracing::debug!(
-					"Plugin '{}' has no plugin_cleanup() export",
-					manifest.id
-				);
+				tracing::debug!("Plugin '{}' has no plugin_cleanup() export", manifest.id);
 				Ok(())
 			}
 		}
@@ -483,9 +475,7 @@ mod tests {
 		let tmp = tempfile::tempdir().expect("Failed to create temp dir");
 		let context = Arc::new(crate::context::CoreContext::new(
 			Arc::new(crate::infra::event::EventBus::new()),
-			Arc::new(crate::device::DeviceManager::new(
-				tmp.path().join("device"),
-			)),
+			Arc::new(crate::device::DeviceManager::new(tmp.path().join("device"))),
 			None,
 			Arc::new(crate::volume::VolumeManager::new()),
 			Arc::new(crate::crypto::key_manager::KeyManager::new(
@@ -494,11 +484,7 @@ mod tests {
 			tmp.path().to_path_buf(),
 		));
 		let api = Arc::new(crate::infra::api::ApiDispatcher::new(context.clone()));
-		let manager = PluginManager::new(
-			tmp.path().join("plugins"),
-			context,
-			api,
-		);
+		let manager = PluginManager::new(tmp.path().join("plugins"), context, api);
 		(manager, tmp)
 	}
 

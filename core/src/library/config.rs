@@ -95,8 +95,8 @@ impl Default for LibrarySettings {
 				".cache".to_string(),
 				".part".to_string(),
 			],
-			auto_track_system_volumes: true,               // Default to true for user convenience
-			auto_track_external_volumes: false,            // Default to false for privacy
+			auto_track_system_volumes: true, // Default to true for user convenience
+			auto_track_external_volumes: false, // Default to false for privacy
 			indexer: IndexerSettings::default(),
 		}
 	}

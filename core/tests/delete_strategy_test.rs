@@ -183,7 +183,10 @@ async fn test_local_delete_strategy_trash_helper_non_zero_exit_returns_error() {
 	let strategy = LocalDeleteStrategy;
 	let result = strategy.move_to_trash(&test_file).await;
 
-	assert!(result.is_err(), "helper path should fail in the test process");
+	assert!(
+		result.is_err(),
+		"helper path should fail in the test process"
+	);
 	let error = result.err().unwrap().to_string();
 	assert!(
 		error.contains("Trash helper failed"),

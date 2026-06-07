@@ -329,14 +329,16 @@ pub fn host_job_report_progress(
 		.unwrap_or_else(|_| uuid::Uuid::nil());
 
 	tokio::runtime::Handle::current().block_on(async {
-		core_context.events.emit(crate::infra::event::Event::JobProgress {
-			job_id: job_id.to_string(),
-			job_type: format!("extension:{}", extension_id),
-			device_id,
-			progress: progress as f64,
-			message: Some(message),
-			generic_progress: None,
-		});
+		core_context
+			.events
+			.emit(crate::infra::event::Event::JobProgress {
+				job_id: job_id.to_string(),
+				job_type: format!("extension:{}", extension_id),
+				device_id,
+				progress: progress as f64,
+				message: Some(message),
+				generic_progress: None,
+			});
 	});
 }
 
@@ -382,11 +384,10 @@ pub fn host_job_checkpoint(
 		for library in libraries.list().await {
 			let job_db = library.jobs().database();
 			// Check if the job exists in this library's database
-			if let Ok(Some(_)) = crate::infra::job::database::jobs::Entity::find_by_id(
-				job_id.to_string(),
-			)
-			.one(job_db.conn())
-			.await
+			if let Ok(Some(_)) =
+				crate::infra::job::database::jobs::Entity::find_by_id(job_id.to_string())
+					.one(job_db.conn())
+					.await
 			{
 				// Found the job in this library -- save checkpoint
 				let checkpoint = crate::infra::job::database::checkpoint::ActiveModel {
@@ -397,13 +398,11 @@ pub fn host_job_checkpoint(
 				// Insert or update if the row already exists
 				return match checkpoint.clone().insert(job_db.conn()).await {
 					Ok(_) => Ok(()),
-					Err(_) => {
-						checkpoint
-							.update(job_db.conn())
-							.await
-							.map(|_| ())
-							.map_err(|e| format!("Failed to update checkpoint: {}", e))
-					}
+					Err(_) => checkpoint
+						.update(job_db.conn())
+						.await
+						.map(|_| ())
+						.map_err(|e| format!("Failed to update checkpoint: {}", e)),
 				};
 			}
 		}
@@ -450,11 +449,10 @@ pub fn host_job_check_interrupt(
 		let libraries = core_context.libraries().await;
 		for library in libraries.list().await {
 			let job_db = library.jobs().database();
-			if let Ok(Some(job_model)) = crate::infra::job::database::jobs::Entity::find_by_id(
-				job_id.to_string(),
-			)
-			.one(job_db.conn())
-			.await
+			if let Ok(Some(job_model)) =
+				crate::infra::job::database::jobs::Entity::find_by_id(job_id.to_string())
+					.one(job_db.conn())
+					.await
 			{
 				return job_model.status == "paused" || job_model.status == "cancelled";
 			}
@@ -525,15 +523,17 @@ pub fn host_job_increment_bytes(
 		let libraries = core_context.libraries().await;
 		for library in libraries.list().await {
 			let job_db = library.jobs().database();
-			if let Ok(Some(job_model)) = crate::infra::job::database::jobs::Entity::find_by_id(
-				job_id_str.clone(),
-			)
-			.one(job_db.conn())
-			.await
+			if let Ok(Some(job_model)) =
+				crate::infra::job::database::jobs::Entity::find_by_id(job_id_str.clone())
+					.one(job_db.conn())
+					.await
 			{
 				// Deserialize existing metrics or create new ones
-				let mut metrics: crate::infra::job::types::JobMetrics =
-					job_model.metrics.as_ref().and_then(|m| rmp_serde::from_slice(m).ok()).unwrap_or_default();
+				let mut metrics: crate::infra::job::types::JobMetrics = job_model
+					.metrics
+					.as_ref()
+					.and_then(|m| rmp_serde::from_slice(m).ok())
+					.unwrap_or_default();
 				metrics.bytes_processed += bytes;
 
 				if let Ok(encoded) = rmp_serde::to_vec(&metrics) {
@@ -577,15 +577,17 @@ pub fn host_job_increment_items(
 		let libraries = core_context.libraries().await;
 		for library in libraries.list().await {
 			let job_db = library.jobs().database();
-			if let Ok(Some(job_model)) = crate::infra::job::database::jobs::Entity::find_by_id(
-				job_id_str.clone(),
-			)
-			.one(job_db.conn())
-			.await
+			if let Ok(Some(job_model)) =
+				crate::infra::job::database::jobs::Entity::find_by_id(job_id_str.clone())
+					.one(job_db.conn())
+					.await
 			{
 				// Deserialize existing metrics or create new ones
-				let mut metrics: crate::infra::job::types::JobMetrics =
-					job_model.metrics.as_ref().and_then(|m| rmp_serde::from_slice(m).ok()).unwrap_or_default();
+				let mut metrics: crate::infra::job::types::JobMetrics = job_model
+					.metrics
+					.as_ref()
+					.and_then(|m| rmp_serde::from_slice(m).ok())
+					.unwrap_or_default();
 				metrics.items_processed += count;
 
 				if let Ok(encoded) = rmp_serde::to_vec(&metrics) {

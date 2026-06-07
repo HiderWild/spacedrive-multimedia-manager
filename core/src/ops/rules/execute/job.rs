@@ -134,10 +134,8 @@ impl JobHandler for MacroExecutionJob {
 
 		// Real runs dispatch through the real library actions; this requires the
 		// library's core context, which is reachable from the job's library.
-		let dispatcher = LibraryMacroDispatcher::new(
-			ctx.library_arc(),
-			ctx.library().core_context().clone(),
-		);
+		let dispatcher =
+			LibraryMacroDispatcher::new(ctx.library_arc(), ctx.library().core_context().clone());
 
 		let total = self.state.plan.len();
 		while self.state.processed < total {

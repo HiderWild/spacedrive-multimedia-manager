@@ -38,12 +38,7 @@ use crate::ops::tags::apply::{ApplyTagsAction, ApplyTagsInput};
 #[async_trait]
 pub trait MacroDispatcher: Send + Sync {
 	/// Dispatch `action` against `entry_uuid` with `params`.
-	async fn dispatch(
-		&self,
-		action: &str,
-		entry_uuid: Uuid,
-		params: &Value,
-	) -> Result<(), String>;
+	async fn dispatch(&self, action: &str, entry_uuid: Uuid, params: &Value) -> Result<(), String>;
 }
 
 /// Production dispatcher mapping macro actions to real library actions.
@@ -191,12 +186,7 @@ impl LibraryMacroDispatcher {
 
 #[async_trait]
 impl MacroDispatcher for LibraryMacroDispatcher {
-	async fn dispatch(
-		&self,
-		action: &str,
-		entry_uuid: Uuid,
-		params: &Value,
-	) -> Result<(), String> {
+	async fn dispatch(&self, action: &str, entry_uuid: Uuid, params: &Value) -> Result<(), String> {
 		match action {
 			"tags.apply" => self.dispatch_tags(entry_uuid, params).await,
 			"media.rotate" => self.dispatch_rotate(entry_uuid, params).await,

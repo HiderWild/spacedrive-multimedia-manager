@@ -48,10 +48,9 @@ enum RequestedMode {
 impl Args {
 	fn requested_mode(&self) -> Result<RequestedMode, String> {
 		if self.internal_trash_helper {
-			let path = self
-				.internal_trash_path
-				.clone()
-				.ok_or_else(|| "internal trash helper requires --internal-trash-path".to_string())?;
+			let path = self.internal_trash_path.clone().ok_or_else(|| {
+				"internal trash helper requires --internal-trash-path".to_string()
+			})?;
 			return Ok(RequestedMode::InternalTrashHelper(path));
 		}
 
@@ -60,7 +59,9 @@ impl Args {
 }
 
 #[cfg(target_os = "windows")]
-fn run_internal_trash_helper(path: PathBuf) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn run_internal_trash_helper(
+	path: PathBuf,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 	trash::delete(&path).map_err(|error| {
 		let message = format!("Failed to move to trash '{}': {}", path.display(), error);
 		Box::<dyn std::error::Error + Send + Sync>::from(std::io::Error::new(
@@ -119,7 +120,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 		(
 			instance_data_dir,
-			configured_socket_addr.clone().unwrap_or_else(|| socket_addr),
+			configured_socket_addr
+				.clone()
+				.unwrap_or_else(|| socket_addr),
 		)
 	} else {
 		// Default instance uses the base data directory and port 8488

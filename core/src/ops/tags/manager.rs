@@ -696,7 +696,10 @@ impl TagManager {
 
 		for tag_model in &all_tags_models {
 			if !tag_model.is_organizational_anchor {
-				let descendant_ids = self.closure_service.get_all_descendants(tag_model.uuid).await?;
+				let descendant_ids = self
+					.closure_service
+					.get_all_descendants(tag_model.uuid)
+					.await?;
 				// If a non-anchor tag has 3+ descendants, suggest promoting it
 				if descendant_ids.len() >= 3 {
 					let mut involved = vec![tag_model.uuid];
@@ -743,7 +746,8 @@ impl TagManager {
 						confidence: (unrelated_pairs as f32 / 10.0).min(0.8),
 						suggestion: format!(
 							"{} tags in namespace '{}' share a namespace but have no relationships",
-							tag_uuids.len(), ns_display
+							tag_uuids.len(),
+							ns_display
 						),
 						discovered_at: Utc::now(),
 					});
@@ -936,7 +940,9 @@ impl TagManager {
 		&self,
 		min_count: i32,
 	) -> Result<Vec<(Uuid, Uuid, i32)>, TagError> {
-		self.usage_analyzer.get_frequent_co_occurrences(min_count).await
+		self.usage_analyzer
+			.get_frequent_co_occurrences(min_count)
+			.await
 	}
 }
 

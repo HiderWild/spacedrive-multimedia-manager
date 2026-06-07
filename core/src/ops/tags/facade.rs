@@ -243,7 +243,11 @@ impl TaggingFacade {
 		// Simple suggestion logic based on co-occurrence
 		for existing_tag in &existing_tags {
 			// Access co-occurrence data through public method on TagManager
-			let co_occurrences = self.tag_manager.get_frequent_co_occurrences(3).await.unwrap_or_default();
+			let co_occurrences = self
+				.tag_manager
+				.get_frequent_co_occurrences(3)
+				.await
+				.unwrap_or_default();
 
 			for (tag1_id, tag2_id, count) in co_occurrences {
 				if tag1_id == existing_tag.id && !existing_tag_ids.contains(&tag2_id) {
@@ -317,10 +321,7 @@ impl TaggingFacade {
 	) -> Result<TagHierarchyNode, TagError> {
 		// Get direct children (depth=1) via closure table for proper hierarchy
 		let direct_child_ids = self.tag_manager.get_direct_children(tag.id).await?;
-		let direct_children = self
-			.tag_manager
-			.get_tags_by_ids(&direct_child_ids)
-			.await?;
+		let direct_children = self.tag_manager.get_tags_by_ids(&direct_child_ids).await?;
 
 		// Recursively build each child's subtree
 		let mut children = Vec::new();

@@ -101,9 +101,7 @@ impl LibraryAction for UnapplyTagsAction {
 		// Fetch user_metadata_tag records BEFORE deleting (for sync)
 		let um_ids_vec: Vec<i32> = um_ids.into_iter().collect();
 		let umt_records_for_sync = user_metadata_tag::Entity::find()
-			.filter(
-				user_metadata_tag::Column::UserMetadataId.is_in(um_ids_vec.clone()),
-			)
+			.filter(user_metadata_tag::Column::UserMetadataId.is_in(um_ids_vec.clone()))
 			.filter(user_metadata_tag::Column::TagId.is_in(tag_db_ids.clone()))
 			.all(conn)
 			.await
@@ -111,9 +109,7 @@ impl LibraryAction for UnapplyTagsAction {
 
 		// Delete user_metadata_tag records
 		let result = user_metadata_tag::Entity::delete_many()
-			.filter(
-				user_metadata_tag::Column::UserMetadataId.is_in(um_ids_vec),
-			)
+			.filter(user_metadata_tag::Column::UserMetadataId.is_in(um_ids_vec))
 			.filter(user_metadata_tag::Column::TagId.is_in(tag_db_ids))
 			.exec(conn)
 			.await

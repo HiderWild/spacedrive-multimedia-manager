@@ -68,6 +68,10 @@ pub struct WindowsClassifier;
 
 impl VolumeClassifier for WindowsClassifier {
 	fn classify(&self, info: &VolumeDetectionInfo) -> VolumeType {
+		if info.is_network_drive.unwrap_or(false) {
+			return VolumeType::Network;
+		}
+
 		let mount_str = info.mount_point.to_string_lossy();
 
 		match mount_str.as_ref() {
@@ -196,4 +200,26 @@ pub fn get_classifier() -> Box<dyn VolumeClassifier> {
 		target_os = "ios"
 	)))]
 	return Box::new(UnknownClassifier);
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::volume::types::FileSystem;
+
+	#[cfg(windows)]
+	#[test]
+	fn windows_classifier_prioritizes_network_drive_flag() {
+		let classifier = WindowsClassifier;
+		let detection_info = VolumeDetectionInfo {
+			mount_point: std::path::PathBuf::from(r"X:\"),
+			file_system: FileSystem::NTFS,
+			total_bytes_capacity: 8_000_000_000,
+			is_removable: Some(false),
+			is_network_drive: Some(true),
+			device_model: None,
+		};
+
+		assert_eq!(classifier.classify(&detection_info), VolumeType::Network);
+	}
 }

@@ -159,12 +159,7 @@ struct DbTagDispatcher {
 
 #[async_trait]
 impl MacroDispatcher for DbTagDispatcher {
-	async fn dispatch(
-		&self,
-		action: &str,
-		entry_uuid: Uuid,
-		params: &Value,
-	) -> Result<(), String> {
+	async fn dispatch(&self, action: &str, entry_uuid: Uuid, params: &Value) -> Result<(), String> {
 		if action != "tags.apply" {
 			return Err(format!("unsupported action: {action}"));
 		}
@@ -230,7 +225,11 @@ async fn dry_run_reports_plan_without_mutating() {
 
 	assert!(result.dry_run, "result should be flagged dry-run");
 	assert_eq!(result.matched_files, 2, "only the two mp4 files match");
-	assert_eq!(result.planned.len(), 2, "one planned action per matched file");
+	assert_eq!(
+		result.planned.len(),
+		2,
+		"one planned action per matched file"
+	);
 	assert!(result.planned.iter().all(|p| p.action == "tags.apply"));
 	assert_eq!(result.succeeded, 0, "dry-run performs nothing");
 	assert_eq!(result.failed, 0);
