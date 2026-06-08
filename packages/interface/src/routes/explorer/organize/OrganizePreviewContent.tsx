@@ -300,7 +300,19 @@ export function OrganizePreviewContent(props: {
 			className="flex h-full min-h-0 flex-col"
 			onWheel={previewMediaKind === 'video' ? handleVideoWheel : undefined}
 		>
-			<div className="min-h-0 flex-1">{content}</div>
+			<div className="min-h-0 flex-1 bg-black">{content}</div>
+
+			{/* Info banner for media previews */}
+			{previewFile && previewMediaKind && (
+				<div className="bg-app-darkBox flex items-center justify-between border-t border-app-line px-3 py-1.5 text-xs">
+					<div className="text-ink-dull truncate">
+						{previewFile.name}
+					</div>
+					<div className="text-ink-faint ml-2 shrink-0">
+						{siblingPreviewCandidates.findIndex(f => f.id === previewFile.id) + 1} / {siblingPreviewCandidates.length}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 
@@ -328,7 +340,7 @@ export function OrganizePreviewContent(props: {
 
 	if (previewFile) {
 		return renderPreviewBody(
-			<div className="min-h-0 flex-1">
+			<div className="flex h-full min-h-0 items-center justify-center">
 				<ContentRenderer
 					file={previewFile}
 					getVideoCallbacks={setVideoCallbacks}

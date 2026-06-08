@@ -359,7 +359,7 @@ export function VideoPlayer({
 						poster={posterSrc ?? undefined}
 						autoPlay
 						playsInline
-						className="max-h-screen max-w-screen"
+						className="max-h-full max-w-full object-contain"
 						onClick={togglePlay}
 						onPlay={() => setPlaying(true)}
 						onPause={() => setPlaying(false)}
