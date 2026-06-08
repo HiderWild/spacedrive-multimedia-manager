@@ -21,3 +21,5 @@ export interface OrganizeDirectoryState {
   updatedAt: string;
   items: Record<string, OrganizeItemRecord>;
 }
+
+export type OrganizePendingItems = Record<string, OrganizeItemRecord | null>;

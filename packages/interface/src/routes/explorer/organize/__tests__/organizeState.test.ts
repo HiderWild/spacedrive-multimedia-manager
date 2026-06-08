@@ -310,3 +310,33 @@ describe("clearOrganizeDecision", () => {
     expect(Object.keys(cleared.items)).toHaveLength(0);
   });
 });
+
+describe("pending organize decision overlay", () => {
+  it("overlays pending decisions over the persisted baseline for buckets and presentation", () => {
+    const file = makeFile({ id: "file-1" });
+    const key = getOrganizeItemKey(file);
+    const baseline = upsertOrganizeDecision(createEmptyOrganizeDirectoryState("/photos"), file, "keep");
+    const pendingDiscard = upsertOrganizeDecision(createEmptyOrganizeDirectoryState("/photos"), file, "discard").items[key]!;
+    const pending = { [key]: pendingDiscard };
+
+    expect(projectOrganizeBucket([file], baseline, "keep", pending)).toHaveLength(0);
+    expect(projectOrganizeBucket([file], baseline, "discard", pending)).toHaveLength(1);
+    expect(buildOrganizePresentation([file], baseline, pending)[0]).toMatchObject({
+      decision: "discard",
+      dimmed: true,
+    });
+  });
+
+  it("treats pending clear as a dirty overlay that removes a persisted baseline decision", () => {
+    const file = makeFile({ id: "file-1" });
+    const key = getOrganizeItemKey(file);
+    const baseline = upsertOrganizeDecision(createEmptyOrganizeDirectoryState("/photos"), file, "keep");
+    const pending = { [key]: null };
+
+    expect(projectOrganizeBucket([file], baseline, "keep", pending)).toHaveLength(0);
+    expect(buildOrganizePresentation([file], baseline, pending)[0]).toMatchObject({
+      decision: null,
+      dimmed: false,
+    });
+  });
+});

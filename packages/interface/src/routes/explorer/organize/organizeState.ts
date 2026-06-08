@@ -1,6 +1,17 @@
 import type { File } from "@sd/ts-client";
-import type { OrganizeDecision, OrganizeDirectoryState, OrganizeItemRecord } from "./organizeTypes";
+import type { OrganizeDecision, OrganizeDirectoryState, OrganizeItemRecord, OrganizePendingItems } from "./organizeTypes";
 import { getOrganizeItemKey, getPhysicalPath, normalizeOrganizePath } from "./organizePersistence";
+
+function getEffectiveOrganizeRecord(
+  state: OrganizeDirectoryState,
+  key: string,
+  pending?: OrganizePendingItems,
+): OrganizeItemRecord | null {
+  if (pending && key in pending) {
+    return pending[key];
+  }
+  return state.items[key] ?? null;
+}
 
 export function upsertOrganizeDecision(
   state: OrganizeDirectoryState,
@@ -29,10 +40,11 @@ export function projectOrganizeBucket(
   files: File[],
   state: OrganizeDirectoryState,
   decision: OrganizeDecision,
+  pending?: OrganizePendingItems,
 ): File[] {
   return files.filter((f) => {
     const key = getOrganizeItemKey(f);
-    return state.items[key]?.decision === decision;
+    return getEffectiveOrganizeRecord(state, key, pending)?.decision === decision;
   });
 }
 
@@ -45,10 +57,11 @@ export interface OrganizePresentationEntry {
 export function buildOrganizePresentation(
   files: File[],
   state: OrganizeDirectoryState,
+  pending?: OrganizePendingItems,
 ): OrganizePresentationEntry[] {
   return files.map((file) => {
     const key = getOrganizeItemKey(file);
-    const record = state.items[key] ?? null;
+    const record = getEffectiveOrganizeRecord(state, key, pending);
     return {
       file,
       decision: record?.decision ?? null,
