@@ -28,6 +28,7 @@ export function OrganizeView() {
 	});
 	const [leftTab, setLeftTab] = useState<OrganizeLeftTab>('keep');
 	const [layout, setLayout] = useState<OrganizeCenterLayout>('grid');
+	const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
 	const initialInspectorVisible = useRef(explorer.inspectorVisible);
 	const setInspectorVisible = explorer.setInspectorVisible;
 
@@ -53,6 +54,9 @@ export function OrganizeView() {
 		async (file: File) => {
 			if (file.kind !== 'Directory' || !file.sd_path) return;
 
+			// Clear multi-selection on navigation
+			setMultiSelectedIds(new Set());
+
 			// Flush pending organize state before navigation
 			await organize.flushPending();
 
@@ -61,6 +65,35 @@ export function OrganizeView() {
 		},
 		[organize, explorer]
 	);
+
+	const handleSelectFile = useCallback(
+		(file: File, isMulti: boolean = false) => {
+			if (isMulti) {
+				// Multi-select: don't update preview
+				return;
+			}
+			// Single select: clear multi-selection and update preview
+			setMultiSelectedIds(new Set());
+			selectFile(file, files, false, false);
+		},
+		[files, selectFile]
+	);
+
+	const handleToggleMultiSelect = useCallback((fileId: string) => {
+		setMultiSelectedIds(prev => {
+			const next = new Set(prev);
+			if (next.has(fileId)) {
+				next.delete(fileId);
+			} else {
+				next.add(fileId);
+			}
+			return next;
+		});
+	}, []);
+
+	const handleClearMultiSelect = useCallback(() => {
+		setMultiSelectedIds(new Set());
+	}, []);
 
 	useEffect(() => {
 		explorer.setCurrentFiles(files);
@@ -127,12 +160,13 @@ export function OrganizeView() {
 			center={
 				<OrganizeCenterPane
 					selectedFileId={selectedFile?.id ?? null}
+					multiSelectedIds={multiSelectedIds}
 					layout={layout}
 					onLayoutChange={setLayout}
 					presentation={organize.presentation}
-					onSelectFile={(file) =>
-						selectFile(file, files, false, false)
-					}
+					onSelectFile={handleSelectFile}
+					onToggleMultiSelect={handleToggleMultiSelect}
+					onClearMultiSelect={handleClearMultiSelect}
 					onMarkKeep={organize.markKeep}
 					onMarkDiscard={organize.markDiscard}
 					onClearDecision={organize.clearDecision}

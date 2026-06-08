@@ -12,7 +12,10 @@ export function OrganizeCenterPane(props: {
 	onLayoutChange: (layout: OrganizeCenterLayout) => void;
 	presentation: OrganizePresentationEntry[];
 	selectedFileId: string | null;
-	onSelectFile: (file: File) => void;
+	multiSelectedIds: Set<string>;
+	onSelectFile: (file: File, isMulti?: boolean) => void;
+	onToggleMultiSelect: (fileId: string) => void;
+	onClearMultiSelect: () => void;
 	onMarkKeep: (file: File) => void;
 	onMarkDiscard: (file: File) => void;
 	onClearDecision: (file: File) => void;
@@ -24,6 +27,10 @@ export function OrganizeCenterPane(props: {
 	const [itemSize, setItemSize] = useState(140);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const [isSelecting, setIsSelecting] = useState(false);
+	const [selectionStart, setSelectionStart] = useState<{x: number; y: number} | null>(null);
+	const [selectionEnd, setSelectionEnd] = useState<{x: number; y: number} | null>(null);
+
 	const selected =
 		props.presentation.find((item) => item.file.id === props.selectedFileId)
 			?.file ?? null;
@@ -32,8 +39,15 @@ export function OrganizeCenterPane(props: {
 		if (!e.ctrlKey) return;
 		e.preventDefault();
 		const delta = e.deltaY > 0 ? -20 : 20;
-		setItemSize((prev) => Math.max(80, Math.min(240, prev + delta)));
-	}, []);
+		const newSize = Math.max(80, Math.min(240, itemSize + delta));
+
+		// Auto-switch to list view when trying to zoom below minimum in grid mode
+		if (newSize === 80 && delta < 0 && props.layout === 'grid') {
+			props.onLayoutChange('list');
+		} else {
+			setItemSize(newSize);
+		}
+	}, [itemSize, props]);
 
 	// Handle keyboard shortcuts
 	useEffect(() => {
@@ -87,6 +101,81 @@ export function OrganizeCenterPane(props: {
 		return () => scrollContainer.removeEventListener('scroll', handleScroll);
 	}, [props]);
 
+	// Rectangle selection (lasso)
+	useEffect(() => {
+		const scrollContainer = scrollContainerRef.current;
+		if (!scrollContainer) return;
+
+		const handleMouseDown = (e: MouseEvent) => {
+			// Only start selection on left click on the container background
+			if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
+
+			setIsSelecting(true);
+			const rect = scrollContainer.getBoundingClientRect();
+			setSelectionStart({ x: e.clientX - rect.left, y: e.clientY - rect.top + scrollContainer.scrollTop });
+			setSelectionEnd({ x: e.clientX - rect.left, y: e.clientY - rect.top + scrollContainer.scrollTop });
+		};
+
+		const handleMouseMove = (e: MouseEvent) => {
+			if (!isSelecting || !selectionStart) return;
+
+			const rect = scrollContainer.getBoundingClientRect();
+			setSelectionEnd({ x: e.clientX - rect.left, y: e.clientY - rect.top + scrollContainer.scrollTop });
+		};
+
+		const handleMouseUp = () => {
+			if (!isSelecting || !selectionStart || !selectionEnd) {
+				setIsSelecting(false);
+				return;
+			}
+
+			// Calculate selection rectangle
+			const rect = {
+				left: Math.min(selectionStart.x, selectionEnd.x),
+				right: Math.max(selectionStart.x, selectionEnd.x),
+				top: Math.min(selectionStart.y, selectionEnd.y),
+				bottom: Math.max(selectionStart.y, selectionEnd.y),
+			};
+
+			// Find items within selection rectangle
+			const buttons = scrollContainer.querySelectorAll('button[data-file-id]');
+			buttons.forEach((button) => {
+				const buttonRect = button.getBoundingClientRect();
+				const containerRect = scrollContainer.getBoundingClientRect();
+				const relativeTop = buttonRect.top - containerRect.top + scrollContainer.scrollTop;
+				const relativeLeft = buttonRect.left - containerRect.left;
+
+				// Check if button intersects with selection
+				const intersects =
+					relativeLeft < rect.right &&
+					relativeLeft + buttonRect.width > rect.left &&
+					relativeTop < rect.bottom &&
+					relativeTop + buttonRect.height > rect.top;
+
+				if (intersects) {
+					const fileId = button.getAttribute('data-file-id');
+					if (fileId) {
+						props.onToggleMultiSelect(fileId);
+					}
+				}
+			});
+
+			setIsSelecting(false);
+			setSelectionStart(null);
+			setSelectionEnd(null);
+		};
+
+		scrollContainer.addEventListener('mousedown', handleMouseDown);
+		document.addEventListener('mousemove', handleMouseMove);
+		document.addEventListener('mouseup', handleMouseUp);
+
+		return () => {
+			scrollContainer.removeEventListener('mousedown', handleMouseDown);
+			document.removeEventListener('mousemove', handleMouseMove);
+			document.removeEventListener('mouseup', handleMouseUp);
+		};
+	}, [isSelecting, selectionStart, selectionEnd, props]);
+
 	return (
 		<div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
 			<div className="border-app-line flex items-center gap-2 border-b px-3 py-2">
@@ -118,7 +207,7 @@ export function OrganizeCenterPane(props: {
 					'min-h-0 flex-1 overflow-auto p-3',
 					props.layout === 'grid'
 						? 'grid gap-3'
-						: 'flex flex-col gap-2'
+						: 'flex flex-col gap-1'
 				)}
 				style={
 					props.layout === 'grid'
@@ -129,47 +218,152 @@ export function OrganizeCenterPane(props: {
 						: undefined
 				}
 				onWheel={handleWheel}
+				onClick={(e) => {
+					// Clear multi-selection on blank area click
+					if (e.target === scrollContainerRef.current) {
+						props.onClearMultiSelect();
+					}
+				}}
 			>
-				{props.presentation.map((item) => (
-					<button
-						key={item.file.id}
-						data-file-id={item.file.id}
-						onClick={() => props.onSelectFile(item.file)}
-						onDoubleClick={() => {
-							if (item.file.kind === 'Directory' && props.onNavigateToDirectory) {
-								props.onNavigateToDirectory(item.file);
-							}
+				{props.layout === 'list' ? (
+					// List view
+					<>
+						{props.presentation.map((item) => {
+							const isMultiSelected = props.multiSelectedIds.has(item.file.id);
+							const isSingleSelected = item.file.id === props.selectedFileId;
+
+							return (
+								<button
+									key={item.file.id}
+									data-file-id={item.file.id}
+									onClick={(e) => {
+										if (e.ctrlKey || e.metaKey) {
+											props.onToggleMultiSelect(item.file.id);
+										} else {
+											props.onSelectFile(item.file, false);
+										}
+									}}
+									onDoubleClick={() => {
+										if (item.file.kind === 'Directory' && props.onNavigateToDirectory) {
+											props.onNavigateToDirectory(item.file);
+										}
+									}}
+									className={clsx(
+										'border-app-line bg-app-box/60 flex items-center gap-3 rounded-lg border px-3 py-2 text-left',
+										item.dimmed && 'opacity-50',
+										(isMultiSelected || isSingleSelected) && 'ring-accent ring-2'
+									)}
+								>
+									<OrganizeThumbnail file={item.file} size={32} />
+									<div className="text-ink min-w-0 flex-1 truncate text-sm">
+										{item.file.name}
+									</div>
+									<div className="text-ink-dull text-xs">
+										{item.file.size ? formatBytes(item.file.size) : '—'}
+									</div>
+									<div className="text-ink-dull text-xs">
+										{item.file.date_modified ? formatDate(item.file.date_modified) : '—'}
+									</div>
+									{item.decision === 'keep' ? (
+										<CheckCircle
+											className="text-emerald-400 shrink-0"
+											size={18}
+											weight="fill"
+										/>
+									) : item.decision === 'discard' ? (
+										<XCircle
+											className="text-rose-400 shrink-0"
+											size={18}
+											weight="fill"
+										/>
+									) : null}
+								</button>
+							);
+						})}
+					</>
+				) : (
+					// Grid view
+					<>
+						{props.presentation.map((item) => {
+							const isMultiSelected = props.multiSelectedIds.has(item.file.id);
+							const isSingleSelected = item.file.id === props.selectedFileId;
+
+							return (
+							return (
+								<button
+									key={item.file.id}
+									data-file-id={item.file.id}
+									onClick={(e) => {
+										if (e.ctrlKey || e.metaKey) {
+											props.onToggleMultiSelect(item.file.id);
+										} else {
+											props.onSelectFile(item.file, false);
+										}
+									}}
+									onDoubleClick={() => {
+										if (item.file.kind === 'Directory' && props.onNavigateToDirectory) {
+											props.onNavigateToDirectory(item.file);
+										}
+									}}
+									className={clsx(
+										'border-app-line bg-app-box/60 relative flex flex-col items-center justify-center rounded-xl border p-2',
+										item.dimmed && 'opacity-50',
+										(isMultiSelected || isSingleSelected) && 'ring-accent ring-2'
+									)}
+								>
+									<OrganizeThumbnail
+										file={item.file}
+										size={props.layout === 'grid' ? iconSize : 48}
+									/>
+									<div className="text-ink mt-1 w-full truncate text-center text-xs">
+										{item.file.name}
+									</div>
+									{item.decision === 'keep' ? (
+										<CheckCircle
+											className="absolute bottom-2 right-2 text-emerald-400"
+											size={20}
+											weight="fill"
+										/>
+									) : item.decision === 'discard' ? (
+										<XCircle
+											className="absolute bottom-2 right-2 text-rose-400"
+											size={20}
+											weight="fill"
+										/>
+									) : null}
+								</button>
+							);
+						})}
+					</>
+				)}
+
+				{/* Selection rectangle visualization */}
+				{isSelecting && selectionStart && selectionEnd && (
+					<div
+						className="border-accent pointer-events-none absolute z-50 border-2 bg-accent/10"
+						style={{
+							left: Math.min(selectionStart.x, selectionEnd.x),
+							top: Math.min(selectionStart.y, selectionEnd.y),
+							width: Math.abs(selectionEnd.x - selectionStart.x),
+							height: Math.abs(selectionEnd.y - selectionStart.y),
 						}}
-						className={clsx(
-							'border-app-line bg-app-box/60 relative flex flex-col items-center justify-center rounded-xl border p-2',
-							item.dimmed && 'opacity-50',
-							item.file.id === props.selectedFileId &&
-								'ring-accent ring-2'
-						)}
-					>
-						<OrganizeThumbnail
-							file={item.file}
-							size={props.layout === 'grid' ? iconSize : 48}
-						/>
-						<div className="text-ink mt-1 w-full truncate text-center text-xs">
-							{item.file.name}
-						</div>
-						{item.decision === 'keep' ? (
-							<CheckCircle
-								className="absolute bottom-2 right-2 text-emerald-400"
-								size={20}
-								weight="fill"
-							/>
-						) : item.decision === 'discard' ? (
-							<XCircle
-								className="absolute bottom-2 right-2 text-rose-400"
-								size={20}
-								weight="fill"
-							/>
-						) : null}
-					</button>
-				))}
+					/>
+				)}
 			</div>
 		</div>
 	);
+}
+
+// Helper functions
+function formatBytes(bytes: number): string {
+	if (bytes === 0) return '0 B';
+	const k = 1024;
+	const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+	const i = Math.floor(Math.log(bytes) / Math.log(k));
+	return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function formatDate(date: string): string {
+	const d = new Date(date);
+	return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
