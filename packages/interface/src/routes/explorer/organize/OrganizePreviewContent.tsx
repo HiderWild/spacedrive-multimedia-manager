@@ -328,26 +328,14 @@ export function OrganizePreviewContent(props: {
 
 	if (previewFile) {
 		return renderPreviewBody(
-			<>
-				<div className="flex justify-end px-2 pt-2">
-					<button
-						type="button"
-						onClick={openPreviewWindow}
-						className="hover:bg-sidebar-selected inline-flex items-center gap-1.5 rounded-lg p-1.5 text-xs text-sidebar-inkDull transition-colors hover:text-sidebar-ink"
-						title="Open Quick Preview"
-					>
-						<ArrowSquareOut className="size-4" weight="bold" />
-					</button>
-				</div>
-				<div className="min-h-0 flex-1">
-					<ContentRenderer
-						file={previewFile}
-						getVideoCallbacks={setVideoCallbacks}
-						videoKeyboardShortcutsEnabled={false}
-						videoWheelZoomEnabled={false}
-					/>
-				</div>
-			</>
+			<div className="min-h-0 flex-1">
+				<ContentRenderer
+					file={previewFile}
+					getVideoCallbacks={setVideoCallbacks}
+					videoKeyboardShortcutsEnabled={false}
+					videoWheelZoomEnabled={false}
+				/>
+			</div>
 		);
 	}
 
