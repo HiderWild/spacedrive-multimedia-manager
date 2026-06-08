@@ -247,7 +247,8 @@ export function ExplorerView() {
 									<CircleButton
 										icon={ArrowUp}
 										onClick={navigateToParent}
-										disabled={false}
+										disabled={!currentPath}
+										title="Navigate to parent directory"
 									/>
 								</CircleButtonGroup>
 							</TopBarItem>
