@@ -15,6 +15,7 @@ export function OrganizeCenterPane(props: {
 	onMarkKeep: (file: File) => void;
 	onMarkDiscard: (file: File) => void;
 	onClearDecision: (file: File) => void;
+	onNavigateToDirectory?: (file: File) => void;
 }) {
 	const {t} = useTranslation('explorer');
 	const selected =
@@ -59,6 +60,11 @@ export function OrganizeCenterPane(props: {
 						key={item.file.id}
 						data-file-id={item.file.id}
 						onClick={() => props.onSelectFile(item.file)}
+						onDoubleClick={() => {
+							if (item.file.kind === 'Directory' && props.onNavigateToDirectory) {
+								props.onNavigateToDirectory(item.file);
+							}
+						}}
 						className={clsx(
 							'border-app-line bg-app-box/60 relative rounded-xl border p-3 text-left',
 							item.dimmed && 'opacity-50',

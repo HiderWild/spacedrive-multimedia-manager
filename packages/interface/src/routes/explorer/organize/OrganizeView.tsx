@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import type {File} from '@sd/ts-client';
 import {usePlatform} from '../../../contexts/PlatformContext';
 import {useExplorer} from '../context';
 import {useExplorerFiles} from '../hooks/useExplorerFiles';
@@ -45,6 +46,19 @@ export function OrganizeView() {
 			onDeleted: organize.removeDeleted
 		});
 	}, [deleteTargets, organize.removeDeleted]);
+
+	const handleNavigateToDirectory = useCallback(
+		async (file: File) => {
+			if (file.kind !== 'Directory' || !file.sd_path) return;
+
+			// Flush pending organize state before navigation
+			await organize.flushPending();
+
+			// Navigate to the directory
+			explorer.navigateToPath(file.sd_path);
+		},
+		[organize, explorer]
+	);
 
 	useEffect(() => {
 		explorer.setCurrentFiles(files);
@@ -102,6 +116,7 @@ export function OrganizeView() {
 					onMarkKeep={organize.markKeep}
 					onMarkDiscard={organize.markDiscard}
 					onClearDecision={organize.clearDecision}
+					onNavigateToDirectory={handleNavigateToDirectory}
 				/>
 			}
 		/>
