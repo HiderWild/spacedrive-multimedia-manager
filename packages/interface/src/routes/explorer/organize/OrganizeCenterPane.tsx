@@ -4,7 +4,6 @@ import clsx from 'clsx';
 import {useCallback, useEffect, useRef, useState, type WheelEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import {OrganizeThumbnail} from './OrganizeThumbnail';
-import {preloadThumbnails} from './useOrganizeThumbnail';
 import type {OrganizePresentationEntry} from './organizeState';
 import type {OrganizeCenterLayout} from './organizeTypes';
 
@@ -65,12 +64,6 @@ export function OrganizeCenterPane(props: {
 
 	// Calculate icon size proportionally to item size (65% of item size)
 	const iconSize = Math.floor(itemSize * 0.65);
-
-	// Preload thumbnails for visible items
-	useEffect(() => {
-		const files = props.presentation.map(item => item.file);
-		preloadThumbnails(files, iconSize);
-	}, [props.presentation, iconSize]);
 
 	return (
 		<div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
