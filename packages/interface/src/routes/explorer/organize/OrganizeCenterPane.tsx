@@ -3,7 +3,8 @@ import type {File} from '@sd/ts-client';
 import clsx from 'clsx';
 import {useCallback, useEffect, useRef, useState, type WheelEvent} from 'react';
 import {useTranslation} from 'react-i18next';
-import {File as FileComponent} from '../File';
+import {OrganizeThumbnail} from './OrganizeThumbnail';
+import {preloadThumbnails} from './useOrganizeThumbnail';
 import type {OrganizePresentationEntry} from './organizeState';
 import type {OrganizeCenterLayout} from './organizeTypes';
 
@@ -65,6 +66,12 @@ export function OrganizeCenterPane(props: {
 	// Calculate icon size proportionally to item size (65% of item size)
 	const iconSize = Math.floor(itemSize * 0.65);
 
+	// Preload thumbnails for visible items
+	useEffect(() => {
+		const files = props.presentation.map(item => item.file);
+		preloadThumbnails(files, iconSize);
+	}, [props.presentation, iconSize]);
+
 	return (
 		<div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
 			<div className="border-app-line flex items-center gap-2 border-b px-3 py-2">
@@ -124,7 +131,7 @@ export function OrganizeCenterPane(props: {
 								'ring-accent ring-2'
 						)}
 					>
-						<FileComponent.Thumb
+						<OrganizeThumbnail
 							file={item.file}
 							size={props.layout === 'grid' ? iconSize : 48}
 						/>

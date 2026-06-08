@@ -402,13 +402,26 @@ function getParentPath(path: string): string | null {
 
 	// Detect path separator (Windows uses \, Unix uses /)
 	const separator = path.includes('\\') ? '\\' : '/';
-	const parts = path.split(separator).filter(Boolean);
 
-	// No parts or single part means we're at root
+	// Normalize: remove trailing separator
+	const normalizedPath = path.endsWith(separator) && path.length > 1
+		? path.slice(0, -1)
+		: path;
+
+	const parts = normalizedPath.split(separator).filter(Boolean);
+
+	// No parts means empty path
 	if (parts.length === 0) return null;
+
+	// Single part handling
 	if (parts.length === 1) {
-		// Windows drive root (e.g., "C:") or Unix root
-		return null;
+		if (separator === '\\') {
+			// Windows: "C:" or "C" at root - return null (no parent)
+			return null;
+		} else {
+			// Unix: single part after "/" means we're at root
+			return null;
+		}
 	}
 
 	// Remove last part to get parent
@@ -417,14 +430,18 @@ function getParentPath(path: string): string | null {
 	// Reconstruct path
 	if (separator === '\\') {
 		// Windows path
-		if (parts[0].endsWith(':')) {
-			// Preserve drive letter format: ["C:", "Users"] -> "C:\Users"
-			return parts.join(separator);
+		if (parts.length === 1 && parts[0].endsWith(':')) {
+			// Going to drive root: ["C:", "folder"] -> "C:\"
+			return parts[0] + separator;
 		}
-		// UNC path: ["", "", "server", "share"] -> "\\server\share"
+		// Multi-level: ["C:", "Users", "Tom"] -> "C:\Users"
 		return parts.join(separator);
 	} else {
 		// Unix path: always starts with /
+		if (parts.length === 0) {
+			// Going to Unix root
+			return separator;
+		}
 		return separator + parts.join(separator);
 	}
 }
