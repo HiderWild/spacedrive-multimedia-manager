@@ -11,9 +11,8 @@ import {OrganizeCenterPane} from './OrganizeCenterPane';
 import {openOrganizeDeleteDialog} from './OrganizeDeleteDialog';
 import {OrganizeLayout} from './OrganizeLayout';
 import {OrganizeLeftPane} from './OrganizeLeftPane';
-import {OrganizeRightPane} from './OrganizeRightPane';
 import {collectDiscardDeleteTargets} from './organizeState';
-import type {OrganizeCenterLayout, OrganizeLeftTab, DirectoryPreviewAvailability} from './organizeTypes';
+import type {OrganizeCenterLayout, OrganizeLeftTab} from './organizeTypes';
 import {useOrganizeState} from './useOrganizeState';
 
 export function OrganizeView() {
@@ -41,18 +40,6 @@ export function OrganizeView() {
 				: [],
 		[files, organize.state]
 	);
-
-	// Derive directory preview availability if selected file is a directory
-	const directoryAvailability = useMemo(() => {
-		if (!selectedFile || selectedFile.kind !== 'Directory') return null;
-		return {
-			renderedTabs: ['list'],
-			enabledTabs: ['list'],
-			defaultTab: 'list',
-			firstVideo: null,
-			firstImage: null
-		} as DirectoryPreviewAvailability;
-	}, [selectedFile]);
 
 	const handleDeleteClick = useCallback(() => {
 		if (deleteTargets.length === 0) return;
@@ -131,12 +118,6 @@ export function OrganizeView() {
 					onMarkDiscard={organize.markDiscard}
 					onClearDecision={organize.clearDecision}
 					onNavigateToDirectory={handleNavigateToDirectory}
-				/>
-			}
-			right={
-				<OrganizeRightPane
-					selectedFile={selectedFile}
-					directoryAvailability={directoryAvailability}
 				/>
 			}
 		/>
