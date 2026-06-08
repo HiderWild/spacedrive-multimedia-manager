@@ -1,6 +1,7 @@
 import {CheckCircle, XCircle} from '@phosphor-icons/react';
 import type {File} from '@sd/ts-client';
 import clsx from 'clsx';
+import {useCallback, useState, type WheelEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import {File as FileComponent} from '../File';
 import type {OrganizePresentationEntry} from './organizeState';
@@ -18,9 +19,17 @@ export function OrganizeCenterPane(props: {
 	onNavigateToDirectory?: (file: File) => void;
 }) {
 	const {t} = useTranslation('explorer');
+	const [itemSize, setItemSize] = useState(140);
 	const selected =
 		props.presentation.find((item) => item.file.id === props.selectedFileId)
 			?.file ?? null;
+
+	const handleWheel = useCallback((e: WheelEvent) => {
+		if (!e.ctrlKey) return;
+		e.preventDefault();
+		const delta = e.deltaY > 0 ? -20 : 20;
+		setItemSize((prev) => Math.max(80, Math.min(240, prev + delta)));
+	}, []);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
@@ -51,9 +60,17 @@ export function OrganizeCenterPane(props: {
 				className={clsx(
 					'min-h-0 flex-1 overflow-auto p-3',
 					props.layout === 'grid'
-						? 'grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3'
+						? 'grid gap-3'
 						: 'flex flex-col gap-2'
 				)}
+				style={
+					props.layout === 'grid'
+						? {
+								gridTemplateColumns: `repeat(auto-fill, minmax(${itemSize}px, 1fr))`,
+						  }
+						: undefined
+				}
+				onWheel={handleWheel}
 			>
 				{props.presentation.map((item) => (
 					<button
