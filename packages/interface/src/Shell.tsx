@@ -54,7 +54,7 @@ function ShellWithDaemonCheck() {
 						<TabKeyboardHandler />
 						<ShellWithTabs />
 					</TabManagerProvider>
-					<div className="z-[10000]">
+					<div className="fixed inset-0 z-[10000] pointer-events-none [&>*]:pointer-events-auto">
 						<Dialogs />
 					</div>
 					<Toaster />

@@ -295,26 +295,49 @@ export function OrganizePreviewContent(props: {
 		[previewMediaKind, videoCallbacks]
 	);
 
-	const renderPreviewBody = (content: React.ReactNode) => (
-		<div
-			className="flex h-full min-h-0 flex-col"
-			onWheel={previewMediaKind === 'video' ? handleVideoWheel : undefined}
-		>
-			<div className="min-h-0 flex-1 bg-black">{content}</div>
+	const renderPreviewBody = (content: React.ReactNode) => {
+		// Calculate relative path for the preview file
+		let relativePath = '';
+		if (previewFile && props.selectedFile && previewFile.sd_path && props.selectedFile.sd_path) {
+			const previewPath = 'Physical' in previewFile.sd_path
+				? previewFile.sd_path.Physical.path
+				: 'Cloud' in previewFile.sd_path
+					? previewFile.sd_path.Cloud.path
+					: '';
+			const basePath = 'Physical' in props.selectedFile.sd_path
+				? props.selectedFile.sd_path.Physical.path
+				: 'Cloud' in props.selectedFile.sd_path
+					? props.selectedFile.sd_path.Cloud.path
+					: '';
 
-			{/* Info banner for media previews */}
-			{previewFile && previewMediaKind && (
-				<div className="bg-app-darkBox flex items-center justify-between border-t border-app-line px-3 py-1.5 text-xs">
-					<div className="text-ink-dull truncate">
-						{previewFile.name}
+			if (previewPath && basePath && previewPath.startsWith(basePath)) {
+				relativePath = previewPath.slice(basePath.length).replace(/^[/\\]+/, '');
+			} else {
+				relativePath = previewFile.name;
+			}
+		}
+
+		return (
+			<div
+				className="flex h-full min-h-0 flex-col"
+				onWheel={previewMediaKind === 'video' ? handleVideoWheel : undefined}
+			>
+				<div className="min-h-0 flex-1 bg-black">{content}</div>
+
+				{/* Info banner for media previews */}
+				{previewFile && previewMediaKind && (
+					<div className="bg-app-darkBox flex items-center justify-between border-t border-app-line px-3 py-1.5 text-xs">
+						<div className="text-ink-dull min-w-0 flex-1 truncate" title={relativePath || previewFile.name}>
+							{relativePath || previewFile.name}
+						</div>
+						<div className="text-ink-faint ml-2 shrink-0">
+							{siblingPreviewCandidates.findIndex(f => f.id === previewFile.id) + 1} / {siblingPreviewCandidates.length}
+						</div>
 					</div>
-					<div className="text-ink-faint ml-2 shrink-0">
-						{siblingPreviewCandidates.findIndex(f => f.id === previewFile.id) + 1} / {siblingPreviewCandidates.length}
-					</div>
-				</div>
-			)}
-		</div>
-	);
+				)}
+			</div>
+		);
+	};
 
 	if (props.activeTab === 'list') {
 		return renderPreviewBody(
