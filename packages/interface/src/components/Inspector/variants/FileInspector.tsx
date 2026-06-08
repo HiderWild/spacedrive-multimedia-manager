@@ -250,6 +250,7 @@ export function FileInspector({
 
 			{/* Tab Content */}
 			<div className="mt-2.5 flex flex-1 flex-col overflow-hidden">
+				{/* New Preview Tabs - Enhanced with video controls and relative path */}
 				{organizePreview &&
 					organizePreviewState.tabs.map((tab) => (
 						<TabContent
@@ -265,33 +266,38 @@ export function FileInspector({
 						</TabContent>
 					))}
 
-				<TabContent id="overview" activeTab={activeTab}>
-					<OverviewTab file={fileData} />
-				</TabContent>
+				{/* Original Tabs - Temporarily commented out to avoid duplication */}
+				{!organizePreview && (
+					<>
+						<TabContent id="overview" activeTab={activeTab}>
+							<OverviewTab file={fileData} />
+						</TabContent>
 
-				<TabContent id="sidecars" activeTab={activeTab}>
-					<SidecarsTab file={fileData} />
-				</TabContent>
+						<TabContent id="sidecars" activeTab={activeTab}>
+							<SidecarsTab file={fileData} />
+						</TabContent>
 
-				<TabContent id="instances" activeTab={activeTab}>
-					<InstancesTab file={fileData} />
-				</TabContent>
+						<TabContent id="instances" activeTab={activeTab}>
+							<InstancesTab file={fileData} />
+						</TabContent>
 
-				{isDev && (
-					<TabContent id="chat" activeTab={activeTab}>
-						<ChatTab />
-					</TabContent>
+						{isDev && (
+							<TabContent id="chat" activeTab={activeTab}>
+								<ChatTab />
+							</TabContent>
+						)}
+
+						{isDev && (
+							<TabContent id="activity" activeTab={activeTab}>
+								<ActivityTab />
+							</TabContent>
+						)}
+
+						<TabContent id="details" activeTab={activeTab}>
+							<DetailsTab file={fileData} />
+						</TabContent>
+					</>
 				)}
-
-				{isDev && (
-					<TabContent id="activity" activeTab={activeTab}>
-						<ActivityTab />
-					</TabContent>
-				)}
-
-				<TabContent id="details" activeTab={activeTab}>
-					<DetailsTab file={fileData} />
-				</TabContent>
 			</div>
 		</>
 	);

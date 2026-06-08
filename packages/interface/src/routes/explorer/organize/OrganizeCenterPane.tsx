@@ -1,4 +1,4 @@
-import {CheckCircle, XCircle, CaretDown, CaretUp} from '@phosphor-icons/react';
+import {CheckCircle, XCircle} from '@phosphor-icons/react';
 import type {File} from '@sd/ts-client';
 import clsx from 'clsx';
 import {useCallback, useEffect, useRef, useState, type WheelEvent} from 'react';
@@ -25,7 +25,6 @@ export function OrganizeCenterPane(props: {
 }) {
 	const {t} = useTranslation('explorer');
 	const [itemSize, setItemSize] = useState(140);
-	const [showDecisionBar, setShowDecisionBar] = useState(true);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const [isSelecting, setIsSelecting] = useState(false);
@@ -118,21 +117,28 @@ export function OrganizeCenterPane(props: {
 		const scrollContainer = scrollContainerRef.current;
 		if (!scrollContainer) return;
 
+		const PADDING = 12; // p-3 = 12px padding
+
 		const handleMouseDown = (e: MouseEvent) => {
 			// Only start selection on left click on the container background
 			if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
 
 			setIsSelecting(true);
 			const rect = scrollContainer.getBoundingClientRect();
-			setSelectionStart({ x: e.clientX - rect.left, y: e.clientY - rect.top + scrollContainer.scrollTop });
-			setSelectionEnd({ x: e.clientX - rect.left, y: e.clientY - rect.top + scrollContainer.scrollTop });
+			// Calculate position relative to the content area (excluding padding)
+			const x = e.clientX - rect.left - PADDING + scrollContainer.scrollLeft;
+			const y = e.clientY - rect.top - PADDING + scrollContainer.scrollTop;
+			setSelectionStart({ x, y });
+			setSelectionEnd({ x, y });
 		};
 
 		const handleMouseMove = (e: MouseEvent) => {
 			if (!isSelecting || !selectionStart) return;
 
 			const rect = scrollContainer.getBoundingClientRect();
-			setSelectionEnd({ x: e.clientX - rect.left, y: e.clientY - rect.top + scrollContainer.scrollTop });
+			const x = e.clientX - rect.left - PADDING + scrollContainer.scrollLeft;
+			const y = e.clientY - rect.top - PADDING + scrollContainer.scrollTop;
+			setSelectionEnd({ x, y });
 		};
 
 		const handleMouseUp = () => {
@@ -142,7 +148,7 @@ export function OrganizeCenterPane(props: {
 			}
 
 			// Calculate selection rectangle
-			const rect = {
+			const selectionRect = {
 				left: Math.min(selectionStart.x, selectionEnd.x),
 				right: Math.max(selectionStart.x, selectionEnd.x),
 				top: Math.min(selectionStart.y, selectionEnd.y),
@@ -151,24 +157,37 @@ export function OrganizeCenterPane(props: {
 
 			// Find items within selection rectangle
 			const buttons = scrollContainer.querySelectorAll('button[data-file-id]');
+			const selectedIds: string[] = [];
+
 			buttons.forEach((button) => {
 				const buttonRect = button.getBoundingClientRect();
 				const containerRect = scrollContainer.getBoundingClientRect();
-				const relativeTop = buttonRect.top - containerRect.top + scrollContainer.scrollTop;
-				const relativeLeft = buttonRect.left - containerRect.left;
 
-				// Check if button intersects with selection
+				// Calculate button position relative to content area (excluding padding)
+				const buttonLeft = buttonRect.left - containerRect.left - PADDING + scrollContainer.scrollLeft;
+				const buttonTop = buttonRect.top - containerRect.top - PADDING + scrollContainer.scrollTop;
+				const buttonRight = buttonLeft + buttonRect.width;
+				const buttonBottom = buttonTop + buttonRect.height;
+
+				// Check if button intersects with selection rectangle
 				const intersects =
-					relativeLeft < rect.right &&
-					relativeLeft + buttonRect.width > rect.left &&
-					relativeTop < rect.bottom &&
-					relativeTop + buttonRect.height > rect.top;
+					buttonLeft < selectionRect.right &&
+					buttonRight > selectionRect.left &&
+					buttonTop < selectionRect.bottom &&
+					buttonBottom > selectionRect.top;
 
 				if (intersects) {
 					const fileId = button.getAttribute('data-file-id');
 					if (fileId) {
-						props.onToggleMultiSelect(fileId);
+						selectedIds.push(fileId);
 					}
+				}
+			});
+
+			// Add all intersected items to selection (don't toggle existing ones)
+			selectedIds.forEach(id => {
+				if (!props.multiSelectedIds.has(id)) {
+					props.onToggleMultiSelect(id);
 				}
 			});
 
@@ -190,51 +209,31 @@ export function OrganizeCenterPane(props: {
 
 	return (
 		<div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
-			{/* Decision bar with toggle */}
+			{/* Decision bar */}
 			<div className="border-app-line border-b">
-				{showDecisionBar && (
-					<div className="flex items-center gap-2 px-3 py-2">
-						<button
-							className="rounded-md bg-emerald-500/15 px-3 py-1.5 text-sm text-emerald-300 disabled:opacity-40"
-							disabled={!selected}
-							onClick={() => selected && props.onMarkKeep(selected)}
-						>
-							Keep
-						</button>
-						<button
-							className="rounded-md bg-rose-500/15 px-3 py-1.5 text-sm text-rose-300 disabled:opacity-40"
-							disabled={!selected}
-							onClick={() => selected && props.onMarkDiscard(selected)}
-						>
-							Discard
-						</button>
-						<button
-							className="bg-app-box text-ink rounded-md px-3 py-1.5 text-sm disabled:opacity-40"
-							disabled={!selected}
-							onClick={() => selected && props.onClearDecision(selected)}
-						>
-							Clear
-						</button>
-					</div>
-				)}
-				{/* Toggle button */}
-				<button
-					onClick={() => setShowDecisionBar(!showDecisionBar)}
-					className="text-ink-dull hover:text-ink hover:bg-app-darkBox flex w-full items-center justify-center gap-1 py-1 text-xs transition-colors"
-					title={showDecisionBar ? 'Hide decision bar' : 'Show decision bar'}
-				>
-					{showDecisionBar ? (
-						<>
-							<CaretUp size={12} weight="bold" />
-							<span>Hide</span>
-						</>
-					) : (
-						<>
-							<CaretDown size={12} weight="bold" />
-							<span>Show Actions</span>
-						</>
-					)}
-				</button>
+				<div className="flex items-center gap-2 px-3 py-2">
+					<button
+						className="rounded-md bg-emerald-500/15 px-3 py-1.5 text-sm text-emerald-300 disabled:opacity-40"
+						disabled={!selected}
+						onClick={() => selected && props.onMarkKeep(selected)}
+					>
+						Keep
+					</button>
+					<button
+						className="rounded-md bg-rose-500/15 px-3 py-1.5 text-sm text-rose-300 disabled:opacity-40"
+						disabled={!selected}
+						onClick={() => selected && props.onMarkDiscard(selected)}
+					>
+						Discard
+					</button>
+					<button
+						className="bg-app-box text-ink rounded-md px-3 py-1.5 text-sm disabled:opacity-40"
+						disabled={!selected}
+						onClick={() => selected && props.onClearDecision(selected)}
+					>
+						Clear
+					</button>
+				</div>
 			</div>
 			<div
 				ref={scrollContainerRef}

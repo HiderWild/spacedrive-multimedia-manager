@@ -29,6 +29,7 @@ export function OrganizeView() {
 	const [leftTab, setLeftTab] = useState<OrganizeLeftTab>('keep');
 	const [layout, setLayout] = useState<OrganizeCenterLayout>('grid');
 	const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
+	const [showLeftPane, setShowLeftPane] = useState(true);
 	const initialInspectorVisible = useRef(explorer.inspectorVisible);
 	const setInspectorVisible = explorer.setInspectorVisible;
 
@@ -145,6 +146,8 @@ export function OrganizeView() {
 
 	return (
 		<OrganizeLayout
+			showLeftPane={showLeftPane}
+			onToggleLeftPane={() => setShowLeftPane(!showLeftPane)}
 			left={
 				<OrganizeLeftPane
 					leftTab={leftTab}
@@ -155,6 +158,7 @@ export function OrganizeView() {
 						selectFile(file, files, false, false)
 					}
 					onDeleteClick={handleDeleteClick}
+					onTogglePane={() => setShowLeftPane(false)}
 				/>
 			}
 			center={

@@ -5,9 +5,10 @@ import { Subtitles, type SubtitleSettings } from "./Subtitles";
 import { SubtitleSettingsMenu } from "./SubtitleSettingsMenu";
 import { useZoomPan } from "./useZoomPan";
 import { buildPosterUrl } from "./mediaPreview";
-import type {
-	VideoControlsState,
-	VideoControlsCallbacks,
+import {
+	VideoControls,
+	type VideoControlsState,
+	type VideoControlsCallbacks,
 } from "./VideoControls";
 
 interface VideoPlayerProps {
@@ -351,7 +352,7 @@ export function VideoPlayer({
 			>
 				<div
 					style={transform}
-					className="flex items-center justify-center"
+					className="flex h-full w-full items-center justify-center"
 				>
 					<video
 						ref={videoRef}
@@ -394,6 +395,45 @@ export function VideoPlayer({
 				settings={subtitleSettings}
 				onSettingsChange={setSubtitleSettings}
 				onClose={() => setShowSubtitleSettings(false)}
+			/>
+
+			{/* Video Controls */}
+			<VideoControls
+				file={file}
+				state={{
+					playing,
+					currentTime,
+					duration,
+					volume,
+					muted,
+					loop,
+					zoom,
+					subtitlesEnabled,
+					showSubtitleSettings,
+					seeking,
+					timelineHover,
+				}}
+				callbacks={{
+					onTogglePlay: togglePlay,
+					onSeek: handleSeek,
+					onTimelineHover: handleTimelineHover,
+					onTimelineLeave: handleTimelineLeave,
+					onSeekingStart: handleSeekingStart,
+					onSeekingEnd: handleSeekingEnd,
+					onVolumeChange: setVolume,
+					onMuteToggle: handleMuteToggle,
+					onLoopToggle: handleLoopToggle,
+					onSeekBy: seekBy,
+					onStepFrames: stepFrames,
+					onZoomIn: zoomIn,
+					onZoomOut: zoomOut,
+					onZoomReset: reset,
+					onSubtitlesToggle: handleSubtitlesToggle,
+					onSubtitleSettingsToggle: handleSubtitleSettingsToggle,
+					onFullscreenToggle: toggleFullscreen,
+					onMouseMove: handleMouseMove,
+				}}
+				showControls={showControls}
 			/>
 		</div>
 	);

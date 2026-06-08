@@ -1,3 +1,4 @@
+import {CaretLeft} from '@phosphor-icons/react';
 import { useTranslation } from "react-i18next";
 import type { File } from "@sd/ts-client";
 import { File as FileComponent } from "../File";
@@ -10,6 +11,7 @@ export function OrganizeLeftPane(props: {
 	discardFiles: File[];
 	onRevealItem: (file: File) => void;
 	onDeleteClick?: () => void;
+	onTogglePane?: () => void;
 }) {
 	const { t } = useTranslation("explorer");
 	const items = props.leftTab === "keep" ? props.keepFiles : props.discardFiles;
@@ -17,6 +19,16 @@ export function OrganizeLeftPane(props: {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="flex gap-1 border-b border-app-line p-2">
+				{/* Hide button */}
+				{props.onTogglePane && (
+					<button
+						onClick={props.onTogglePane}
+						className="hover:bg-app-box rounded-md p-2 text-ink-dull transition-colors hover:text-ink"
+						title="Hide Keep/Discard panel"
+					>
+						<CaretLeft size={16} weight="bold" />
+					</button>
+				)}
 				<button
 					className={`flex-1 rounded-md px-3 py-2 text-sm ${props.leftTab === "keep" ? "bg-accent/15 text-accent" : "text-ink-dull hover:bg-app-box"}`}
 					onClick={() => props.onLeftTabChange("keep")}

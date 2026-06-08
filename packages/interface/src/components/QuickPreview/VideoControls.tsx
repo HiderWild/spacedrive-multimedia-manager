@@ -259,19 +259,29 @@ export function VideoControls({
 
 							{/* Volume Slider */}
 							<div className="w-0 overflow-hidden transition-all group-hover:w-20">
-								<input
-									type="range"
-									min="0"
-									max="1"
-									step="0.01"
-									value={state.volume}
-									onChange={(e) =>
-										callbacks.onVolumeChange(
-											parseFloat(e.target.value),
-										)
-									}
-									className="h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-								/>
+								<div className="relative">
+									<input
+										type="range"
+										min="0"
+										max="1"
+										step="0.01"
+										value={state.volume}
+										onChange={(e) =>
+											callbacks.onVolumeChange(
+												parseFloat(e.target.value),
+											)
+										}
+										className="relative z-10 h-1 w-full cursor-pointer appearance-none rounded-full bg-transparent [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20"
+									/>
+									{/* Background track */}
+									<div className="absolute inset-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20">
+										{/* Blue progress fill */}
+										<div
+											className="absolute left-0 top-0 h-full bg-accent transition-all"
+											style={{ width: `${state.volume * 100}%` }}
+										/>
+									</div>
+								</div>
 							</div>
 						</div>
 

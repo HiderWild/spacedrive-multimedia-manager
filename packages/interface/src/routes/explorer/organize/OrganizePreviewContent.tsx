@@ -297,23 +297,43 @@ export function OrganizePreviewContent(props: {
 
 	const renderPreviewBody = (content: React.ReactNode) => {
 		// Calculate relative path for the preview file
-		let relativePath = '';
-		if (previewFile && props.selectedFile && previewFile.sd_path && props.selectedFile.sd_path) {
-			const previewPath = 'Physical' in previewFile.sd_path
-				? previewFile.sd_path.Physical.path
-				: 'Cloud' in previewFile.sd_path
-					? previewFile.sd_path.Cloud.path
-					: '';
-			const basePath = 'Physical' in props.selectedFile.sd_path
-				? props.selectedFile.sd_path.Physical.path
-				: 'Cloud' in props.selectedFile.sd_path
-					? props.selectedFile.sd_path.Cloud.path
-					: '';
+		let displayPath = '';
+		let shouldShowPath = false;
 
-			if (previewPath && basePath && previewPath.startsWith(basePath)) {
-				relativePath = previewPath.slice(basePath.length).replace(/^[/\\]+/, '');
-			} else {
-				relativePath = previewFile.name;
+		if (previewFile && previewMediaKind) {
+			// Case 1: Viewing files within a directory (selectedFile is a directory)
+			if (props.selectedFile.kind === 'Directory' && previewFile.sd_path && props.selectedFile.sd_path) {
+				const previewPath = 'Physical' in previewFile.sd_path
+					? previewFile.sd_path.Physical.path
+					: 'Cloud' in previewFile.sd_path
+						? previewFile.sd_path.Cloud.path
+						: '';
+				const basePath = 'Physical' in props.selectedFile.sd_path
+					? props.selectedFile.sd_path.Physical.path
+					: 'Cloud' in props.selectedFile.sd_path
+						? props.selectedFile.sd_path.Cloud.path
+						: '';
+
+				if (previewPath && basePath) {
+					// Remove base path to show relative path
+					if (previewPath.startsWith(basePath)) {
+						displayPath = previewPath.slice(basePath.length).replace(/^[/\\]+/, '');
+						// If displayPath is empty after stripping, it means it's in the root of the directory
+						if (!displayPath) {
+							displayPath = previewFile.name;
+						}
+						shouldShowPath = true;
+					} else {
+						// If paths don't match, show full filename
+						displayPath = previewFile.name;
+						shouldShowPath = true;
+					}
+				}
+			}
+			// Case 2: Viewing a single file in current directory - show filename only
+			else if (props.selectedFile.kind === 'File') {
+				displayPath = previewFile.name;
+				shouldShowPath = true;
 			}
 		}
 
@@ -325,14 +345,20 @@ export function OrganizePreviewContent(props: {
 				<div className="min-h-0 flex-1 bg-black">{content}</div>
 
 				{/* Info banner for media previews */}
-				{previewFile && previewMediaKind && (
+				{previewFile && previewMediaKind && shouldShowPath && (
 					<div className="bg-app-darkBox flex items-center justify-between border-t border-app-line px-3 py-1.5 text-xs">
-						<div className="text-ink-dull min-w-0 flex-1 truncate" title={relativePath || previewFile.name}>
-							{relativePath || previewFile.name}
+						<div className="text-ink-dull min-w-0 flex-1 truncate" title={displayPath}>
+							{displayPath}
 						</div>
-						<div className="text-ink-faint ml-2 shrink-0">
-							{siblingPreviewCandidates.findIndex(f => f.id === previewFile.id) + 1} / {siblingPreviewCandidates.length}
-						</div>
+						{props.selectedFile.kind === 'Directory' ? (
+							<div className="text-ink-faint ml-2 shrink-0">
+								{directoryPreviewCandidates.findIndex(f => f.id === previewFile.id) + 1} / {directoryPreviewCandidates.length}
+							</div>
+						) : (
+							<div className="text-ink-faint ml-2 shrink-0">
+								{siblingPreviewCandidates.findIndex(f => f.id === previewFile.id) + 1} / {siblingPreviewCandidates.length}
+							</div>
+						)}
 					</div>
 				)}
 			</div>
