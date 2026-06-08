@@ -30,28 +30,28 @@ export function OrganizeCenterPane(props: {
 					disabled={!selected}
 					onClick={() => selected && props.onMarkKeep(selected)}
 				>
-					{t('organize.keepAction')}
+					Keep
 				</button>
 				<button
 					className="rounded-md bg-rose-500/15 px-3 py-1.5 text-sm text-rose-300 disabled:opacity-40"
 					disabled={!selected}
 					onClick={() => selected && props.onMarkDiscard(selected)}
 				>
-					{t('organize.discardAction')}
+					Discard
 				</button>
 				<button
 					className="bg-app-box text-ink rounded-md px-3 py-1.5 text-sm disabled:opacity-40"
 					disabled={!selected}
 					onClick={() => selected && props.onClearDecision(selected)}
 				>
-					{t('organize.clearAction')}
+					Clear
 				</button>
 			</div>
 			<div
 				className={clsx(
 					'min-h-0 flex-1 overflow-auto p-3',
 					props.layout === 'grid'
-						? 'grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3'
+						? 'grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3'
 						: 'flex flex-col gap-2'
 				)}
 			>
