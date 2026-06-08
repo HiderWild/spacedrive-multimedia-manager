@@ -11,11 +11,9 @@ import {OrganizeCenterPane} from './OrganizeCenterPane';
 import {openOrganizeDeleteDialog} from './OrganizeDeleteDialog';
 import {OrganizeLayout} from './OrganizeLayout';
 import {OrganizeLeftPane} from './OrganizeLeftPane';
-import {OrganizePreviewContent} from './OrganizePreviewContent';
-import {OrganizeDebugPanel} from './OrganizeDebugPanel';
-import {deriveOrganizeInspectorPreview, type DirectoryPreviewAvailability} from './organizePreview';
+import {OrganizeRightPane} from './OrganizeRightPane';
 import {collectDiscardDeleteTargets} from './organizeState';
-import type {OrganizeCenterLayout, OrganizeLeftTab} from './organizeTypes';
+import type {OrganizeCenterLayout, OrganizeLeftTab, DirectoryPreviewAvailability} from './organizeTypes';
 import {useOrganizeState} from './useOrganizeState';
 
 export function OrganizeView() {
@@ -31,7 +29,6 @@ export function OrganizeView() {
 	});
 	const [leftTab, setLeftTab] = useState<OrganizeLeftTab>('keep');
 	const [layout, setLayout] = useState<OrganizeCenterLayout>('grid');
-	const [showDebug, setShowDebug] = useState(false);
 	const initialInspectorVisible = useRef(explorer.inspectorVisible);
 	const setInspectorVisible = explorer.setInspectorVisible;
 
@@ -48,7 +45,6 @@ export function OrganizeView() {
 	// Derive directory preview availability if selected file is a directory
 	const directoryAvailability = useMemo(() => {
 		if (!selectedFile || selectedFile.kind !== 'Directory') return null;
-		// For now, return basic availability - in production this would query directory contents
 		return {
 			renderedTabs: ['list'],
 			enabledTabs: ['list'],
@@ -57,13 +53,6 @@ export function OrganizeView() {
 			firstImage: null
 		} as DirectoryPreviewAvailability;
 	}, [selectedFile]);
-
-	const previewState = useMemo(() => {
-		return deriveOrganizeInspectorPreview({
-			selectedFile,
-			directoryAvailability
-		});
-	}, [selectedFile, directoryAvailability]);
 
 	const handleDeleteClick = useCallback(() => {
 		if (deleteTargets.length === 0) return;
@@ -145,46 +134,10 @@ export function OrganizeView() {
 				/>
 			}
 			right={
-				<div className="flex h-full min-h-0 flex-col">
-					{/* Debug toggle button */}
-					<div className="flex justify-end border-b border-app-line p-2">
-						<button
-							type="button"
-							onClick={() => setShowDebug(!showDebug)}
-							className="rounded-md px-2 py-1 text-xs text-ink-dull hover:bg-app-hover hover:text-ink"
-						>
-							{showDebug ? 'Hide' : 'Show'} Debug
-						</button>
-					</div>
-
-					{/* Debug info section - shown above preview when enabled */}
-					{showDebug && selectedFile && (
-						<div className="border-b border-app-line">
-							<OrganizeDebugPanel
-								title="Preview State"
-								payload={{
-									selectedFile: selectedFile.name,
-									previewState
-								}}
-							/>
-						</div>
-					)}
-
-					{/* Preview content */}
-					<div className="min-h-0 flex-1">
-						{selectedFile && previewState.defaultTabId ? (
-							<OrganizePreviewContent
-								selectedFile={selectedFile}
-								activeTab={previewState.defaultTabId}
-								context={{sortBy: 'name', foldersFirst: false}}
-							/>
-						) : (
-							<div className="flex h-full items-center justify-center p-4 text-sm text-ink-dull">
-								{t('organize.selectFileToPreview')}
-							</div>
-						)}
-					</div>
-				</div>
+				<OrganizeRightPane
+					selectedFile={selectedFile}
+					directoryAvailability={directoryAvailability}
+				/>
 			}
 		/>
 	);

@@ -31,6 +31,9 @@ export function OrganizeCenterPane(props: {
 		setItemSize((prev) => Math.max(80, Math.min(240, prev + delta)));
 	}, []);
 
+	// Calculate icon size proportionally to item size (65% of item size)
+	const iconSize = Math.floor(itemSize * 0.65);
+
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="border-app-line flex items-center gap-2 border-b px-3 py-2">
@@ -67,6 +70,7 @@ export function OrganizeCenterPane(props: {
 					props.layout === 'grid'
 						? {
 								gridTemplateColumns: `repeat(auto-fill, minmax(${itemSize}px, 1fr))`,
+								gridAutoRows: `${itemSize + 40}px`, // Control row height
 						  }
 						: undefined
 				}
@@ -83,7 +87,7 @@ export function OrganizeCenterPane(props: {
 							}
 						}}
 						className={clsx(
-							'border-app-line bg-app-box/60 relative rounded-xl border p-3 text-left',
+							'border-app-line bg-app-box/60 relative flex flex-col items-center justify-center rounded-xl border p-2',
 							item.dimmed && 'opacity-50',
 							item.file.id === props.selectedFileId &&
 								'ring-accent ring-2'
@@ -91,9 +95,9 @@ export function OrganizeCenterPane(props: {
 					>
 						<FileComponent.Thumb
 							file={item.file}
-							size={props.layout === 'grid' ? 96 : 48}
+							size={props.layout === 'grid' ? iconSize : 48}
 						/>
-						<div className="text-ink mt-2 truncate text-sm">
+						<div className="text-ink mt-1 w-full truncate text-center text-xs">
 							{item.file.name}
 						</div>
 						{item.decision === 'keep' ? (
