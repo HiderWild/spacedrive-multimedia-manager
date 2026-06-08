@@ -1,7 +1,7 @@
 import {CheckCircle, XCircle} from '@phosphor-icons/react';
 import type {File} from '@sd/ts-client';
 import clsx from 'clsx';
-import {useCallback, useState, type WheelEvent} from 'react';
+import {useCallback, useEffect, useRef, useState, type WheelEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import {File as FileComponent} from '../File';
 import type {OrganizePresentationEntry} from './organizeState';
@@ -20,6 +20,7 @@ export function OrganizeCenterPane(props: {
 }) {
 	const {t} = useTranslation('explorer');
 	const [itemSize, setItemSize] = useState(140);
+	const containerRef = useRef<HTMLDivElement>(null);
 	const selected =
 		props.presentation.find((item) => item.file.id === props.selectedFileId)
 			?.file ?? null;
@@ -31,11 +32,27 @@ export function OrganizeCenterPane(props: {
 		setItemSize((prev) => Math.max(80, Math.min(240, prev + delta)));
 	}, []);
 
+	// Handle Delete key to mark as discard
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Delete' && selected && !e.repeat) {
+				e.preventDefault();
+				props.onMarkDiscard(selected);
+			}
+		};
+
+		const container = containerRef.current;
+		if (container) {
+			container.addEventListener('keydown', handleKeyDown);
+			return () => container.removeEventListener('keydown', handleKeyDown);
+		}
+	}, [selected, props]);
+
 	// Calculate icon size proportionally to item size (65% of item size)
 	const iconSize = Math.floor(itemSize * 0.65);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col">
+		<div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
 			<div className="border-app-line flex items-center gap-2 border-b px-3 py-2">
 				<button
 					className="rounded-md bg-emerald-500/15 px-3 py-1.5 text-sm text-emerald-300 disabled:opacity-40"

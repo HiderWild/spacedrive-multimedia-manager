@@ -41,6 +41,7 @@ function OrganizeDeleteDialog(props: OrganizeDeleteDialogProps) {
 			cancelLabel={t("organize.deleteDialogCancel")}
 			loading={isPending}
 			onSubmit={handleConfirm}
+			className="z-[10000]"
 		/>
 	);
 }

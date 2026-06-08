@@ -54,7 +54,9 @@ function ShellWithDaemonCheck() {
 						<TabKeyboardHandler />
 						<ShellWithTabs />
 					</TabManagerProvider>
-					<Dialogs />
+					<div className="z-[10000]">
+						<Dialogs />
+					</div>
 					<Toaster />
 					<ReactQueryDevtools
 						initialIsOpen={false}
