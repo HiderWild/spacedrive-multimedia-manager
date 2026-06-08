@@ -127,7 +127,7 @@ function InspectorView({
 				) : null}
 
 				{/* Footer with pop-out button */}
-				{showPopOutButton && onPopOut && (
+				{showPopOutButton && onPopOut && !organizePreview && (
 					<div className="border-sidebar-line mt-2.5 flex justify-center border-t pt-2">
 						<button
 							onClick={onPopOut}
