@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import {ArrowSquareOut} from '@phosphor-icons/react';
 import type {File} from '@sd/ts-client';
 import {usePlatform} from '../../../contexts/PlatformContext';
 import {useExplorer} from '../context';
