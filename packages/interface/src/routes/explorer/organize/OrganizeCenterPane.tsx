@@ -1,4 +1,4 @@
-import {CheckCircle, XCircle} from '@phosphor-icons/react';
+import {CheckCircle, XCircle, CaretDown, CaretUp} from '@phosphor-icons/react';
 import type {File} from '@sd/ts-client';
 import clsx from 'clsx';
 import {useCallback, useEffect, useRef, useState, type WheelEvent} from 'react';
@@ -25,6 +25,7 @@ export function OrganizeCenterPane(props: {
 }) {
 	const {t} = useTranslation('explorer');
 	const [itemSize, setItemSize] = useState(140);
+	const [showDecisionBar, setShowDecisionBar] = useState(true);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const [isSelecting, setIsSelecting] = useState(false);
@@ -39,13 +40,24 @@ export function OrganizeCenterPane(props: {
 		if (!e.ctrlKey) return;
 		e.preventDefault();
 		const delta = e.deltaY > 0 ? -20 : 20;
-		const newSize = Math.max(80, Math.min(240, itemSize + delta));
 
-		// Auto-switch to list view when trying to zoom below minimum in grid mode
-		if (newSize === 80 && delta < 0 && props.layout === 'grid') {
-			props.onLayoutChange('list');
+		if (props.layout === 'list') {
+			// List view: zoom in (delta > 0) switches to minimum grid
+			if (delta > 0) {
+				props.onLayoutChange('grid');
+				setItemSize(80);
+			}
+			// Zoom out in list view does nothing (already at minimum)
 		} else {
-			setItemSize(newSize);
+			// Grid view: normal zoom behavior
+			const newSize = Math.max(80, Math.min(240, itemSize + delta));
+
+			// Auto-switch to list view when trying to zoom below minimum
+			if (newSize === 80 && delta < 0) {
+				props.onLayoutChange('list');
+			} else {
+				setItemSize(newSize);
+			}
 		}
 	}, [itemSize, props]);
 
@@ -178,27 +190,50 @@ export function OrganizeCenterPane(props: {
 
 	return (
 		<div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
-			<div className="border-app-line flex items-center gap-2 border-b px-3 py-2">
+			{/* Decision bar with toggle */}
+			<div className="border-app-line border-b">
+				{showDecisionBar && (
+					<div className="flex items-center gap-2 px-3 py-2">
+						<button
+							className="rounded-md bg-emerald-500/15 px-3 py-1.5 text-sm text-emerald-300 disabled:opacity-40"
+							disabled={!selected}
+							onClick={() => selected && props.onMarkKeep(selected)}
+						>
+							Keep
+						</button>
+						<button
+							className="rounded-md bg-rose-500/15 px-3 py-1.5 text-sm text-rose-300 disabled:opacity-40"
+							disabled={!selected}
+							onClick={() => selected && props.onMarkDiscard(selected)}
+						>
+							Discard
+						</button>
+						<button
+							className="bg-app-box text-ink rounded-md px-3 py-1.5 text-sm disabled:opacity-40"
+							disabled={!selected}
+							onClick={() => selected && props.onClearDecision(selected)}
+						>
+							Clear
+						</button>
+					</div>
+				)}
+				{/* Toggle button */}
 				<button
-					className="rounded-md bg-emerald-500/15 px-3 py-1.5 text-sm text-emerald-300 disabled:opacity-40"
-					disabled={!selected}
-					onClick={() => selected && props.onMarkKeep(selected)}
+					onClick={() => setShowDecisionBar(!showDecisionBar)}
+					className="text-ink-dull hover:text-ink hover:bg-app-darkBox flex w-full items-center justify-center gap-1 py-1 text-xs transition-colors"
+					title={showDecisionBar ? 'Hide decision bar' : 'Show decision bar'}
 				>
-					Keep
-				</button>
-				<button
-					className="rounded-md bg-rose-500/15 px-3 py-1.5 text-sm text-rose-300 disabled:opacity-40"
-					disabled={!selected}
-					onClick={() => selected && props.onMarkDiscard(selected)}
-				>
-					Discard
-				</button>
-				<button
-					className="bg-app-box text-ink rounded-md px-3 py-1.5 text-sm disabled:opacity-40"
-					disabled={!selected}
-					onClick={() => selected && props.onClearDecision(selected)}
-				>
-					Clear
+					{showDecisionBar ? (
+						<>
+							<CaretUp size={12} weight="bold" />
+							<span>Hide</span>
+						</>
+					) : (
+						<>
+							<CaretDown size={12} weight="bold" />
+							<span>Show Actions</span>
+						</>
+					)}
 				</button>
 			</div>
 			<div
