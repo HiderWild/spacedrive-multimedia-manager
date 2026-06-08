@@ -1,8 +1,8 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {ArrowSquareOut} from '@phosphor-icons/react';
 import type {File} from '@sd/ts-client';
 import {usePlatform} from '../../../contexts/PlatformContext';
+import {FloatingDebugPanel} from '../../../components/FloatingDebugPanel';
 import {useExplorer} from '../context';
 import {useExplorerFiles} from '../hooks/useExplorerFiles';
 import {useSelection} from '../SelectionContext';
@@ -146,7 +146,7 @@ export function OrganizeView() {
 				/>
 			}
 			right={
-				<div className="flex h-full min-h-0 flex-col">
+				<div className="relative flex h-full min-h-0 flex-col">
 					{/* Debug toggle button */}
 					<div className="flex justify-end border-b border-app-line p-2">
 						<button
@@ -158,14 +158,9 @@ export function OrganizeView() {
 						</button>
 					</div>
 
-					{/* Preview or debug panel */}
+					{/* Preview content - always visible */}
 					<div className="min-h-0 flex-1">
-						{showDebug && selectedFile ? (
-							<OrganizeDebugPanel
-								title="Preview State"
-								payload={{selectedFile: selectedFile.name, previewState}}
-							/>
-						) : selectedFile && previewState.defaultTabId ? (
+						{selectedFile && previewState.defaultTabId ? (
 							<OrganizePreviewContent
 								selectedFile={selectedFile}
 								activeTab={previewState.defaultTabId}
@@ -177,6 +172,22 @@ export function OrganizeView() {
 							</div>
 						)}
 					</div>
+
+					{/* Floating debug panel - overlays on top when enabled */}
+					{showDebug && selectedFile && (
+						<FloatingDebugPanel
+							title="Preview State"
+							onClose={() => setShowDebug(false)}
+						>
+							<OrganizeDebugPanel
+								title="Preview State"
+								payload={{
+									selectedFile: selectedFile.name,
+									previewState
+								}}
+							/>
+						</FloatingDebugPanel>
+					)}
 				</div>
 			}
 		/>
