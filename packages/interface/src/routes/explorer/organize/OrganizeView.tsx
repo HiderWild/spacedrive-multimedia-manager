@@ -73,6 +73,25 @@ export function OrganizeView() {
 		}
 	}, [setInspectorVisible]);
 
+	// Global Backspace key handler for navigation
+	useEffect(() => {
+		const handleGlobalKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Backspace' && !e.repeat) {
+				// Check if we're not in an input field
+				const target = e.target as HTMLElement;
+				if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
+					e.preventDefault();
+					if (explorer.canGoBack) {
+						explorer.goBack();
+					}
+				}
+			}
+		};
+
+		window.addEventListener('keydown', handleGlobalKeyDown);
+		return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+	}, [explorer]);
+
 	if (
 		!canUseOrganizeView({
 			platform,

@@ -32,12 +32,26 @@ export function OrganizeCenterPane(props: {
 		setItemSize((prev) => Math.max(80, Math.min(240, prev + delta)));
 	}, []);
 
-	// Handle Delete key to mark as discard
+	// Handle keyboard shortcuts
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			// Delete key: mark as discard
 			if (e.key === 'Delete' && selected && !e.repeat) {
 				e.preventDefault();
 				props.onMarkDiscard(selected);
+			}
+			// Enter key: navigate into directory
+			else if (e.key === 'Enter' && selected && !e.repeat) {
+				if (selected.kind === 'Directory' && props.onNavigateToDirectory) {
+					e.preventDefault();
+					props.onNavigateToDirectory(selected);
+				}
+			}
+			// Backspace key: navigate back (handled globally, but we can trigger it here too)
+			else if (e.key === 'Backspace' && !e.repeat) {
+				e.preventDefault();
+				// Backspace should trigger global back navigation
+				// This will be handled by adding a global listener
 			}
 		};
 
