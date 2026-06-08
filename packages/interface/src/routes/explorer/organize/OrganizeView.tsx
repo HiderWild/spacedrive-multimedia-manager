@@ -32,8 +32,11 @@ export function OrganizeView() {
 	});
 	const [leftTab, setLeftTab] = useState<OrganizeLeftTab>('keep');
 	const [layout, setLayout] = useState<OrganizeCenterLayout>('grid');
+	const [showDebug, setShowDebug] = useState(false);
 	const initialInspectorVisible = useRef(explorer.inspectorVisible);
 	const setInspectorVisible = explorer.setInspectorVisible;
+
+	const selectedFile = selectedFiles[0] ?? null;
 
 	const deleteTargets = useMemo(
 		() =>
@@ -42,6 +45,26 @@ export function OrganizeView() {
 				: [],
 		[files, organize.state]
 	);
+
+	// Derive directory preview availability if selected file is a directory
+	const directoryAvailability = useMemo(() => {
+		if (!selectedFile || selectedFile.kind !== 'Directory') return null;
+		// For now, return basic availability - in production this would query directory contents
+		return {
+			renderedTabs: ['list'],
+			enabledTabs: ['list'],
+			defaultTab: 'list',
+			firstVideo: null,
+			firstImage: null
+		} as DirectoryPreviewAvailability;
+	}, [selectedFile]);
+
+	const previewState = useMemo(() => {
+		return deriveOrganizeInspectorPreview({
+			selectedFile,
+			directoryAvailability
+		});
+	}, [selectedFile, directoryAvailability]);
 
 	const handleDeleteClick = useCallback(() => {
 		if (deleteTargets.length === 0) return;
@@ -92,30 +115,6 @@ export function OrganizeView() {
 			</div>
 		);
 	}
-
-	const selectedFile = selectedFiles[0] ?? null;
-
-	const [showDebug, setShowDebug] = useState(false);
-
-	// Derive directory preview availability if selected file is a directory
-	const directoryAvailability = useMemo(() => {
-		if (!selectedFile || selectedFile.kind !== 'Directory') return null;
-		// For now, return basic availability - in production this would query directory contents
-		return {
-			renderedTabs: ['list'],
-			enabledTabs: ['list'],
-			defaultTab: 'list',
-			firstVideo: null,
-			firstImage: null
-		} as DirectoryPreviewAvailability;
-	}, [selectedFile]);
-
-	const previewState = useMemo(() => {
-		return deriveOrganizeInspectorPreview({
-			selectedFile,
-			directoryAvailability
-		});
-	}, [selectedFile, directoryAvailability]);
 
 	return (
 		<OrganizeLayout
