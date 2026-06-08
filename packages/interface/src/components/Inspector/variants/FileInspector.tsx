@@ -1,5 +1,6 @@
 import {
 	ArrowsClockwise,
+	ArrowSquareOut,
 	Calendar,
 	ClockCounterClockwise,
 	Cube,
@@ -219,10 +220,32 @@ export function FileInspector({
 		setActiveTab(organizePreviewState.defaultTabId ?? 'overview');
 	}, [fileData.id, organizePreviewState.defaultTabId]);
 
+	const openQuickPreview = useCallback(() => {
+		if (platform.showWindow) {
+			platform.showWindow('QuickPreview', {file: fileData});
+		}
+	}, [platform, fileData]);
+
 	return (
 		<>
 			{/* Tabs */}
-			<Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+			<Tabs
+				tabs={tabs}
+				activeTab={activeTab}
+				onChange={setActiveTab}
+				rightContent={
+					organizePreview && (
+						<button
+							type="button"
+							onClick={openQuickPreview}
+							className="hover:bg-sidebar-selected rounded-md p-2 text-sidebar-inkDull transition-colors hover:text-sidebar-ink"
+							title="Open Quick Preview"
+						>
+							<ArrowSquareOut className="size-4" weight="bold" />
+						</button>
+					)
+				}
+			/>
 
 			{/* Tab Content */}
 			<div className="mt-2.5 flex flex-1 flex-col overflow-hidden">

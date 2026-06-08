@@ -1,7 +1,7 @@
 import type {Icon} from '@phosphor-icons/react';
 import clsx from 'clsx';
 import {motion} from 'framer-motion';
-import {useState} from 'react';
+import {useState, type ReactNode} from 'react';
 
 interface Tab {
 	id: string;
@@ -17,15 +17,16 @@ interface TabsProps {
 	activeTab: string;
 	onChange: (tabId: string) => void;
 	className?: string;
+	rightContent?: ReactNode;
 }
 
-export function Tabs({tabs, activeTab, onChange, className}: TabsProps) {
+export function Tabs({tabs, activeTab, onChange, className, rightContent}: TabsProps) {
 	const [hoveredTab, setHoveredTab] = useState<string | null>(null);
 
 	return (
 		<div
 			className={clsx(
-				'bg-app-box/50 flex gap-0.5 rounded-lg p-0.5',
+				'bg-app-box/50 flex items-center gap-0.5 rounded-lg p-0.5',
 				className
 			)}
 		>
@@ -91,6 +92,9 @@ export function Tabs({tabs, activeTab, onChange, className}: TabsProps) {
 					</div>
 				);
 			})}
+			{rightContent && (
+				<div className="ml-auto">{rightContent}</div>
+			)}
 		</div>
 	);
 }
