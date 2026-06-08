@@ -16,7 +16,6 @@ export function FloatingDebugPanel({
 	title = 'Debug Panel'
 }: FloatingDebugPanelProps) {
 	const panelRef = useRef<HTMLDivElement>(null);
-	const containerRef = useRef<HTMLDivElement>(null);
 	const [position, setPosition] = useState(initialPosition);
 	const [isDragging, setIsDragging] = useState(false);
 	const [dragOffset, setDragOffset] = useState({x: 0, y: 0});
