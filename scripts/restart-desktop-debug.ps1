@@ -23,7 +23,11 @@ $knownBinaryNames = @(
     "sd-desktop",
     "sd-desktop.exe",
     "spacedrive-web",
-    "spacedrive-web.exe"
+    "spacedrive-web.exe",
+    "vite",
+    "vite.exe",
+    "esbuild",
+    "esbuild.exe"
 )
 
 function Get-TcpExcludedPortRanges {
@@ -121,12 +125,12 @@ function Get-RepoProcessCandidates {
     $tauriDirEscaped = [Regex]::Escape((Join-Path $ProjectPath "apps\tauri"))
     $webDirEscaped = [Regex]::Escape((Join-Path $ProjectPath "apps\web"))
     $daemonNamePatterns = @("sd-daemon.exe", "sd-daemon", "Spacedrive.exe", "Spacedrive", "sd-desktop.exe", "sd-desktop")
-    $scriptRunnerNames = @("bun.exe", "bun", "node.exe", "node", "cargo.exe", "cargo", "rustc.exe", "rustc", "pnpm.exe", "pnpm", "tauri.exe", "tauri", "vite.exe", "vite")
+    $scriptRunnerNames = @("bun.exe", "bun", "node.exe", "node", "cargo.exe", "cargo", "rustc.exe", "rustc", "pnpm.exe", "pnpm", "tauri.exe", "tauri", "vite.exe", "vite", "esbuild.exe", "esbuild")
     $cliPattern = 'bun run tauri:dev|bun run dev:with-daemon|bun run tauri|@tauri-apps\\cli\\tauri|tauri dev|sd-daemon|cargo run --bin sd-daemon|cargo build .*--bin sd-daemon|cargo build .* --bin sd-daemon|vite dev|bun run dev|cargo build --bin sd-daemon'
     $spacedriveHintPattern = 'spacedrive|Spacedrive'
 
     $results = @()
-    $debugNamePattern = '^((?i)(Spacedrive|sd-daemon|sd-desktop|bun|node|cargo|rustc|pnpm|tauri|vite))(\.exe)?$'
+    $debugNamePattern = '^((?i)(Spacedrive|sd-daemon|sd-desktop|bun|node|cargo|rustc|pnpm|tauri|vite|esbuild))(\.exe)?$'
 
     foreach ($proc in $processes) {
         if ($proc.ProcessId -eq $PID -or (-not $proc.Name)) {

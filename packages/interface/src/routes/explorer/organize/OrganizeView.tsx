@@ -11,6 +11,9 @@ import {OrganizeCenterPane} from './OrganizeCenterPane';
 import {openOrganizeDeleteDialog} from './OrganizeDeleteDialog';
 import {OrganizeLayout} from './OrganizeLayout';
 import {OrganizeLeftPane} from './OrganizeLeftPane';
+import {OrganizePreviewContent} from './OrganizePreviewContent';
+import {OrganizeDebugPanel} from './OrganizeDebugPanel';
+import {deriveOrganizeInspectorPreview, type DirectoryPreviewAvailability} from './organizePreview';
 import {collectDiscardDeleteTargets} from './organizeState';
 import type {OrganizeCenterLayout, OrganizeLeftTab} from './organizeTypes';
 import {useOrganizeState} from './useOrganizeState';
@@ -90,6 +93,29 @@ export function OrganizeView() {
 	}
 
 	const selectedFile = selectedFiles[0] ?? null;
+
+	const [showDebug, setShowDebug] = useState(false);
+
+	// Derive directory preview availability if selected file is a directory
+	const directoryAvailability = useMemo(() => {
+		if (!selectedFile || selectedFile.kind !== 'Directory') return null;
+		// For now, return basic availability - in production this would query directory contents
+		return {
+			renderedTabs: ['list'],
+			enabledTabs: ['list'],
+			defaultTab: 'list',
+			firstVideo: null,
+			firstImage: null
+		} as DirectoryPreviewAvailability;
+	}, [selectedFile]);
+
+	const previewState = useMemo(() => {
+		return deriveOrganizeInspectorPreview({
+			selectedFile,
+			directoryAvailability
+		});
+	}, [selectedFile, directoryAvailability]);
+
 	return (
 		<OrganizeLayout
 			left={
@@ -118,6 +144,40 @@ export function OrganizeView() {
 					onClearDecision={organize.clearDecision}
 					onNavigateToDirectory={handleNavigateToDirectory}
 				/>
+			}
+			right={
+				<div className="flex h-full min-h-0 flex-col">
+					{/* Debug toggle button */}
+					<div className="flex justify-end border-b border-app-line p-2">
+						<button
+							type="button"
+							onClick={() => setShowDebug(!showDebug)}
+							className="rounded-md px-2 py-1 text-xs text-ink-dull hover:bg-app-hover hover:text-ink"
+						>
+							{showDebug ? 'Hide' : 'Show'} Debug
+						</button>
+					</div>
+
+					{/* Preview or debug panel */}
+					<div className="min-h-0 flex-1">
+						{showDebug && selectedFile ? (
+							<OrganizeDebugPanel
+								title="Preview State"
+								payload={{selectedFile: selectedFile.name, previewState}}
+							/>
+						) : selectedFile && previewState.defaultTabId ? (
+							<OrganizePreviewContent
+								selectedFile={selectedFile}
+								activeTab={previewState.defaultTabId}
+								context={{sortBy: 'name', foldersFirst: false}}
+							/>
+						) : (
+							<div className="flex h-full items-center justify-center p-4 text-sm text-ink-dull">
+								{t('organize.selectFileToPreview')}
+							</div>
+						)}
+					</div>
+				</div>
 			}
 		/>
 	);
