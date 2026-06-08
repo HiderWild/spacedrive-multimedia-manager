@@ -60,7 +60,7 @@ if (Test-Path "apps/tauri") {
 
 # Start the dev server
 try {
-    bun run --filter @sd/tauri dev
+    bun run --filter @sd/tauri tauri:dev
 } catch {
     Write-Host ""
     Write-Host "❌ Error starting development server" -ForegroundColor Red

@@ -10,6 +10,6 @@ Get-Process node,bun,vite,cargo,sd-daemon,spacedrive -ErrorAction SilentlyContin
     ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
 }
 
-# Start dev server
+# Start Tauri dev (includes window)
 Write-Host "Starting Spacedrive..." -ForegroundColor Cyan
-bun run --filter @sd/tauri dev
+bun run --filter @sd/tauri tauri:dev
