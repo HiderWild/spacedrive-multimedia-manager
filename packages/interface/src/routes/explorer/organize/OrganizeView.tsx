@@ -19,7 +19,7 @@ export function OrganizeView() {
 	const {t} = useTranslation('explorer');
 	const platform = usePlatform();
 	const explorer = useExplorer();
-	const {files, isLoading} = useExplorerFiles();
+	const {files, isLoading, fetchNextPage, hasNextPage} = useExplorerFiles();
 	const {selectedFiles, selectFile, restoreSelectionFromFiles} =
 		useSelection();
 	const organize = useOrganizeState({
@@ -137,6 +137,8 @@ export function OrganizeView() {
 					onMarkDiscard={organize.markDiscard}
 					onClearDecision={organize.clearDecision}
 					onNavigateToDirectory={handleNavigateToDirectory}
+					onLoadMore={fetchNextPage}
+					hasMore={hasNextPage}
 				/>
 			}
 		/>

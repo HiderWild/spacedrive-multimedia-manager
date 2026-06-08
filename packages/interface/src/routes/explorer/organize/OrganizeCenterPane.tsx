@@ -17,10 +17,13 @@ export function OrganizeCenterPane(props: {
 	onMarkDiscard: (file: File) => void;
 	onClearDecision: (file: File) => void;
 	onNavigateToDirectory?: (file: File) => void;
+	onLoadMore?: () => void;
+	hasMore?: boolean;
 }) {
 	const {t} = useTranslation('explorer');
 	const [itemSize, setItemSize] = useState(140);
 	const containerRef = useRef<HTMLDivElement>(null);
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const selected =
 		props.presentation.find((item) => item.file.id === props.selectedFileId)
 			?.file ?? null;
@@ -65,6 +68,25 @@ export function OrganizeCenterPane(props: {
 	// Calculate icon size proportionally to item size (65% of item size)
 	const iconSize = Math.floor(itemSize * 0.65);
 
+	// Infinite scroll: load more when near bottom
+	useEffect(() => {
+		const scrollContainer = scrollContainerRef.current;
+		if (!scrollContainer || !props.hasMore || !props.onLoadMore) return;
+
+		const handleScroll = () => {
+			const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+			const scrollPercentage = (scrollTop + clientHeight) / scrollHeight;
+
+			// Load more when scrolled past 80%
+			if (scrollPercentage > 0.8) {
+				props.onLoadMore?.();
+			}
+		};
+
+		scrollContainer.addEventListener('scroll', handleScroll);
+		return () => scrollContainer.removeEventListener('scroll', handleScroll);
+	}, [props]);
+
 	return (
 		<div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
 			<div className="border-app-line flex items-center gap-2 border-b px-3 py-2">
@@ -91,6 +113,7 @@ export function OrganizeCenterPane(props: {
 				</button>
 			</div>
 			<div
+				ref={scrollContainerRef}
 				className={clsx(
 					'min-h-0 flex-1 overflow-auto p-3',
 					props.layout === 'grid'
