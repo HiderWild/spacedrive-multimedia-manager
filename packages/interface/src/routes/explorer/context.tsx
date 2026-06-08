@@ -393,6 +393,42 @@ function getPathKey(target: NavigationTarget | null): string {
 	return targetToKey(target);
 }
 
+/**
+ * Resolve parent directory path, handling Windows and Unix paths.
+ * Returns null if already at root or no parent exists.
+ */
+function getParentPath(path: string): string | null {
+	if (!path) return null;
+
+	// Detect path separator (Windows uses \, Unix uses /)
+	const separator = path.includes('\\') ? '\\' : '/';
+	const parts = path.split(separator).filter(Boolean);
+
+	// No parts or single part means we're at root
+	if (parts.length === 0) return null;
+	if (parts.length === 1) {
+		// Windows drive root (e.g., "C:") or Unix root
+		return null;
+	}
+
+	// Remove last part to get parent
+	parts.pop();
+
+	// Reconstruct path
+	if (separator === '\\') {
+		// Windows path
+		if (parts[0].endsWith(':')) {
+			// Preserve drive letter format: ["C:", "Users"] -> "C:\Users"
+			return parts.join(separator);
+		}
+		// UNC path: ["", "", "server", "share"] -> "\\server\share"
+		return parts.join(separator);
+	} else {
+		// Unix path: always starts with /
+		return separator + parts.join(separator);
+	}
+}
+
 interface ExplorerContextValue {
 	currentTarget: NavigationTarget | null;
 	currentPath: SdPath | null;
@@ -412,6 +448,7 @@ interface ExplorerContextValue {
 	goForward: () => void;
 	canGoBack: boolean;
 	canGoForward: boolean;
+	navigateToParent: () => void;
 
 	viewMode: ViewMode;
 	setViewMode: (mode: ViewMode) => void;
@@ -741,6 +778,50 @@ export function ExplorerProvider({
 		}
 	}, [navState.index, navState.history, routerNavigate, isolated]);
 
+	const navigateToParent = useCallback(() => {
+		if (!currentTarget || currentTarget.type !== 'path') {
+			return;
+		}
+
+		const pathObj = currentTarget.path;
+		let currentPathString: string | null = null;
+		let pathType: 'Physical' | 'Cloud' | null = null;
+
+		if ('Physical' in pathObj && pathObj.Physical) {
+			currentPathString = pathObj.Physical.path;
+			pathType = 'Physical';
+		} else if ('Cloud' in pathObj && pathObj.Cloud) {
+			currentPathString = pathObj.Cloud.path;
+			pathType = 'Cloud';
+		}
+
+		if (!currentPathString || !pathType) return;
+
+		const parentPath = getParentPath(currentPathString);
+		if (!parentPath) {
+			// Already at root, silent no-op
+			return;
+		}
+
+		// Navigate to parent using the same format as current path
+		if (pathType === 'Physical' && 'Physical' in pathObj) {
+			navigateToPath({
+				Physical: {
+					device_slug: pathObj.Physical.device_slug,
+					path: parentPath
+				}
+			});
+		} else if (pathType === 'Cloud' && 'Cloud' in pathObj) {
+			navigateToPath({
+				Cloud: {
+					service: pathObj.Cloud.service,
+					identifier: pathObj.Cloud.identifier,
+					path: parentPath
+				}
+			});
+		}
+	}, [currentTarget, navigateToPath]);
+
 	const spaceKey = getSpaceItemKey(location.pathname, location.search);
 
 	// View settings from TabManager (per-tab)
@@ -907,6 +988,7 @@ export function ExplorerProvider({
 			goForward,
 			canGoBack,
 			canGoForward,
+			navigateToParent,
 			viewMode,
 			setViewMode,
 			sortBy: sortByValue,
@@ -955,6 +1037,7 @@ export function ExplorerProvider({
 			goForward,
 			canGoBack,
 			canGoForward,
+			navigateToParent,
 			viewMode,
 			setViewMode,
 			sortByValue,
