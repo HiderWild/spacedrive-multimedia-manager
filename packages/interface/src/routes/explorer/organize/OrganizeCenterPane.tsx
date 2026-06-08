@@ -324,7 +324,6 @@ export function OrganizeCenterPane(props: {
 							const isSingleSelected = item.file.id === props.selectedFileId;
 
 							return (
-							return (
 								<button
 									key={item.file.id}
 									data-file-id={item.file.id}
