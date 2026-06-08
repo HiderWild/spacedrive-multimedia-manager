@@ -112,6 +112,7 @@ export function FileInspector({
 	organizePreview = null
 }: FileInspectorProps) {
 	const {t} = useTranslation('explorer');
+	const platform = usePlatform();
 	const [activeTab, setActiveTab] = useState('overview');
 	const isDev = import.meta.env.DEV === 'true';
 	const organizePreviewContext = organizePreview ?? {
