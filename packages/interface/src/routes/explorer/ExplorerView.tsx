@@ -1,6 +1,7 @@
 import {
 	ArrowLeft,
 	ArrowRight,
+	ArrowUp,
 	Columns,
 	FilmStrip,
 	Info,
@@ -49,6 +50,7 @@ export function ExplorerView() {
 		goForward,
 		canGoBack,
 		canGoForward,
+		navigateToParent,
 		currentPath,
 		currentView,
 		currentTarget,
@@ -241,6 +243,11 @@ export function ExplorerView() {
 										icon={ArrowRight}
 										onClick={goForward}
 										disabled={!canGoForward}
+									/>
+									<CircleButton
+										icon={ArrowUp}
+										onClick={navigateToParent}
+										disabled={false}
 									/>
 								</CircleButtonGroup>
 							</TopBarItem>
