@@ -228,7 +228,7 @@ fn get_platform_string() -> String {
 }
 
 async fn check_daemon_running(data_dir: &PathBuf) -> bool {
-	let socket_addr = "127.0.0.1:6969".to_string();
+	let socket_addr = "127.0.0.1:8488".to_string();
 	let client = sd_core::client::CoreClient::new(socket_addr);
 
 	matches!(
@@ -240,7 +240,7 @@ async fn check_daemon_running(data_dir: &PathBuf) -> bool {
 }
 
 async fn stop_daemon(data_dir: &PathBuf) -> Result<()> {
-	let socket_addr = "127.0.0.1:6969".to_string();
+	let socket_addr = "127.0.0.1:8488".to_string();
 	let client = sd_core::client::CoreClient::new(socket_addr);
 
 	client

@@ -252,7 +252,7 @@ async fn main() -> Result<()> {
 		let port = 6970 + (inst.bytes().map(|b| b as u16).sum::<u16>() % 1000);
 		format!("127.0.0.1:{}", port)
 	} else {
-		"127.0.0.1:6969".to_string()
+		"127.0.0.1:8488".to_string()
 	};
 
 	match cli.command {

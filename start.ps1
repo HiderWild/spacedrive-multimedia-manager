@@ -291,38 +291,66 @@ function Invoke-ReleaseBuild {
 	}
 
 	# Build primary binaries used for feature verification (no installer).
-	# Daemon + CLI cover virtually all backend functionality; server is optional.
-	$binSets = @(
-		@("--bin", "sd-daemon", "--bin", "sd-cli")
-	)
-	if (Test-Path (Join-Path $RepoRoot "apps\server")) {
-		$binSets += , @("--bin", "sd-server")
+	# Single cargo invocation with -p packages (avoids PowerShell array flatten bugs).
+	$cargoArgs = [System.Collections.Generic.List[string]]::new()
+	[void]$cargoArgs.AddRange([string[]]@(
+		"build", "--release",
+		"-p", "sd-core", "--bin", "sd-daemon",
+		"-p", "sd-cli", "--bin", "sd-cli"
+	))
+	if ($FeatureArgs.Count -gt 0) {
+		[void]$cargoArgs.Add("--features")
+		[void]$cargoArgs.Add(($FeatureArgs -join ","))
 	}
-
-	$builtAny = $false
-	foreach ($bins in $binSets) {
-		$code = Invoke-CargoRelease -ExtraArgs ($bins + $featureFlag) -JobCount $JobCount
-		if ($code -eq 0) {
-			$builtAny = $true
-		} else {
-			# Retry without features if feature-gated native deps fail
-			if ($featureFlag.Count -gt 0) {
-				Write-Warn "Build with features failed (exit $code); retrying without optional features..."
-				$code2 = Invoke-CargoRelease -ExtraArgs $bins -JobCount $JobCount
-				if ($code2 -eq 0) {
-					$builtAny = $true
-					Write-Warn "Built without $Features - media features may be unavailable."
-				} else {
-					Write-Warn "Failed building: $($bins -join ' ')"
-				}
-			} else {
-				Write-Warn "Failed building: $($bins -join ' ')"
-			}
+	if ($JobCount -gt 0) {
+		[void]$cargoArgs.Add("-j")
+		[void]$cargoArgs.Add("$JobCount")
+	}
+	
+	# Project requires LLVM 15.x for ffmpeg-sys-next bindgen (LLVM >=16 breaks layouts).
+	if (-not $env:LIBCLANG_PATH) {
+		$llvm15 = "C:\Program Files\LLVM\bin"
+		if (Test-Path (Join-Path $llvm15 "libclang.dll")) {
+			$env:LIBCLANG_PATH = $llvm15
+			Write-Info "LIBCLANG_PATH=$llvm15"
 		}
 	}
-
-	if (-not $builtAny) {
-		throw "cargo build --release failed for all requested binaries"
+	
+	# Native DLLs (ffmpeg, heif, onnx) must be on PATH when bins start.
+	$depsBin = Join-Path $RepoRoot "apps\.deps\bin"
+	if (Test-Path $depsBin) {
+		if (-not ($env:Path -split ';' | Where-Object { $_ -eq $depsBin })) {
+			$env:Path = $depsBin + [IO.Path]::PathSeparator + $env:Path
+		}
+		Write-Info "PATH prepend: $depsBin"
+	}
+	
+	Write-Info ("cargo " + ($cargoArgs -join " "))
+	& cargo @($cargoArgs.ToArray())
+	$code = $LASTEXITCODE
+	
+	if ($code -ne 0 -and $FeatureArgs.Count -gt 0) {
+		Write-Warn "Build with features failed (exit $code); retrying without optional features..."
+		$fallback = [System.Collections.Generic.List[string]]::new()
+		[void]$fallback.AddRange([string[]]@(
+			"build", "--release",
+			"-p", "sd-core", "--bin", "sd-daemon",
+			"-p", "sd-cli", "--bin", "sd-cli"
+		))
+		if ($JobCount -gt 0) {
+			[void]$fallback.Add("-j")
+			[void]$fallback.Add("$JobCount")
+		}
+		Write-Info ("cargo " + ($fallback -join " "))
+		& cargo @($fallback.ToArray())
+		$code = $LASTEXITCODE
+		if ($code -eq 0) {
+			Write-Warn "Built without $($FeatureArgs -join ',') - media features may be unavailable."
+		}
+	}
+	
+	if ($code -ne 0) {
+		throw "cargo build --release failed with exit code $code"
 	}
 
 	Write-Ok "Release build finished"
@@ -370,6 +398,15 @@ function Start-ReleaseDaemon {
 	Write-Step "Starting release daemon..." "Cyan"
 	Write-Info "daemon: $daemon"
 	Write-Info "cli:    $cli"
+
+		# FFmpeg/HEIF/ONNX native DLLs live under apps/.deps/bin
+		$depsBin = Join-Path $RepoRoot "apps\.deps\bin"
+		if (Test-Path $depsBin) {
+			if (-not ($env:Path -split ';' | Where-Object { $_ -eq $depsBin })) {
+				$env:Path = $depsBin + [IO.Path]::PathSeparator + $env:Path
+			}
+			Write-Info "PATH prepend: $depsBin"
+		}
 
 	$cliArgs = @("start")
 	if ($Fg) { $cliArgs += "--foreground" }
