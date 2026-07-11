@@ -168,6 +168,8 @@ impl From<FileSearchArgs> for FileSearchInput {
 				Some(TagFilter {
 					include: args.tags.unwrap_or_default(),
 					exclude: args.exclude_tags.unwrap_or_default(),
+					// Match core default: direct tags only unless CLI exposes inheritance later.
+					include_inherited: false,
 				})
 			} else {
 				None
