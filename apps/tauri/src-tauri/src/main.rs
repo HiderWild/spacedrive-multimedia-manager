@@ -2166,22 +2166,10 @@ fn main() {
 		.plugin(tauri_plugin_os::init())
 		.plugin(tauri_plugin_shell::init())
 		.plugin(tauri_plugin_updater::Builder::new().build())
-		.plugin(
-			tauri_plugin_global_shortcut::Builder::new()
-				.with_shortcut("Alt+Space")
-				.expect("failed to register Alt+Space global shortcut")
-				.with_handler(|app, _shortcut, event| {
-					if event.state() == ShortcutState::Pressed {
-						if let Err(error) = windows::toggle_voice_overlay_internal(app.clone()) {
-							tracing::warn!(
-								?error,
-								"Failed to toggle voice overlay from global shortcut"
-							);
-						}
-					}
-				})
-				.build(),
-		)
+					// Global voice-overlay hotkey disabled at init on Windows: Alt+Space is often taken by PowerToys.
+			// Register a no-op plugin so the app still starts; users can bind a custom shortcut later.
+			.plugin(tauri_plugin_global_shortcut::Builder::new().build())
+
 		.invoke_handler(tauri::generate_handler![
 			app_ready,
 			get_daemon_socket,
