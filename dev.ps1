@@ -1,15 +1,11 @@
-# Quick Spacedrive Dev Startup
-# Usage: Just double-click or run ./dev.ps1
+# Compatibility wrapper — prefer ./start.ps1
+# Quick dev startup (debug / hot reload).
 
-# Kill old processes
-Get-Process node,bun,vite,cargo,sd-daemon,spacedrive -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-
-# Kill processes on dev ports
-@(5173, 3000, 8080, 1420) | ForEach-Object {
-    Get-NetTCPConnection -LocalPort $_ -ErrorAction SilentlyContinue |
-    ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+$script = Join-Path $PSScriptRoot "start.ps1"
+if (-not (Test-Path $script)) {
+	Write-Error "start.ps1 not found next to dev.ps1"
+	exit 1
 }
 
-# Start Tauri dev (includes window)
-Write-Host "Starting Spacedrive..." -ForegroundColor Cyan
-bun run --filter @sd/tauri tauri:dev
+& $script -Dev @args
+exit $LASTEXITCODE

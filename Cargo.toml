@@ -110,6 +110,7 @@ ort                 = { version = "2.0.0-rc.9", default-features = false, featur
 
 [profile.dev]
 # Make compilation faster on macOS
+# debug=0 keeps target/ small (no full debuginfo bloat). Use profile.dev-debug for LLDB/VS.
 codegen-units   = 256
 debug           = 0
 incremental     = true
@@ -145,10 +146,13 @@ incremental = false
 inherits    = "dev"
 opt-level   = 3
 
-# Optimize release builds
+# Optimize release builds (also used by ./start.ps1 default formal instance).
+# Prefer thin LTO: near fat-LTO binary quality with less peak disk/memory during link.
 [profile.release]
 codegen-units = 1        # Compile crates one after another so the compiler can optimize better
-lto           = true     # Enables link to optimizations
+debug         = 0        # Explicit: never ship release artifacts with debuginfo
+incremental   = false    # Explicit: release should not keep incremental caches
+lto           = "thin"   # Thin LTO: faster/cheaper than fat, still strong opts
 opt-level     = "s"      # Optimize for binary size
 panic         = "unwind" # Sadly we need unwind to avoid unexpected crashes on third party crates
 strip         = true     # Remove debug symbols

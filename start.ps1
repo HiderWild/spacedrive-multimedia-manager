@@ -1,0 +1,612 @@
+# Spacedrive unified startup script
+# Default: release (production-like) instance for feature verification - no installer bundle.
+#
+# Disk policy (recommended defaults):
+#   - Release mode prunes target/debug so debug+release trees do not both balloon to ~10GB
+#   - Dev mode prunes target/release for the same reason
+#   - Use -KeepOtherProfile to keep both trees
+#   - Optional: set CARGO_TARGET_DIR or -TargetDir to a large disk
+#
+# Usage:
+#   ./start.ps1                      # release build + start daemon (+ Tauri if available)
+#   ./start.ps1 -Dev                 # hot-reload dev mode
+#   ./start.ps1 -DaemonOnly          # release backend only (no desktop shell)
+#   ./start.ps1 -Foreground          # run daemon in foreground (show logs)
+#   ./start.ps1 -Clean               # cargo clean (entire target) before build
+#   ./start.ps1 -KeepOtherProfile    # do not delete the opposite profile dir
+#   ./start.ps1 -TargetDir D:\rust\sd  # put build artifacts on another drive
+#   ./start.ps1 -NoKill              # do not kill existing processes
+#   ./start.ps1 -Features "ffmpeg,heif"
+#   ./start.ps1 -Jobs 8
+
+[CmdletBinding()]
+param(
+	[switch]$Dev,
+	[switch]$DaemonOnly,
+	[switch]$Foreground,
+	[switch]$Clean,
+	[switch]$KeepOtherProfile,
+	[switch]$NoKill,
+	[string]$Features = "ffmpeg,heif",
+	[string]$TargetDir = "",
+	[int]$Jobs = 0,
+	[string]$Instance = "",
+	[string]$DataDir = ""
+)
+
+$ErrorActionPreference = "Stop"
+$Root = $PSScriptRoot
+if (-not $Root) { $Root = Get-Location }
+
+Set-Location $Root
+
+function Write-Step($msg, $color = "Cyan") {
+	Write-Host $msg -ForegroundColor $color
+}
+
+function Write-Ok($msg) {
+	Write-Host "  $msg" -ForegroundColor Green
+}
+
+function Write-Warn($msg) {
+	Write-Host "  $msg" -ForegroundColor Yellow
+}
+
+function Write-Info($msg) {
+	Write-Host "  $msg" -ForegroundColor Gray
+}
+
+function Resolve-RepoRoot {
+	# Allow running from a subdirectory
+	if (Test-Path (Join-Path $Root "Cargo.toml")) {
+		return $Root
+	}
+	foreach ($candidate in @("..", "../..", "../../..")) {
+		$path = Join-Path $Root $candidate
+		if (Test-Path (Join-Path $path "Cargo.toml")) {
+			return (Resolve-Path $path).Path
+		}
+	}
+	return $Root
+}
+
+$RepoRoot = Resolve-RepoRoot
+Set-Location $RepoRoot
+
+function Get-DirSizeGB {
+	param([string]$Path)
+	if (-not (Test-Path $Path)) { return 0.0 }
+	try {
+		# Measure-Object on huge trees is slow; use robocopy /L bytes estimate when available
+		$sum = (Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
+			Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+		if (-not $sum) { return 0.0 }
+		return [math]::Round(($sum / 1GB), 2)
+	} catch {
+		return 0.0
+	}
+}
+
+function Get-EffectiveTargetDir {
+	if ($TargetDir) { return $TargetDir }
+	if ($env:CARGO_TARGET_DIR) { return $env:CARGO_TARGET_DIR }
+	return (Join-Path $RepoRoot "target")
+}
+
+function Initialize-TargetDir {
+	$effective = Get-EffectiveTargetDir
+	if ($TargetDir) {
+		$env:CARGO_TARGET_DIR = $TargetDir
+		if (-not (Test-Path $TargetDir)) {
+			New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+		}
+		Write-Info "CARGO_TARGET_DIR=$TargetDir (artifacts off-repo)"
+	} elseif ($env:CARGO_TARGET_DIR) {
+		Write-Info "CARGO_TARGET_DIR=$($env:CARGO_TARGET_DIR) (from environment)"
+	} else {
+		Write-Info "target dir: $effective"
+	}
+	return $effective
+}
+
+function Show-DiskReport {
+	param([string]$TargetRoot)
+
+	Write-Step "Disk usage (Rust artifacts)..." "Cyan"
+	$debugPath = Join-Path $TargetRoot "debug"
+	$releasePath = Join-Path $TargetRoot "release"
+	$incDebug = Join-Path $debugPath "incremental"
+	$incRelease = Join-Path $releasePath "incremental"
+
+	# Fast path: only top-level folder sizes when dirs exist
+	foreach ($pair in @(
+		@("target root", $TargetRoot),
+		@("debug", $debugPath),
+		@("release", $releasePath),
+		@("debug/incremental", $incDebug),
+		@("release/incremental", $incRelease)
+	)) {
+		$name = $pair[0]
+		$path = $pair[1]
+		if (Test-Path $path) {
+			$gb = Get-DirSizeGB $path
+			Write-Info ("{0,-22} {1,8:N2} GB  {2}" -f $name, $gb, $path)
+		} else {
+			Write-Info ("{0,-22} {1,8}     {2}" -f $name, "-", $path)
+		}
+	}
+
+	$cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
+	$registry = Join-Path $cargoHome "registry"
+	if (Test-Path $registry) {
+		$gb = Get-DirSizeGB $registry
+		Write-Info ("{0,-22} {1,8:N2} GB  {2}" -f "cargo registry", $gb, $registry)
+	}
+	Write-Host ""
+}
+
+function Remove-DirSafe {
+	param([string]$Path, [string]$Label)
+	if (-not (Test-Path $Path)) { return $false }
+	$gb = Get-DirSizeGB $Path
+	Write-Info "Removing $Label (~$gb GB): $Path"
+	try {
+		Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+		Write-Ok "Removed $Label"
+		return $true
+	} catch {
+		Write-Warn "Could not fully remove ${Label}: $($_.Exception.Message)"
+		return $false
+	}
+}
+
+function Invoke-ProfilePrune {
+	param(
+		[string]$TargetRoot,
+		[switch]$IsDev
+	)
+
+	if ($KeepOtherProfile) {
+		Write-Info "KeepOtherProfile: leaving both debug and release trees."
+		return
+	}
+
+	# Prevent the common 10GB+ case: debug + release deps trees both retained.
+	if ($IsDev) {
+		Write-Step "Pruning opposite profile (release) to limit disk use..." "Yellow"
+		Remove-DirSafe -Path (Join-Path $TargetRoot "release") -Label "target/release" | Out-Null
+	} else {
+		Write-Step "Pruning opposite profile (debug) to limit disk use..." "Yellow"
+		Remove-DirSafe -Path (Join-Path $TargetRoot "debug") -Label "target/debug" | Out-Null
+	}
+	Write-Host ""
+}
+
+function Stop-DevProcesses {
+	Write-Step "Cleaning up old processes..." "Yellow"
+
+	# Prefer Spacedrive-related processes. cargo/rust-analyzer are optional to avoid
+	# killing unrelated IDE work; only force-kill if they look related later if needed.
+	$processesToKill = @(
+		"node",
+		"bun",
+		"vite",
+		"sd-daemon",
+		"sd-cli",
+		"spacedrive",
+		"spacedrive-tauri"
+	)
+
+	foreach ($procName in $processesToKill) {
+		$processes = Get-Process -Name $procName -ErrorAction SilentlyContinue
+		if ($processes) {
+			Write-Info "Killing $($processes.Count) $procName process(es)..."
+			$processes | Stop-Process -Force -ErrorAction SilentlyContinue
+			Start-Sleep -Milliseconds 100
+		}
+	}
+
+	$ports = @(5173, 3000, 8080, 1420, 6969)
+	foreach ($port in $ports) {
+		$connections = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
+		if ($connections) {
+			foreach ($conn in $connections) {
+				$proc = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+				if ($proc -and $proc.Id -ne $PID) {
+					Write-Info "Killing process on port ${port}: $($proc.Name) (PID $($proc.Id))"
+					Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+				}
+			}
+		}
+	}
+
+	Write-Ok "Cleanup complete"
+	Write-Host ""
+}
+
+function Get-CargoFeaturesArgs {
+	param([string]$FeatureList)
+
+	$parts = @()
+	foreach ($f in ($FeatureList -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+		# Accept both "ffmpeg" and "sd-core/ffmpeg"
+		if ($f -like "sd-core/*") {
+			$parts += $f
+		} else {
+			$parts += "sd-core/$f"
+		}
+	}
+	return $parts
+}
+
+function Test-CoreAvailable {
+	return (Test-Path (Join-Path $RepoRoot "core")) -or (Test-Path (Join-Path $RepoRoot "core\Cargo.toml"))
+}
+
+function Test-TauriAvailable {
+	$pkg = Join-Path $RepoRoot "apps\tauri\package.json"
+	$src = Join-Path $RepoRoot "apps\tauri\src-tauri"
+	return (Test-Path $pkg) -and (Test-Path $src)
+}
+
+function Invoke-CargoRelease {
+	param(
+		[string[]]$ExtraArgs,
+		[int]$JobCount
+	)
+
+	$cargoArgs = @("build", "--release") + $ExtraArgs
+	if ($JobCount -gt 0) {
+		$cargoArgs += @("-j", "$JobCount")
+	}
+
+	Write-Info ("cargo " + ($cargoArgs -join " "))
+	& cargo @cargoArgs
+	return $LASTEXITCODE
+}
+
+function Invoke-ReleaseBuild {
+	param(
+		[string[]]$FeatureArgs,
+		[int]$JobCount
+	)
+
+	Write-Step "Building release binaries (formal instance, no installer)..." "Cyan"
+	Write-Info "This uses Cargo profile.release (opt-level=s, LTO, strip)."
+	Write-Info "First release build can take a long time on this monorepo."
+
+	if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+		throw "cargo not found on PATH. Install Rust toolchain first."
+	}
+
+	if (-not (Test-CoreAvailable)) {
+		Write-Warn "core/ is missing - cannot compile sd-core-backed binaries in this checkout."
+		Write-Warn "Restore the full monorepo (core/, crates/, apps/server, apps/tauri as needed), then re-run."
+		throw "Incomplete workspace: missing core/"
+	}
+
+	$featureFlag = @()
+	if ($FeatureArgs.Count -gt 0) {
+		$featureFlag = @("--features", ($FeatureArgs -join ","))
+	}
+
+	# Build primary binaries used for feature verification (no installer).
+	# Daemon + CLI cover virtually all backend functionality; server is optional.
+	$binSets = @(
+		@("--bin", "sd-daemon", "--bin", "sd-cli")
+	)
+	if (Test-Path (Join-Path $RepoRoot "apps\server")) {
+		$binSets += , @("--bin", "sd-server")
+	}
+
+	$builtAny = $false
+	foreach ($bins in $binSets) {
+		$code = Invoke-CargoRelease -ExtraArgs ($bins + $featureFlag) -JobCount $JobCount
+		if ($code -eq 0) {
+			$builtAny = $true
+		} else {
+			# Retry without features if feature-gated native deps fail
+			if ($featureFlag.Count -gt 0) {
+				Write-Warn "Build with features failed (exit $code); retrying without optional features..."
+				$code2 = Invoke-CargoRelease -ExtraArgs $bins -JobCount $JobCount
+				if ($code2 -eq 0) {
+					$builtAny = $true
+					Write-Warn "Built without $Features - media features may be unavailable."
+				} else {
+					Write-Warn "Failed building: $($bins -join ' ')"
+				}
+			} else {
+				Write-Warn "Failed building: $($bins -join ' ')"
+			}
+		}
+	}
+
+	if (-not $builtAny) {
+		throw "cargo build --release failed for all requested binaries"
+	}
+
+	Write-Ok "Release build finished"
+	Write-Host ""
+}
+
+function Get-ReleaseBinPath {
+	param([string]$Name)
+
+	$targetRoot = Get-EffectiveTargetDir
+	$candidates = @(
+		(Join-Path $targetRoot "release\$Name.exe"),
+		(Join-Path $targetRoot "release\$Name"),
+		(Join-Path $RepoRoot "target\release\$Name.exe"),
+		(Join-Path $RepoRoot "target\release\$Name")
+	)
+	foreach ($c in $candidates) {
+		if (Test-Path $c) { return $c }
+	}
+	return $null
+}
+
+function Start-ReleaseDaemon {
+	param(
+		[switch]$Fg,
+		[string]$Inst,
+		[string]$Data
+	)
+
+	$cli = Get-ReleaseBinPath "sd-cli"
+	$daemon = Get-ReleaseBinPath "sd-daemon"
+
+	if (-not $cli) {
+		throw "sd-cli not found under target\release. Build failed or incomplete workspace."
+	}
+
+	if (-not $daemon) {
+		Write-Warn "sd-daemon binary not found under target\release."
+		Write-Warn "Workspace may be incomplete (missing core/). Cannot start daemon."
+		Write-Info "CLI is available: $cli"
+		Write-Info "When core is present, re-run: ./start.ps1"
+		return $false
+	}
+
+	Write-Step "Starting release daemon..." "Cyan"
+	Write-Info "daemon: $daemon"
+	Write-Info "cli:    $cli"
+
+	$cliArgs = @("start")
+	if ($Fg) { $cliArgs += "--foreground" }
+	if ($Data) { $cliArgs = @("--data-dir", $Data) + $cliArgs }
+	if ($Inst) { $cliArgs = @("--instance", $Inst) + $cliArgs }
+
+	Write-Info ("& `"$cli`" " + ($cliArgs -join " "))
+	& $cli @cliArgs
+	if ($LASTEXITCODE -ne 0) {
+		# Fallback: start daemon binary directly if CLI start failed
+		Write-Warn "sd-cli start failed; trying sd-daemon directly..."
+		$daemonArgs = @()
+		if ($Data) { $daemonArgs += @("--data-dir", $Data) }
+		if ($Inst) { $daemonArgs += @("--instance", $Inst) }
+
+		if ($Fg) {
+			& $daemon @daemonArgs
+		} else {
+			$logDir = Join-Path $RepoRoot "logs"
+			if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
+			$outLog = Join-Path $logDir "sd-daemon.out.log"
+			$errLog = Join-Path $logDir "sd-daemon.err.log"
+			Start-Process -FilePath $daemon -ArgumentList $daemonArgs -WorkingDirectory $RepoRoot `
+				-RedirectStandardOutput $outLog -RedirectStandardError $errLog -WindowStyle Hidden | Out-Null
+			Start-Sleep -Seconds 1
+			Write-Ok "Daemon launched in background"
+			Write-Info "logs: $outLog"
+			Write-Info "      $errLog"
+		}
+	}
+
+	Write-Host ""
+	Write-Ok "Release instance ready for feature verification"
+	Write-Info "Useful commands:"
+	Write-Info "  $cli status"
+	Write-Info "  $cli library list"
+	Write-Info "  $cli logs follow"
+	Write-Info "  $cli stop"
+	return $true
+}
+
+function Start-DevMode {
+	Write-Step "Starting Spacedrive Development (debug / hot reload)..." "Cyan"
+	Write-Host ""
+
+	if (-not (Test-TauriAvailable)) {
+		Write-Warn "apps/tauri is not available in this workspace checkout."
+		Write-Info "Falling back to cargo daemon (debug) if core exists."
+
+		if (-not (Test-CoreAvailable)) {
+			throw "Neither apps/tauri nor core/ is present. Cannot start dev mode in this incomplete checkout."
+		}
+
+		$feat = (Get-CargoFeaturesArgs -FeatureList $Features) -join ","
+		$args = @("run", "--features", $feat, "--bin", "sd-daemon")
+		if ($Jobs -gt 0) { $args += @("-j", "$Jobs") }
+		Write-Info ("cargo " + ($args -join " "))
+		& cargo @args
+		return
+	}
+
+	# Prefer package-local script, then filter from monorepo root
+	$tauriDir = Join-Path $RepoRoot "apps\tauri"
+	if (Test-Path (Join-Path $tauriDir "package.json")) {
+		Push-Location $tauriDir
+		try {
+			if (Get-Command bun -ErrorAction SilentlyContinue) {
+				Write-Info "bun run tauri:dev"
+				bun run tauri:dev
+			} else {
+				throw "bun is not installed or not on PATH"
+			}
+		} finally {
+			Pop-Location
+		}
+		return
+	}
+
+	Write-Info "bun run --filter @sd/tauri tauri:dev"
+	bun run --filter @sd/tauri tauri:dev
+}
+
+function Start-TauriReleaseNoBundle {
+	if (-not (Test-TauriAvailable)) {
+		Write-Warn "apps/tauri not present - skipping desktop shell."
+		Write-Info "Backend-only release instance is still usable via sd-cli."
+		return
+	}
+
+	Write-Step "Building Tauri app in release (no installer bundle)..." "Cyan"
+	$tauriDir = Join-Path $RepoRoot "apps\tauri"
+	Push-Location $tauriDir
+	try {
+		if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
+			Write-Warn "bun not found; skip Tauri release shell."
+			return
+		}
+
+		# Frontend dist first if script exists
+		$pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
+		$scripts = @()
+		if ($pkg.scripts) {
+			$scripts = $pkg.scripts.PSObject.Properties.Name
+		}
+
+		if ($scripts -contains "build") {
+			Write-Info "bun run build (frontend dist)"
+			bun run build
+			if ($LASTEXITCODE -ne 0) { throw "Frontend build failed" }
+		}
+
+		# Prefer explicit no-bundle if available; otherwise tauri:build may still package.
+		# Using cargo/tauri CLI with --no-bundle avoids MSI/NSIS installers.
+		$tauriCli = $null
+		if (Get-Command cargo-tauri -ErrorAction SilentlyContinue) {
+			$tauriCli = "cargo-tauri"
+		}
+
+		if ($scripts -contains "tauri:build") {
+			# Pass through no-bundle if the script forwards args
+			Write-Info "bun run tauri:build -- --no-bundle"
+			bun run tauri:build -- --no-bundle
+		} elseif ($tauriCli) {
+			Write-Info "cargo tauri build --no-bundle"
+			cargo tauri build --no-bundle
+		} else {
+			Write-Warn "No tauri:build script and no cargo-tauri CLI; desktop shell not started."
+			return
+		}
+
+		if ($LASTEXITCODE -ne 0) {
+			Write-Warn "Tauri release build failed (exit $LASTEXITCODE). Daemon may still be running."
+			return
+		}
+
+		# Try to launch built binary (Windows paths vary by target triple)
+		$searchRoots = @(
+			(Join-Path $RepoRoot "target\release"),
+			(Join-Path $RepoRoot "apps\tauri\src-tauri\target\release")
+		)
+		$exe = $null
+		foreach ($dir in $searchRoots) {
+			if (-not (Test-Path $dir)) { continue }
+			$candidates = Get-ChildItem $dir -Filter "*.exe" -ErrorAction SilentlyContinue |
+				Where-Object { $_.Name -match "spacedrive|tauri" -and $_.Name -notmatch "deps" }
+			if ($candidates) {
+				$exe = $candidates | Select-Object -First 1
+				break
+			}
+		}
+
+		if ($exe) {
+			Write-Ok "Launching $($exe.FullName)"
+			Start-Process -FilePath $exe.FullName -WorkingDirectory $RepoRoot
+		} else {
+			Write-Warn "Built Tauri binary not found automatically; check target\release."
+		}
+	} finally {
+		Pop-Location
+	}
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────
+
+$modeLabel = if ($Dev) { "DEV (debug)" } else { "RELEASE (formal, no installer)" }
+Write-Host ""
+Write-Step "Spacedrive start.ps1 - mode: $modeLabel" "Cyan"
+Write-Info "Repo: $RepoRoot"
+Write-Host ""
+
+$effectiveTarget = Initialize-TargetDir
+Show-DiskReport -TargetRoot $effectiveTarget
+
+if (-not $NoKill) {
+	Stop-DevProcesses
+}
+
+if ($Clean) {
+	Write-Step "cargo clean (entire target dir)..." "Yellow"
+	& cargo clean
+	if ($LASTEXITCODE -ne 0) {
+		Write-Warn "cargo clean failed (exit $LASTEXITCODE); trying manual remove..."
+		Remove-DirSafe -Path $effectiveTarget -Label "target" | Out-Null
+	} else {
+		Write-Ok "Clean complete"
+	}
+	Write-Host ""
+} else {
+	# Default recommended policy: only keep the profile you are about to use.
+	Invoke-ProfilePrune -TargetRoot $effectiveTarget -IsDev:$Dev
+}
+
+# Workspace completeness check (this checkout may be sparse)
+$hasCore = Test-CoreAvailable
+$hasTauri = Test-TauriAvailable
+if (-not $hasCore) {
+	Write-Warn "core/ is missing - full backend build may fail until the full repo is checked out."
+}
+if (-not $hasTauri) {
+	Write-Warn "apps/tauri is missing - desktop shell will be skipped."
+}
+Write-Host ""
+
+try {
+	if ($Dev) {
+		Start-DevMode
+		Show-DiskReport -TargetRoot (Get-EffectiveTargetDir)
+		exit 0
+	}
+
+	# Default path: formal release instance for feature verification
+	if (-not $hasCore -and -not (Test-Path (Join-Path $RepoRoot "apps\cli"))) {
+		throw "Incomplete workspace: need at least apps/cli and preferably core/."
+	}
+
+	$featureArgs = Get-CargoFeaturesArgs -FeatureList $Features
+	Invoke-ReleaseBuild -FeatureArgs $featureArgs -JobCount $Jobs
+
+	$started = Start-ReleaseDaemon -Fg:$Foreground -Inst $Instance -Data $DataDir
+
+	if (-not $DaemonOnly -and $started) {
+		Start-TauriReleaseNoBundle
+	} elseif ($DaemonOnly) {
+		Write-Info "DaemonOnly: skipping desktop shell."
+	}
+
+	Show-DiskReport -TargetRoot (Get-EffectiveTargetDir)
+
+	Write-Host ""
+	Write-Step "Done. Default mode is release (not debug)." "Green"
+	Write-Info "Dev hot-reload:     ./start.ps1 -Dev"
+	Write-Info "Backend only:       ./start.ps1 -DaemonOnly"
+	Write-Info "Keep both profiles: ./start.ps1 -KeepOtherProfile"
+	Write-Info "Offload target:     ./start.ps1 -TargetDir D:\rust\spacedrive"
+	Write-Info "Periodic cleanup:   ./clean-rust-cache.ps1"
+} catch {
+	Write-Host ""
+	Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+	exit 1
+}

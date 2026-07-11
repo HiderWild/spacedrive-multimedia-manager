@@ -21,6 +21,37 @@ cargo fmt                                # Format code
 cargo run --bin sd-cli -- <command>      # Run CLI (binary is sd-cli, not spacedrive)
 ```
 
+### Windows startup scripts
+
+```powershell
+./start.ps1                    # formal RELEASE instance (default; no installer)
+./start.ps1 -DaemonOnly        # release backend only
+./start.ps1 -Dev               # debug / Tauri hot reload
+./start.ps1 -TargetDir D:\rust\spacedrive   # put target/ on a large disk
+./clean-rust-cache.ps1         # drop debug tree (keep release) + size report
+./clean-rust-cache.ps1 -AllTarget -Registry # full local target wipe + cargo registry
+```
+
+`start.ps1` prunes the opposite profile by default (`target/debug` when running release, and vice versa) so debug+release trees do not both grow toward 10GB+. Pass `-KeepOtherProfile` to keep both.
+
+### Disk / target cache control
+
+Rust monorepos easily reach multi-GB `target/` dirs because each profile keeps its own deps tree.
+
+Recommended (low risk):
+
+1. Prefer one active profile (release for feature verification via `./start.ps1`).
+2. Periodically run `./clean-rust-cache.ps1` (or `cargo clean` when idle).
+3. Offload artifacts: `$env:CARGO_TARGET_DIR = "D:\rust-targets\spacedrive"` or `./start.ps1 -TargetDir ...`.
+4. Optional tools: `cargo install cargo-sweep cargo-cache` then `cargo sweep -t 14` and `cargo cache --autoclean`.
+
+Do not set workspace-wide `incremental = false` for daily coding; it saves disk but makes rebuilds much slower. Release profile already disables incremental.
+
+Profiles of note in root `Cargo.toml`:
+
+- `dev`: `debug = 0` (smaller target; use `dev-debug` for full debugger info)
+- `release`: `strip = true`, `opt-level = "s"`, `lto = "thin"`, `incremental = false`
+
 ### Common Mistakes
 
 - Running `spacedrive` instead of `sd-cli` (the binary name is `sd-cli`)

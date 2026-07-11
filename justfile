@@ -45,6 +45,14 @@ build:
 build-release:
     cargo build --release
 
+# Report / prune Rust target + optional registry cache (Windows PowerShell)
+clean-rust:
+    powershell -NoProfile -ExecutionPolicy Bypass -File ./clean-rust-cache.ps1
+
+# Drop entire target dir (Windows)
+clean-rust-all:
+    powershell -NoProfile -ExecutionPolicy Bypass -File ./clean-rust-cache.ps1 -AllTarget
+
 # Format and lint
 check:
     cargo fmt --check

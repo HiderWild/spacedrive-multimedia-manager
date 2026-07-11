@@ -1,11 +1,11 @@
 @echo off
-REM Spacedrive Development Startup Script (Windows Batch)
-REM Simple wrapper that calls PowerShell script
+REM Compatibility wrapper for start.ps1
+REM Default is formal RELEASE instance (no installer). Use start.ps1 -Dev for debug hot reload.
 
-echo Starting Spacedrive Development...
+echo Starting Spacedrive (default: release formal instance)...
 echo.
 
-PowerShell -ExecutionPolicy Bypass -File "%~dp0start-dev.ps1"
+PowerShell -ExecutionPolicy Bypass -File "%~dp0start.ps1" %*
 
 if errorlevel 1 (
     echo.
