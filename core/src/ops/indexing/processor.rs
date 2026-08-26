@@ -83,14 +83,16 @@ impl Default for LocationProcessorConfig {
 				ProcessorConfig {
 					processor_type: "thumbnail".to_string(),
 					enabled: true,
+					// Single small variant on import; heavier variants can be backfilled later.
 					settings: serde_json::json!({
-						"variants": ["grid@1x", "grid@2x"],
+						"variants": ["grid@1x"],
 						"quality": 80
 					}),
 				},
 				ProcessorConfig {
 					processor_type: "thumbstrip".to_string(),
-					enabled: true, // ~6s per video, acceptable for auto-generation.
+					// ~6s/video and ffmpeg-heavy; opt-in to avoid freezing bulk image imports.
+					enabled: false,
 					settings: serde_json::json!({
 						"variants": ["thumbstrip_preview"],
 						"regenerate": false

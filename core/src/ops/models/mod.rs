@@ -3,11 +3,13 @@
 //! Downloads and manages models for:
 //! - Whisper (speech-to-text)
 //! - Tesseract (OCR language data)
-//! - Future: CLIP, Stable Diffusion, etc.
+//! - Image embedding (OpenCLIP / DINOv2 ONNX for scene clustering)
+//! - Future: Stable Diffusion, etc.
 
 pub mod action;
 pub mod download;
 pub mod ensure;
+pub mod image_embedding;
 pub mod query;
 pub mod types;
 pub mod whisper;
@@ -15,6 +17,9 @@ pub mod whisper;
 pub use action::{DeleteWhisperModelAction, DownloadWhisperModelAction};
 pub use download::ModelDownloadJob;
 pub use ensure::ensure_whisper_model;
+pub use image_embedding::{
+	get_image_embedding_models_dir, ImageEmbeddingBackend, ImageEmbeddingModelSpec,
+};
 pub use query::ListWhisperModelsQuery;
 pub use types::{ModelInfo, ModelProvider, ModelType};
 pub use whisper::{WhisperModel, WhisperModelManager};

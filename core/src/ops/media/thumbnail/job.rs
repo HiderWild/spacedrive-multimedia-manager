@@ -5,13 +5,15 @@ use crate::{
 	ops::sidecar::types::{SidecarKind, SidecarStatus, SidecarVariant},
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 use super::{
 	config::{ThumbnailVariantConfig, ThumbnailVariants},
 	error::{ThumbnailError, ThumbnailResult},
-	generator::ThumbnailGenerator,
+	generator::{ThumbnailGenerator, ThumbnailTarget},
 	state::{ThumbnailEntry, ThumbnailPhase, ThumbnailState, ThumbnailStats},
 };
 
@@ -38,14 +40,25 @@ pub struct ThumbnailJobConfig {
 
 impl Default for ThumbnailJobConfig {
 	fn default() -> Self {
+		// Conservative defaults prevent OOM when bulk-importing large photos into Docker/WSL.
+		// Override with SD_THUMB_BATCH_SIZE / SD_THUMB_MAX_CONCURRENT.
 		Self {
-			variants: ThumbnailVariants::defaults(),
+			variants: ThumbnailVariants::import_defaults(),
 			regenerate: false,
-			batch_size: 50,
-			max_concurrent: 4,
+			batch_size: env_usize("SD_THUMB_BATCH_SIZE", 16),
+			max_concurrent: env_usize("SD_THUMB_MAX_CONCURRENT", 2),
 			run_in_background: false,
 		}
 	}
+}
+
+/// Parse a positive usize env var, or fall back to `default`.
+fn env_usize(key: &str, default: usize) -> usize {
+	std::env::var(key)
+		.ok()
+		.and_then(|v| v.parse().ok())
+		.filter(|&n| n > 0)
+		.unwrap_or(default)
 }
 
 impl ThumbnailJobConfig {
@@ -431,10 +444,19 @@ impl ThumbnailJob {
 				batch.len()
 			));
 
-			// Process entries in the batch concurrently
-			let tasks = batch
-				.iter()
-				.map(|entry| Self::generate_thumbnails_for_entry_static(entry, config, ctx));
+			// Cap in-flight decodes so a full batch cannot OOM the host.
+			let concurrency = config.max_concurrent.max(1);
+			let semaphore = Arc::new(Semaphore::new(concurrency));
+			let tasks = batch.iter().map(|entry| {
+				let semaphore = semaphore.clone();
+				async move {
+					let _permit = semaphore
+						.acquire()
+						.await
+						.expect("thumbnail concurrency semaphore is never closed");
+					Self::generate_thumbnails_for_entry_static(entry, config, ctx).await
+				}
+			});
 
 			let results = futures::future::join_all(tasks).await;
 
@@ -673,12 +695,11 @@ impl ThumbnailJob {
 
 		let mut total_thumbnail_size = 0u64;
 
-		// Generate thumbnails for each configured variant
+		// Collect variants that still need generation (one decode can emit all of them).
+		let mut pending: Vec<(&ThumbnailVariantConfig, std::path::PathBuf)> = Vec::new();
 		for variant_config in &config.variants {
-			// Validate parameters
 			ThumbnailUtils::validate_thumbnail_params(variant_config.size, variant_config.quality)?;
 
-			// Skip if thumbnail already exists (unless regenerating)
 			if !config.regenerate
 				&& sidecar_manager
 					.exists(
@@ -694,7 +715,6 @@ impl ThumbnailJob {
 				continue;
 			}
 
-			// Compute sidecar path
 			let sidecar_path = sidecar_manager
 				.compute_path(
 					&library.id(),
@@ -706,45 +726,47 @@ impl ThumbnailJob {
 				.await
 				.map_err(|e| ThumbnailError::other(format!("Path computation failed: {}", e)))?;
 
-			let thumbnail_path = sidecar_path.absolute_path;
+			ThumbnailUtils::ensure_thumbnail_dirs(&sidecar_path.absolute_path).await?;
+			pending.push((variant_config, sidecar_path.absolute_path));
+		}
 
-			// Ensure directory exists
-			ThumbnailUtils::ensure_thumbnail_dirs(&thumbnail_path).await?;
+		if !pending.is_empty() {
+			let targets: Vec<ThumbnailTarget> = pending
+				.iter()
+				.map(|(vc, path)| ThumbnailTarget {
+					output_path: path.clone(),
+					size: vc.size,
+					quality: vc.quality,
+				})
+				.collect();
 
-			// Generate the thumbnail
-			let thumbnail_info = generator
-				.generate(
-					&source_path,
-					&thumbnail_path,
-					variant_config.size,
-					variant_config.quality,
-				)
-				.await?;
+			let infos = generator.generate_many(&source_path, &targets).await?;
 
-			// Record the sidecar in the database
-			sidecar_manager
-				.record_sidecar(
-					library,
-					&entry.content_uuid,
-					&SidecarKind::Thumb,
-					&variant_config.variant,
-					&variant_config.format(),
-					thumbnail_info.size_bytes as u64,
-					None, // checksum
-				)
-				.await
-				.map_err(|e| ThumbnailError::other(format!("Failed to record sidecar: {}", e)))?;
+			for ((variant_config, _), thumbnail_info) in pending.iter().zip(infos.into_iter()) {
+				sidecar_manager
+					.record_sidecar(
+						library,
+						&entry.content_uuid,
+						&SidecarKind::Thumb,
+						&variant_config.variant,
+						&variant_config.format(),
+						thumbnail_info.size_bytes as u64,
+						None, // checksum
+					)
+					.await
+					.map_err(|e| ThumbnailError::other(format!("Failed to record sidecar: {}", e)))?;
 
-			total_thumbnail_size += thumbnail_info.size_bytes as u64;
+				total_thumbnail_size += thumbnail_info.size_bytes as u64;
 
-			ctx.log(format!(
-				"Generated {} thumbnail ({}x{}) for {} ({}KB)",
-				variant_config.variant.as_str(),
-				thumbnail_info.dimensions.0,
-				thumbnail_info.dimensions.1,
-				entry.relative_path,
-				thumbnail_info.size_bytes / 1024
-			));
+				ctx.log(format!(
+					"Generated {} thumbnail ({}x{}) for {} ({}KB)",
+					variant_config.variant.as_str(),
+					thumbnail_info.dimensions.0,
+					thumbnail_info.dimensions.1,
+					entry.relative_path,
+					thumbnail_info.size_bytes / 1024
+				));
+			}
 		}
 
 		// Extract and store media metadata (only on first variant to avoid duplicate work)

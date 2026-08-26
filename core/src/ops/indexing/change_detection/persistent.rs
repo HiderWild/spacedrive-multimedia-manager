@@ -405,11 +405,7 @@ impl ChangeHandler for DatabaseAdapter {
 		use crate::ops::indexing::processor::{
 			load_location_processor_config, ContentHashProcessor, ProcessorEntry,
 		};
-		#[cfg(feature = "speech-to-text")]
-		use crate::ops::media::speech::SpeechToTextProcessor;
-		use crate::ops::media::{ocr::OcrProcessor, proxy::ProxyProcessor};
-		#[cfg(feature = "ffmpeg")]
-		use crate::ops::media::{thumbnail::ThumbnailProcessor, thumbstrip::ThumbstripProcessor};
+		use crate::ops::media::derivative_queue::schedule_derivative_enqueue;
 
 		if entry.is_directory() {
 			return Ok(());
@@ -472,7 +468,7 @@ impl ChangeHandler for DatabaseAdapter {
 			})
 		};
 
-		// Content hash (run first - other processors may need the content_id)
+		// Content hash stays on the add path — needed for content_id / dedupe.
 		if proc_config
 			.watcher_processors
 			.iter()
@@ -488,115 +484,32 @@ impl ChangeHandler for DatabaseAdapter {
 			}
 		}
 
-		// Thumbnail
-		#[cfg(feature = "ffmpeg")]
-		if proc_config
+		// Heavy derivatives (thumbnails, face embeddings) never run inline.
+		// Mark pending sidecars and dispatch background jobs so bulk add stays fast.
+		let want_thumb = proc_config
 			.watcher_processors
 			.iter()
-			.any(|c| c.processor_type == "thumbnail" && c.enabled)
-		{
+			.any(|c| c.processor_type == "thumbnail" && c.enabled);
+
+		if want_thumb {
 			let proc_entry = build_proc_entry(&self.db, entry).await?;
-			let thumb_proc = ThumbnailProcessor::new(library.clone());
-			if thumb_proc.should_process(&proc_entry) {
-				if let Err(e) = thumb_proc.process(&self.db, &proc_entry).await {
-					tracing::warn!("Thumbnail processing failed: {}", e);
+			if let Some(entry_uuid) = proc_entry.uuid {
+				let mime = proc_entry.mime_type.as_deref();
+				let is_image = mime.map(|m| m.starts_with("image/")).unwrap_or(false);
+				// Debounced schedule merges floods of create events into one ThumbnailJob.
+				if let Err(e) =
+					schedule_derivative_enqueue(library.clone(), entry_uuid, mime, is_image).await
+				{
+					tracing::warn!(
+						entry = %entry_uuid,
+						error = %e,
+						"Failed to enqueue media derivatives"
+					);
 				}
 			}
 		}
 
-		// Thumbstrip
-		#[cfg(feature = "ffmpeg")]
-		if proc_config
-			.watcher_processors
-			.iter()
-			.any(|c| c.processor_type == "thumbstrip" && c.enabled)
-		{
-			let proc_entry = build_proc_entry(&self.db, entry).await?;
-			let settings = proc_config
-				.watcher_processors
-				.iter()
-				.find(|c| c.processor_type == "thumbstrip")
-				.map(|c| &c.settings);
-
-			let thumbstrip_proc = if let Some(settings) = settings {
-				ThumbstripProcessor::new(library.clone())
-					.with_settings(settings)
-					.unwrap_or_else(|e| {
-						tracing::warn!("Failed to parse thumbstrip settings: {}", e);
-						ThumbstripProcessor::new(library.clone())
-					})
-			} else {
-				ThumbstripProcessor::new(library.clone())
-			};
-
-			if thumbstrip_proc.should_process(&proc_entry) {
-				if let Err(e) = thumbstrip_proc.process(&self.db, &proc_entry).await {
-					tracing::warn!("Thumbstrip processing failed: {}", e);
-				}
-			}
-		}
-
-		// Proxy
-		if proc_config
-			.watcher_processors
-			.iter()
-			.any(|c| c.processor_type == "proxy" && c.enabled)
-		{
-			let proc_entry = build_proc_entry(&self.db, entry).await?;
-			let settings = proc_config
-				.watcher_processors
-				.iter()
-				.find(|c| c.processor_type == "proxy")
-				.map(|c| &c.settings);
-
-			let proxy_proc = if let Some(settings) = settings {
-				ProxyProcessor::new(library.clone())
-					.with_settings(settings)
-					.unwrap_or_else(|e| {
-						tracing::warn!("Failed to parse proxy settings: {}", e);
-						ProxyProcessor::new(library.clone())
-					})
-			} else {
-				ProxyProcessor::new(library.clone())
-			};
-
-			if proxy_proc.should_process(&proc_entry) {
-				if let Err(e) = proxy_proc.process(&self.db, &proc_entry).await {
-					tracing::warn!("Proxy processing failed: {}", e);
-				}
-			}
-		}
-
-		// OCR
-		if proc_config
-			.watcher_processors
-			.iter()
-			.any(|c| c.processor_type == "ocr" && c.enabled)
-		{
-			let proc_entry = build_proc_entry(&self.db, entry).await?;
-			let ocr_proc = OcrProcessor::new(library.clone());
-			if ocr_proc.should_process(&proc_entry) {
-				if let Err(e) = ocr_proc.process(&self.db, &proc_entry).await {
-					tracing::warn!("OCR processing failed: {}", e);
-				}
-			}
-		}
-
-		// Speech-to-text
-		#[cfg(feature = "speech-to-text")]
-		if proc_config
-			.watcher_processors
-			.iter()
-			.any(|c| c.processor_type == "speech_to_text" && c.enabled)
-		{
-			let proc_entry = build_proc_entry(&self.db, entry).await?;
-			let speech_proc = SpeechToTextProcessor::new(library.clone());
-			if speech_proc.should_process(&proc_entry) {
-				if let Err(e) = speech_proc.process(&self.db, &proc_entry).await {
-					tracing::warn!("Speech-to-text processing failed: {}", e);
-				}
-			}
-		}
+		// Opt-in video/OCR processors stay off the hot path (default disabled).
 
 		Ok(())
 	}

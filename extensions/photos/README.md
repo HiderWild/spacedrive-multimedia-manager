@@ -24,11 +24,15 @@ A comprehensive photo management extension that brings Apple Photos and Google P
 - **Weekly memories** (scheduled agent task)
 - **Moment timeline** view
 
-### ️ Scene Understanding
-- **Scene classification** (ResNet50 on Places365)
-- **Smart tags** (#beach, #sunset, #food)
+### Scene Understanding & Clustering
+- **Scene classification** (ResNet50 / Places365) → discrete tags (`#beach`)
+- **Scene embedding clusters** (OpenCLIP ViT-B/32 or DINOv2, ONNX + GPU) → visual groups like face clusters
+- **Smart tags** (#beach, #sunset, #food, `#scene_cluster:…`)
 - **Scene-based search** ("Photos with sunsets")
 - **Quality scoring** (aesthetic assessment)
+
+> Places365 alone cannot replace embedding clustering — it only assigns fixed labels.
+> See `docs/superpowers/specs/2026-07-12-scene-clustering-design.md`.
 
 ### Albums & Organization
 - **Manual albums** (user-created)
@@ -63,7 +67,8 @@ PhotosMind {
 
 - `analyze_photos_batch` - Face detection on photos
 - `identify_places_in_location` - Place clustering and naming
-- `analyze_scenes` - Scene classification
+- `analyze_scenes` - Scene classification (Places365 labels)
+- `cluster_scenes` - Visual scene clusters from image embeddings (CLIP/DINO)
 - `create_moments` - Automatic moment generation
 - `cluster_faces_into_people` - Face clustering
 - `generate_face_tags` - Tag generation from sidecars
@@ -112,8 +117,10 @@ User can search "#person:alice" or "photos from beach"
   └── models/
       ├── face_detection/
       │   └── photos_v1.onnx (12MB)
-      └── scene_classification/
-          └── resnet50.onnx (95MB)
+      ├── scene_classification/
+      │   └── resnet50.onnx (95MB)
+      └── image_embedding/
+          └── openclip-vit-b-32.onnx (~150–350MB)  # or dinov2-vitb14.onnx
 
 .sdlibrary/
   └── sidecars/

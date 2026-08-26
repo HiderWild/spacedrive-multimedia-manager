@@ -23,6 +23,10 @@ pub struct Model {
 	pub audio_media_data_id: Option<i32>,
 	pub first_seen_at: DateTimeUtc,
 	pub last_verified_at: DateTimeUtc,
+	// AI recognition exclusion flags (content-scoped, synced across devices).
+	// false = participate in recognition (default), true = excluded.
+	pub exclude_face: bool,
+	pub exclude_scene: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

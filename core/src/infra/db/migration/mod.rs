@@ -45,6 +45,7 @@ mod m20260531_000001_media_suite_scaffold_template;
 mod m20260601_000001_tag_inheritance_source;
 mod m20260601_000002_tag_relations;
 mod m20260602_000001_create_sync_metrics_table;
+mod m20260713_000001_ai_exclusion;
 
 pub struct Migrator;
 
@@ -95,6 +96,7 @@ impl MigratorTrait for Migrator {
 			Box::new(m20260601_000001_tag_inheritance_source::Migration),
 			Box::new(m20260601_000002_tag_relations::Migration),
 			Box::new(m20260602_000001_create_sync_metrics_table::Migration),
+			Box::new(m20260713_000001_ai_exclusion::Migration),
 		]
 	}
 }

@@ -172,6 +172,9 @@ pub enum SidecarStatus {
 	Pending,
 	Ready,
 	Failed,
+	/// Marked stale because the content was excluded from AI recognition.
+	/// Async cleanup will delete the sidecar file and DB row.
+	Stale,
 }
 
 impl SidecarStatus {
@@ -180,6 +183,7 @@ impl SidecarStatus {
 			Self::Pending => "pending",
 			Self::Ready => "ready",
 			Self::Failed => "failed",
+			Self::Stale => "stale",
 		}
 	}
 }
@@ -198,6 +202,7 @@ impl TryFrom<&str> for SidecarStatus {
 			"pending" => Ok(Self::Pending),
 			"ready" => Ok(Self::Ready),
 			"failed" => Ok(Self::Failed),
+			"stale" => Ok(Self::Stale),
 			_ => Err(format!("Invalid sidecar status: {}", value)),
 		}
 	}

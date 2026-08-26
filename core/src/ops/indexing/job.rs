@@ -477,11 +477,14 @@ impl IndexerJob {
 
 		ctx.log(&metrics.format_summary());
 
+		// Content/Deep indexing enqueues derivatives asynchronously so the indexer
+		// job is not blocked on per-file thumbnail/face decode.
 		#[cfg(feature = "ffmpeg")]
-		if self.config.mode == IndexMode::Deep && !self.config.is_ephemeral() {
+		if self.config.mode >= IndexMode::Content && !self.config.is_ephemeral() {
+			use crate::ops::media::derivative_queue::enqueue_thumbnails_for_entries;
 			use crate::ops::media::thumbnail::{ThumbnailJob, ThumbnailJobConfig};
 
-			ctx.log("Deep mode enabled - dispatching thumbnail generation job");
+			ctx.log("Indexing complete - dispatching background thumbnail job");
 
 			// Query entry UUIDs for this location to avoid processing all database entries
 			let entry_uuids = if let Some(location_id) = self.config.location_id {
@@ -588,22 +591,25 @@ impl IndexerJob {
 				None
 			};
 
-			let mut thumbnail_config = ThumbnailJobConfig::default();
-			// Inherit background flag from the indexer job
-			thumbnail_config.run_in_background = self.config.run_in_background;
-
-			let thumbnail_job = if let Some(uuids) = entry_uuids {
-				ThumbnailJob::for_entries(uuids, thumbnail_config)
-			} else {
-				ThumbnailJob::new(thumbnail_config)
-			};
-
-			match ctx.library().jobs().dispatch(thumbnail_job).await {
-				Ok(_handle) => {
-					ctx.log("Successfully dispatched thumbnail generation job");
+			// Mark pending sidecars then dispatch one batched background job.
+			if let Some(uuids) = entry_uuids {
+				match enqueue_thumbnails_for_entries(ctx.library().as_ref(), uuids).await {
+					Ok(()) => ctx.log("Successfully enqueued background thumbnail batch"),
+					Err(e) => {
+						ctx.add_warning(format!("Failed to enqueue thumbnail batch: {}", e))
+					}
 				}
-				Err(e) => {
-					ctx.add_warning(format!("Failed to dispatch thumbnail job: {}", e));
+			} else {
+				let mut thumbnail_config = ThumbnailJobConfig::default();
+				thumbnail_config.run_in_background = self.config.run_in_background;
+				let thumbnail_job = ThumbnailJob::new(thumbnail_config);
+				match ctx.library().jobs().dispatch(thumbnail_job).await {
+					Ok(_handle) => {
+						ctx.log("Successfully dispatched thumbnail generation job");
+					}
+					Err(e) => {
+						ctx.add_warning(format!("Failed to dispatch thumbnail job: {}", e));
+					}
 				}
 			}
 		}

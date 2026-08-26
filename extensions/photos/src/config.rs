@@ -36,6 +36,16 @@ pub struct PhotosConfig {
 	/// Setting: label = "Face Clustering Threshold", default = 0.6, min = 0.0, max = 1.0
 	#[serde(default = "default_face_threshold")]
 	pub face_clustering_threshold: f32,
+
+	/// Enable Scene Embedding Clusters (CLIP/DINO visual groups)
+	///
+	/// Distinct from Places365 label tags — groups by embedding proximity.
+	#[serde(default = "default_true")]
+	pub scene_clustering: bool,
+
+	/// Scene Clustering Distance (eps in cosine distance, OpenCLIP defaults)
+	#[serde(default = "default_scene_eps")]
+	pub scene_clustering_eps: f32,
 }
 
 fn default_true() -> bool {
@@ -48,4 +58,8 @@ fn default_scene_confidence() -> f32 {
 
 fn default_face_threshold() -> f32 {
 	0.6
+}
+
+fn default_scene_eps() -> f32 {
+	0.30
 }

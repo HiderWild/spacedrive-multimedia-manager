@@ -10,6 +10,8 @@ pub enum ModelType {
 	Whisper,
 	/// Tesseract OCR language data
 	Tesseract,
+	/// Whole-image embedding (OpenCLIP / DINOv2 ONNX)
+	ImageEmbedding,
 }
 
 /// Model provider

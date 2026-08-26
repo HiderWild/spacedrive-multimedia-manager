@@ -24,6 +24,11 @@ pub struct Photo {
 	#[sidecar(kind = "scene", extension_owned)]
 	pub scene_tags: Option<Vec<SceneTag>>,
 
+	/// Whole-image embedding for visual scene clustering (CLIP/DINO).
+	/// Core sidecar path: embeddings/scene (MsgPack). Extension may mirror here.
+	#[sidecar(kind = "scene_embedding", extension_owned)]
+	pub scene_embedding: Option<Vec<f32>>,
+
 	#[sidecar(kind = "aesthetics", extension_owned)]
 	pub quality_score: Option<f32>,
 
@@ -54,6 +59,7 @@ impl Photo {
 			exif: None,
 			detected_faces: None,
 			scene_tags: None,
+			scene_embedding: None,
 			quality_score: None,
 			tags: vec![],
 			identified_people: vec![],

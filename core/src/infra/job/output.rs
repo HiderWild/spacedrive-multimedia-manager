@@ -89,6 +89,15 @@ pub enum JobOutput {
 		error_count: usize,
 	},
 
+	/// Scene embedding generation output (CLIP/DINO for clustering)
+	SceneEmbedding {
+		total_processed: usize,
+		success_count: usize,
+		error_count: usize,
+		skipped_count: usize,
+		device: String,
+	},
+
 	/// Generic output with custom data
 	#[specta(skip)]
 	Custom(serde_json::Value),
@@ -285,6 +294,19 @@ impl fmt::Display for JobOutput {
 					f,
 					"Gaussian splat: {} processed ({} success, {} errors)",
 					total_processed, success_count, error_count
+				)
+			}
+			Self::SceneEmbedding {
+				total_processed,
+				success_count,
+				error_count,
+				skipped_count,
+				device,
+			} => {
+				write!(
+					f,
+					"Scene embed ({}): {} processed ({} success, {} errors, {} skipped)",
+					device, total_processed, success_count, error_count, skipped_count
 				)
 			}
 			Self::Custom(_) => write!(f, "Custom output"),
