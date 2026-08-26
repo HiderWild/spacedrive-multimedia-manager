@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+// useRef replaced by usePreserveScrollPosition for scroll container
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useExplorer } from "../../context";
 import { useSelection } from "../../SelectionContext";
@@ -8,6 +9,7 @@ import {
 	type JustifiedBox,
 } from "../../hooks/useJustifiedLayout";
 import { useEmptySpaceContextMenu } from "../../hooks/useEmptySpaceContextMenu";
+import { usePreserveScrollPosition } from "../../hooks/usePreserveScrollPosition";
 import { MasonryViewItem } from "./MasonryViewItem";
 
 const CONTAINER_PADDING = 12;
@@ -67,7 +69,7 @@ export function MasonryView() {
 		restoreSelectionFromFiles(files);
 	}, [files, restoreSelectionFromFiles]);
 
-	const parentRef = useRef<HTMLDivElement>(null);
+	const parentRef = usePreserveScrollPosition<HTMLDivElement>();
 	const [containerWidth, setContainerWidth] = useState(0);
 	const [isInitialized, setIsInitialized] = useState(false);
 

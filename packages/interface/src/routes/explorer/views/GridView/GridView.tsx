@@ -5,6 +5,7 @@ import { useSelection } from "../../SelectionContext";
 import { FileCard } from "./FileCard";
 import type { File } from "@sd/ts-client";
 import { useExplorerFiles } from "../../hooks/useExplorerFiles";
+import { usePreserveScrollPosition } from "../../hooks/usePreserveScrollPosition";
 import { DragSelect } from "./DragSelect";
 import { useEmptySpaceContextMenu } from "../../hooks/useEmptySpaceContextMenu";
 
@@ -160,11 +161,10 @@ function VirtualizedGrid({
 	hasNextPage,
 	fetchNextPage,
 }: VirtualizedGridProps) {
-	const parentRef = useRef<HTMLDivElement>(null);
+	const parentRef = usePreserveScrollPosition<HTMLDivElement>();
 	const [containerWidth, setContainerWidth] = useState<number | null>(null);
 	const [isInitialized, setIsInitialized] = useState(false);
 
-	// TODO: Preserve scroll position per tab using scrollPosition from context
 
 	// Synchronous measurement before paint to prevent layout shift
 	useLayoutEffect(() => {

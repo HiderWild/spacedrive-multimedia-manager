@@ -14,6 +14,7 @@ import { MediaViewItem } from "./MediaViewItem";
 import { DateHeader } from "./DateHeader";
 import { formatDate, getItemDate, normalizeDateToMidnight } from "./utils";
 import { useExplorerFiles } from "../../hooks/useExplorerFiles";
+import { usePreserveScrollPosition } from "../../hooks/usePreserveScrollPosition";
 
 // Helper to check if a file is a media file (image or video)
 function isMediaFile(file: File): boolean {
@@ -25,8 +26,15 @@ function isMediaFile(file: File): boolean {
 }
 
 export function MediaView() {
-	const { currentPath, viewSettings, sortBy, setSortBy, setCurrentFiles, mode } =
-		useExplorer();
+	const {
+		currentPath,
+		viewSettings,
+		sortBy,
+		setSortBy,
+		setCurrentFiles,
+		mode,
+		scrollPosition,
+	} = useExplorer();
 	const {
 		selectFile,
 		focusedIndex,
@@ -53,11 +61,12 @@ export function MediaView() {
 	const gapSize = 1;
 
 	// ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
-	const parentRef = useRef<HTMLDivElement>(null);
+	// Session scroll restore (per tab); not disk — return from QuickPreview keeps place.
+	const hasSavedScroll = scrollPosition.top > 0 || scrollPosition.left > 0;
+	const parentRef = usePreserveScrollPosition<HTMLDivElement>();
 	const [containerWidth, setContainerWidth] = useState(0);
 	const [scrollOffset, setScrollOffset] = useState(0);
 
-	// TODO: Preserve scroll position per tab using scrollPosition from context
 
 	// Track when element is ready
 	const [elementReady, setElementReady] = useState(false);
@@ -273,14 +282,15 @@ export function MediaView() {
 		rowVirtualizer.measure();
 	}, [columns, gridSize, rowCount, rowVirtualizer]);
 
-	// Scroll to bottom on mount (inverted scroll - show most recent first)
+	// Inverted default: start at most-recent only when we have no saved scroll offset.
 	useEffect(() => {
+		if (hasSavedScroll) return;
 		if (rowCount > 0 && parentRef.current) {
 			rowVirtualizer.scrollToIndex(rowCount - 1, {
 				align: "end",
 			});
 		}
-	}, [rowCount, rowVirtualizer]);
+	}, [rowCount, rowVirtualizer, hasSavedScroll]);
 
 	const virtualRows = rowVirtualizer.getVirtualItems();
 

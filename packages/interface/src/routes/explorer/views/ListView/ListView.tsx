@@ -16,6 +16,7 @@ import {
 } from "./useTable";
 import type { DirectorySortBy } from "@sd/ts-client";
 import { useExplorerFiles } from "../../hooks/useExplorerFiles";
+import { usePreserveScrollPosition } from "../../hooks/usePreserveScrollPosition";
 import { DragSelect } from "./DragSelect";
 import { useEmptySpaceContextMenu } from "../../hooks/useEmptySpaceContextMenu";
 
@@ -31,12 +32,10 @@ export const ListView = memo(function ListView() {
 		restoreSelectionFromFiles,
 	} = useSelection();
 
-	const containerRef = useRef<HTMLDivElement>(null);
+	const containerRef = usePreserveScrollPosition<HTMLDivElement>();
 	const headerScrollRef = useRef<HTMLDivElement>(null);
 	const bodyScrollRef = useRef<HTMLDivElement>(null);
 	const emptySpaceContextMenu = useEmptySpaceContextMenu();
-
-	// TODO: Preserve scroll position per tab using scrollPosition from context
 
 	// Get files from centralized hook (handles search, virtual, and directory)
 	const { files } = useExplorerFiles();
