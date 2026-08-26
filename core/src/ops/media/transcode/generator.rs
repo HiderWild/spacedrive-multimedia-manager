@@ -15,10 +15,7 @@ use super::{
 use crate::ops::media::proxy::{detect_hardware_accel, HardwareAccel};
 use serde::{Deserialize, Serialize};
 use std::{ffi::OsString, path::Path, process::Stdio, time::Instant};
-use tokio::{
-	io::{AsyncBufReadExt, BufReader},
-	process::Command,
-};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{debug, info, warn};
 
 /// Information about a completed transcode.
@@ -142,7 +139,7 @@ impl TranscodeGenerator {
 		output: &Path,
 		args: Vec<OsString>,
 	) -> TranscodeResult<TranscodeInfo> {
-		let mut cmd = Command::new("ffmpeg");
+		let mut cmd = crate::ops::media::ffmpeg_bin::tokio_command();
 		cmd.args(args)
 			.stdin(Stdio::null())
 			.stdout(Stdio::null())

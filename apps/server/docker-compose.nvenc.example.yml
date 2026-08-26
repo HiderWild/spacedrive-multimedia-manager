@@ -1,0 +1,28 @@
+# Example overlay: use a host-built NVENC ffmpeg with the GPU stack.
+#
+# Prerequisites:
+#   - docker-compose.yml + docker-compose.gpu.yml working
+#   - nvidia-smi OK in WSL and in the container
+#   - A host ffmpeg binary that reports h264_nvenc:
+#       /opt/ffmpeg-nvenc/bin/ffmpeg -hide_banner -encoders | grep nvenc
+#
+# Usage:
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f docker-compose.gpu.yml \
+#     -f docker-compose.nvenc.example.yml \
+#     up -d
+#
+# Copy this file to docker-compose.nvenc.yml and edit paths for your host
+# (paths below assume WSL/Linux host locations).
+
+services:
+  spacedrive:
+    volumes:
+      # Host NVENC ffmpeg tree (read-only)
+      - ${FFMPEG_NVENC_HOST:-/opt/ffmpeg-nvenc}:/opt/ffmpeg-nvenc:ro
+    environment:
+      - FFMPEG_PATH=${FFMPEG_PATH:-/opt/ffmpeg-nvenc/bin/ffmpeg}
+      # Optional: also keep thumb throttle conservative under GPU load
+      - SD_THUMB_MAX_CONCURRENT=${SD_THUMB_MAX_CONCURRENT:-2}
+      - SD_THUMB_BATCH_SIZE=${SD_THUMB_BATCH_SIZE:-16}

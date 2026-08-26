@@ -35,6 +35,8 @@ mod generic;
 mod handler;
 #[cfg(feature = "heif")]
 mod heif;
+#[cfg(feature = "turbojpeg")]
+mod jpeg_fast;
 mod pdf;
 mod svg;
 
@@ -43,7 +45,7 @@ use consts::MAXIMUM_FILE_SIZE;
 // Re-exports
 pub use consts::{all_compatible_extensions, ConvertibleExtension};
 pub use error::{Error, Result};
-pub use handler::{convert_image, format_image};
+pub use handler::{convert_image, format_image, format_image_for_thumbnail};
 pub use image::DynamicImage;
 
 pub trait ImageHandler {

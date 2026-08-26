@@ -10,6 +10,12 @@ ffmpeg = ["sd-core/ffmpeg"]
 whisper = ["sd-core/whisper"]
 speech-to-text = ["sd-core/speech-to-text"]
 ai = ["sd-core/ai"]
+# Optional: needs libturbojpeg at build time (apt: libturbojpeg0-dev)
+turbojpeg = ["sd-core/turbojpeg"]
+# Optional: Linux + CUDA toolkit; large/slow build
+whisper-cuda = ["sd-core/whisper-cuda"]
+scene-embed = ["sd-core/scene-embed"]
+scene-embed-cuda = ["sd-core/scene-embed-cuda"]
 
 [dependencies]
 # Spacedrive core

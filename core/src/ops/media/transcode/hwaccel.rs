@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashSet;
 use std::ffi::OsString;
-use std::process::Command;
 use tracing::{debug, warn};
 
 /// Requested hardware acceleration backend.
@@ -149,7 +148,7 @@ impl AvailableEncoders {
 	/// Probe the local ffmpeg for its encoder list. Returns an empty set when the
 	/// probe fails so resolution falls back to CPU.
 	pub fn detect() -> Self {
-		match Command::new("ffmpeg")
+		match crate::ops::media::ffmpeg_bin::command()
 			.args(["-hide_banner", "-encoders"])
 			.output()
 		{

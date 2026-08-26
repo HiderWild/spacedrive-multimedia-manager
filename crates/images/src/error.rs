@@ -33,6 +33,9 @@ pub enum Error {
 	Pixbuf,
 	#[error("error while loading the image (via the `image` crate): {0}")]
 	Image(#[from] image::ImageError),
+	/// Decoder-specific failure (turbojpeg, etc.) — message already includes context.
+	#[error("image decode failed: {0}")]
+	ImageDecode(String),
 	// #[error("error while converting from raw")] // not enough rust support for it to be feasible
 	// RawConversion,
 	#[error("error while parsing integers")]

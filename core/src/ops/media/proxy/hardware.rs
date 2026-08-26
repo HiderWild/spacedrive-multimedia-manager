@@ -1,7 +1,6 @@
 //! Hardware acceleration detection for video encoding
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use tracing::{debug, warn};
 
 /// Supported hardware acceleration platforms
@@ -59,7 +58,7 @@ impl HardwareAccel {
 
 /// Detect available hardware acceleration
 pub fn detect_hardware_accel() -> Option<HardwareAccel> {
-	let encoders_output = match Command::new("ffmpeg")
+	let encoders_output = match crate::ops::media::ffmpeg_bin::command()
 		.args(["-hide_banner", "-encoders"])
 		.output()
 	{
@@ -75,7 +74,7 @@ pub fn detect_hardware_accel() -> Option<HardwareAccel> {
 		return None;
 	}
 
-	let hwaccels_output = Command::new("ffmpeg")
+	let hwaccels_output = crate::ops::media::ffmpeg_bin::command()
 		.args(["-hide_banner", "-hwaccels"])
 		.output()
 		.ok()

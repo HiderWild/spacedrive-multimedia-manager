@@ -1,0 +1,97 @@
+# Spacedrive Server — GPU-aware image (NVIDIA / WSL2 Docker)
+#
+# Purpose:
+#   - Same sd-server features as the CPU image (heif + ffmpeg)
+#   - Runtime base includes NVIDIA CUDA userspace so the container can see the GPU
+#   - Distro ffmpeg in this image is usually CPU-only (no NVENC); use nvidia-smi to
+#     verify passthrough. Install an NVENC ffmpeg build later if needed for video.
+#
+# Build (repo root as context):
+#   Prerequisite: apps/web/dist pre-built
+#   docker build -f apps/server/Dockerfile.gpu -t sd-server-gpu .
+#
+# Run:
+#   docker compose -f apps/server/docker-compose.yml -f apps/server/docker-compose.gpu.yml up -d
+#
+# Verify GPU:
+#   docker compose exec spacedrive nvidia-smi
+
+# Build on the same Ubuntu family as the CUDA runtime to avoid glibc/libav ABI skew.
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt \
+	apt-get update && apt-get install -y \
+	build-essential \
+	curl \
+	git \
+	pkg-config \
+	libssl-dev \
+	ca-certificates \
+	cmake \
+	nasm \
+	libavcodec-dev \
+	libavformat-dev \
+	libavutil-dev \
+	libswscale-dev \
+	libheif-dev \
+	libturbojpeg0-dev
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:$PATH"
+
+WORKDIR /build
+
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
+COPY core ./core
+COPY crates ./crates
+COPY apps/server ./apps/server
+COPY apps/web/dist ./apps/web/dist
+
+RUN --mount=type=cache,target=/root/.cargo/registry \
+	--mount=type=cache,target=/root/.cargo/git \
+	--mount=type=cache,target=/build/target \
+	SD_SKIP_WEB_BUILD=1 cargo build --release -p sd-server --features heif,ffmpeg,turbojpeg && \
+	cp target/release/sd-server /usr/local/bin/sd-server
+
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt \
+	apt-get update && apt-get install -y \
+	ca-certificates \
+	curl \
+	libssl3 \
+	libavcodec58 \
+	libavformat58 \
+	libavutil56 \
+	libswscale5 \
+	libheif1 \
+	libturbojpeg \
+	ffmpeg \
+	&& rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -u 1000 spacedrive
+
+COPY --from=builder /usr/local/bin/sd-server /usr/bin/sd-server
+
+ENV DATA_DIR=/data \
+	PORT=8080 \
+	RUST_LOG=info,sd_core=debug \
+	NVIDIA_VISIBLE_DEVICES=all \
+	NVIDIA_DRIVER_CAPABILITIES=compute,utility,video \
+	SD_THUMB_MAX_CONCURRENT=2 \
+	SD_THUMB_BATCH_SIZE=16
+
+EXPOSE 8080
+EXPOSE 7373
+
+VOLUME ["/data"]
+
+USER spacedrive:spacedrive
+
+ENTRYPOINT ["/usr/bin/sd-server"]
+CMD ["--data-dir", "/data"]

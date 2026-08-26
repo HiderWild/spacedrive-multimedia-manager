@@ -58,6 +58,39 @@ impl ThumbnailGenerator {
 			Self::Document(gen) => gen.generate(source_path, output_path, size, quality).await,
 		}
 	}
+
+	/// Decode once and export multiple sizes (images/PDFs). Videos fall back per target.
+	pub async fn generate_many(
+		&self,
+		source_path: &Path,
+		targets: &[ThumbnailTarget],
+	) -> ThumbnailResult<Vec<ThumbnailInfo>> {
+		if targets.is_empty() {
+			return Ok(Vec::new());
+		}
+		match self {
+			Self::Image(gen) => gen.generate_many(source_path, targets).await,
+			Self::Document(gen) => gen.generate_many(source_path, targets).await,
+			Self::Video(gen) => {
+				let mut out = Vec::with_capacity(targets.len());
+				for t in targets {
+					out.push(
+						gen.generate(source_path, &t.output_path, t.size, t.quality)
+							.await?,
+					);
+				}
+				Ok(out)
+			}
+		}
+	}
+}
+
+/// One output requested from a multi-size thumbnail pass.
+#[derive(Debug, Clone)]
+pub struct ThumbnailTarget {
+	pub output_path: std::path::PathBuf,
+	pub size: u32,
+	pub quality: u8,
 }
 
 /// Image thumbnail generator using sd-images crate
@@ -76,81 +109,60 @@ impl ImageGenerator {
 		size: u32,
 		quality: u8,
 	) -> ThumbnailResult<ThumbnailInfo> {
-		if quality > 100 {
-			return Err(ThumbnailError::InvalidQuality(quality));
+		let targets = [ThumbnailTarget {
+			output_path: output_path.to_path_buf(),
+			size,
+			quality,
+		}];
+		let mut infos = self.generate_many(source_path, &targets).await?;
+		infos
+			.pop()
+			.ok_or_else(|| ThumbnailError::other("No thumbnail generated"))
+	}
+
+	/// Load/orient once, then emit every requested size.
+	pub async fn generate_many(
+		&self,
+		source_path: &Path,
+		targets: &[ThumbnailTarget],
+	) -> ThumbnailResult<Vec<ThumbnailInfo>> {
+		for t in targets {
+			if t.quality > 100 {
+				return Err(ThumbnailError::InvalidQuality(t.quality));
+			}
+			if let Some(parent) = t.output_path.parent() {
+				tokio::fs::create_dir_all(parent).await?;
+			}
 		}
 
-		// Ensure output directory exists
-		if let Some(parent) = output_path.parent() {
-			tokio::fs::create_dir_all(parent).await?;
-		}
-
-		// Use tokio::task::spawn_blocking for CPU-intensive image processing
 		let source_path = source_path.to_path_buf();
-		let output_path = output_path.to_path_buf();
+		let targets = targets.to_vec();
 
-		let thumbnail_info = tokio::task::spawn_blocking(move || {
-			// Use sd-images to load and process the image
-			let mut img = sd_images::format_image(&source_path)
+		tokio::task::spawn_blocking(move || {
+			let min_edge = targets.iter().map(|t| t.size).max().unwrap_or(256);
+			let mut img = sd_images::format_image_for_thumbnail(&source_path, min_edge)
 				.map_err(|e| ThumbnailError::other(format!("Failed to load image: {}", e)))?;
 
-			// Apply EXIF orientation correction if available
 			if let Some(orientation) = Orientation::from_path(&source_path) {
 				img = orientation.correct_thumbnail(img);
 			}
 
-			// Blurhash generation disabled for performance
-			let blurhash: Option<String> = None;
+			// Cap huge bitmaps before multi-size work so decode*N does not thrash RAM.
+			img = downscale_for_thumbnail_budget(img);
 
-			// Calculate target dimensions maintaining aspect ratio
-			let (original_width, original_height) = (img.width(), img.height());
-			let (target_width, target_height) =
-				calculate_dimensions(original_width, original_height, size);
-
-			// Resize using high-quality algorithm
-			let thumbnail = img.resize(
-				target_width,
-				target_height,
-				image::imageops::FilterType::Lanczos3,
-			);
-
-			// Convert to RGB8 for consistency
-			let rgb_thumbnail = thumbnail.to_rgb8();
-
-			// Get actual dimensions from the resized image (may differ from calculated due to rounding)
-			let actual_width = rgb_thumbnail.width();
-			let actual_height = rgb_thumbnail.height();
-
-			// Verify buffer size matches expected dimensions
-			let expected_size = (actual_width * actual_height * 3) as usize;
-			let actual_size = rgb_thumbnail.as_raw().len();
-
-			if expected_size != actual_size {
-				return Err(ThumbnailError::other(format!(
-					"Image buffer size mismatch: expected {} bytes for {}x{}, got {} bytes",
-					expected_size, actual_width, actual_height, actual_size
-				)));
+			let mut results = Vec::with_capacity(targets.len());
+			for t in &targets {
+				results.push(encode_thumbnail_variant(
+					&img,
+					&t.output_path,
+					t.size,
+					t.quality,
+				)?);
 			}
-
-			// Encode as WebP using actual dimensions
-			let webp_encoder = webp::Encoder::from_rgb(&rgb_thumbnail, actual_width, actual_height);
-			let webp_memory = webp_encoder.encode(quality as f32);
-			let webp_data = webp_memory.to_vec();
-
-			// Write to file
-			std::fs::write(&output_path, &webp_data)?;
-
-			Ok::<ThumbnailInfo, ThumbnailError>(ThumbnailInfo {
-				size_bytes: webp_data.len(),
-				dimensions: (actual_width, actual_height),
-				format: "webp".to_string(),
-				blurhash,
-			})
+			Ok::<Vec<ThumbnailInfo>, ThumbnailError>(results)
 		})
 		.await
-		.map_err(|e| ThumbnailError::other(format!("Task join error: {}", e)))??;
-
-		Ok(thumbnail_info)
+		.map_err(|e| ThumbnailError::other(format!("Task join error: {}", e)))?
 	}
 }
 
@@ -231,71 +243,124 @@ impl DocumentGenerator {
 		size: u32,
 		quality: u8,
 	) -> ThumbnailResult<ThumbnailInfo> {
-		if quality > 100 {
-			return Err(ThumbnailError::InvalidQuality(quality));
+		let targets = [ThumbnailTarget {
+			output_path: output_path.to_path_buf(),
+			size,
+			quality,
+		}];
+		let mut infos = self.generate_many(source_path, &targets).await?;
+		infos
+			.pop()
+			.ok_or_else(|| ThumbnailError::other("No thumbnail generated"))
+	}
+
+	/// Load PDF page once, then emit every requested size.
+	pub async fn generate_many(
+		&self,
+		source_path: &Path,
+		targets: &[ThumbnailTarget],
+	) -> ThumbnailResult<Vec<ThumbnailInfo>> {
+		for t in targets {
+			if t.quality > 100 {
+				return Err(ThumbnailError::InvalidQuality(t.quality));
+			}
+			if let Some(parent) = t.output_path.parent() {
+				tokio::fs::create_dir_all(parent).await?;
+			}
 		}
 
-		// Ensure output directory exists
-		if let Some(parent) = output_path.parent() {
-			tokio::fs::create_dir_all(parent).await?;
-		}
-
-		// Use tokio::task::spawn_blocking for CPU-intensive PDF processing
 		let source_path = source_path.to_path_buf();
-		let output_path = output_path.to_path_buf();
+		let targets = targets.to_vec();
 
-		let thumbnail_info = tokio::task::spawn_blocking(move || {
-			// Use sd-images to handle PDF (it supports PDF through pdfium-render)
+		tokio::task::spawn_blocking(move || {
 			let mut img = sd_images::format_image(&source_path)
 				.map_err(|e| ThumbnailError::other(format!("Failed to load PDF: {}", e)))?;
 
-			// Apply EXIF orientation correction if available
 			if let Some(orientation) = Orientation::from_path(&source_path) {
 				img = orientation.correct_thumbnail(img);
 			}
 
-			// Blurhash generation disabled for performance
-			let blurhash: Option<String> = None;
+			img = downscale_for_thumbnail_budget(img);
 
-			// Calculate target dimensions maintaining aspect ratio
-			let (original_width, original_height) = (img.width(), img.height());
-			let (target_width, target_height) =
-				calculate_dimensions(original_width, original_height, size);
-
-			// Resize using high-quality algorithm
-			let thumbnail = img.resize(
-				target_width,
-				target_height,
-				image::imageops::FilterType::Lanczos3,
-			);
-
-			// Convert to RGB8 for WebP encoding
-			let rgb_thumbnail = thumbnail.to_rgb8();
-
-			// Get actual dimensions from the resized image
-			let actual_width = rgb_thumbnail.width();
-			let actual_height = rgb_thumbnail.height();
-
-			// Encode as WebP using actual dimensions
-			let webp_encoder = webp::Encoder::from_rgb(&rgb_thumbnail, actual_width, actual_height);
-			let webp_memory = webp_encoder.encode(quality as f32);
-			let webp_data = webp_memory.to_vec();
-
-			// Write to file
-			std::fs::write(&output_path, &webp_data)?;
-
-			Ok::<ThumbnailInfo, ThumbnailError>(ThumbnailInfo {
-				size_bytes: webp_data.len(),
-				dimensions: (actual_width, actual_height),
-				format: "webp".to_string(),
-				blurhash,
-			})
+			let mut results = Vec::with_capacity(targets.len());
+			for t in &targets {
+				results.push(encode_thumbnail_variant(
+					&img,
+					&t.output_path,
+					t.size,
+					t.quality,
+				)?);
+			}
+			Ok::<Vec<ThumbnailInfo>, ThumbnailError>(results)
 		})
 		.await
-		.map_err(|e| ThumbnailError::other(format!("Task join error: {}", e)))??;
-
-		Ok(thumbnail_info)
+		.map_err(|e| ThumbnailError::other(format!("Task join error: {}", e)))?
 	}
+}
+
+/// Peak decoded bitmap edge allowed before an intermediate downscale.
+const MAX_THUMB_SOURCE_EDGE: u32 = 4096;
+/// Above this pixel count, force a pre-downscale even if edge is below the max edge.
+const MAX_THUMB_SOURCE_PIXELS: u64 = 16_000_000;
+
+/// Downscale extremely large sources once so subsequent resizes stay cheap and memory-safe.
+fn downscale_for_thumbnail_budget(img: image::DynamicImage) -> image::DynamicImage {
+	let w = img.width();
+	let h = img.height();
+	let pixels = (w as u64) * (h as u64);
+	let needs =
+		w > MAX_THUMB_SOURCE_EDGE || h > MAX_THUMB_SOURCE_EDGE || pixels > MAX_THUMB_SOURCE_PIXELS;
+	if !needs {
+		return img;
+	}
+	let (tw, th) = calculate_dimensions(w, h, MAX_THUMB_SOURCE_EDGE);
+	img.resize(tw, th, image::imageops::FilterType::Triangle)
+}
+
+fn resize_filter(
+	original_width: u32,
+	original_height: u32,
+	target_size: u32,
+) -> image::imageops::FilterType {
+	let long_edge = original_width.max(original_height);
+	// Aggressive downscales: Triangle is cheaper than Lanczos3 with little visual cost at thumb sizes.
+	if long_edge as f32 / target_size as f32 > 4.0 {
+		image::imageops::FilterType::Triangle
+	} else {
+		image::imageops::FilterType::Lanczos3
+	}
+}
+
+fn encode_thumbnail_variant(
+	img: &image::DynamicImage,
+	output_path: &Path,
+	size: u32,
+	quality: u8,
+) -> ThumbnailResult<ThumbnailInfo> {
+	let (original_width, original_height) = (img.width(), img.height());
+	let (target_width, target_height) = calculate_dimensions(original_width, original_height, size);
+	let filter = resize_filter(original_width, original_height, size);
+	let thumbnail = img.resize(target_width, target_height, filter);
+	let rgb_thumbnail = thumbnail.to_rgb8();
+	let actual_width = rgb_thumbnail.width();
+	let actual_height = rgb_thumbnail.height();
+	let expected_size = (actual_width * actual_height * 3) as usize;
+	let actual_size = rgb_thumbnail.as_raw().len();
+	if expected_size != actual_size {
+		return Err(ThumbnailError::other(format!(
+			"Image buffer size mismatch: expected {} bytes for {}x{}, got {} bytes",
+			expected_size, actual_width, actual_height, actual_size
+		)));
+	}
+	let webp_encoder = webp::Encoder::from_rgb(&rgb_thumbnail, actual_width, actual_height);
+	let webp_data = webp_encoder.encode(quality as f32).to_vec();
+	std::fs::write(output_path, &webp_data)?;
+	Ok(ThumbnailInfo {
+		size_bytes: webp_data.len(),
+		dimensions: (actual_width, actual_height),
+		format: "webp".to_string(),
+		blurhash: None,
+	})
 }
 
 /// Calculate target dimensions maintaining aspect ratio
@@ -331,6 +396,21 @@ fn calculate_video_dimensions(target_size: u32) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn test_downscale_for_thumbnail_budget_small_unchanged() {
+		let img = image::DynamicImage::new_rgb8(800, 600);
+		let out = downscale_for_thumbnail_budget(img);
+		assert_eq!((out.width(), out.height()), (800, 600));
+	}
+
+	#[test]
+	fn test_downscale_for_thumbnail_budget_caps_huge() {
+		let img = image::DynamicImage::new_rgb8(10000, 8000);
+		let out = downscale_for_thumbnail_budget(img);
+		assert!(out.width() <= MAX_THUMB_SOURCE_EDGE);
+		assert!(out.height() <= MAX_THUMB_SOURCE_EDGE);
+	}
 
 	#[test]
 	fn test_calculate_dimensions() {

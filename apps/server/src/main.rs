@@ -279,6 +279,62 @@ struct Args {
 	p2p: bool,
 }
 
+
+/// Log import/thumbnail throttling knobs and ffmpeg HW capability for operators.
+fn log_import_runtime_hints() {
+	let thumb_conc =
+		std::env::var("SD_THUMB_MAX_CONCURRENT").unwrap_or_else(|_| "2 (default)".into());
+	let thumb_batch =
+		std::env::var("SD_THUMB_BATCH_SIZE").unwrap_or_else(|_| "16 (default)".into());
+	info!(
+		"Thumbnail import limits: SD_THUMB_MAX_CONCURRENT={}, SD_THUMB_BATCH_SIZE={}",
+		thumb_conc, thumb_batch
+	);
+
+	#[cfg(feature = "turbojpeg")]
+	info!("JPEG turbo decode feature: enabled (sd-images/turbojpeg)");
+	#[cfg(not(feature = "turbojpeg"))]
+	info!(
+		"JPEG turbo decode feature: disabled (build with --features turbojpeg if libturbojpeg is available)"
+	);
+
+	let ffmpeg_bin = sd_core::ops::media::ffmpeg_program();
+	info!("ffmpeg binary: {}", ffmpeg_bin);
+	if let Ok(path_override) = std::env::var("FFMPEG_PATH").or_else(|_| std::env::var("FFMPEG")) {
+		if !path_override.trim().is_empty() {
+			info!("FFMPEG_PATH/FFMPEG override active: {}", path_override);
+		}
+	}
+
+	// ffmpeg HW detection is best-effort; distro ffmpeg often lacks nvenc.
+	match std::process::Command::new(ffmpeg_bin)
+		.args(["-hide_banner", "-encoders"])
+		.output()
+	{
+		Ok(out) if out.status.success() => {
+			let text = String::from_utf8_lossy(&out.stdout);
+			let nvenc = text.contains("h264_nvenc");
+			let qsv = text.contains("h264_qsv");
+			let amf = text.contains("h264_amf");
+			let vaapi = text.contains("h264_vaapi");
+			info!(
+				"ffmpeg H.264 HW encoders: nvenc={}, qsv={}, amf={}, vaapi={}",
+				nvenc, qsv, amf, vaapi
+			);
+			if !nvenc && !qsv && !amf && !vaapi {
+				info!(
+					"No HW H.264 encoder in this ffmpeg build; video proxy/thumbstrip stay CPU-bound. GPU containers still help future AI (ORT/Whisper)."
+				);
+			}
+		}
+		Ok(out) => warn!(
+			"ffmpeg -encoders exited with status {:?} — HW probe skipped",
+			out.status.code()
+		),
+		Err(e) => info!("ffmpeg not found on PATH ({}); HW probe skipped", e),
+	}
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// Initialize logging
@@ -329,6 +385,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	info!("Data directory: {:?}", data_dir);
 	info!("Socket address: {}", socket_addr);
+	log_import_runtime_hints();
 
 	// Parse authentication
 	let (auth, _disabled) = parse_auth(args.auth.as_deref());

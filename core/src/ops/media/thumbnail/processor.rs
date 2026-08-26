@@ -20,7 +20,7 @@ impl ThumbnailProcessor {
 	pub fn new(library: Arc<Library>) -> Self {
 		Self {
 			library,
-			variants: ThumbnailVariants::defaults(),
+			variants: ThumbnailVariants::import_defaults(),
 			regenerate: false,
 		}
 	}

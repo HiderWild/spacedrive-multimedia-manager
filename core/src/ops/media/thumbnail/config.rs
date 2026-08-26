@@ -78,6 +78,11 @@ impl ThumbnailVariants {
 		vec![Self::grid_1x(), Self::grid_2x(), Self::detail_1x()]
 	}
 
+	/// Minimal variants for bulk import: one grid size keeps memory bounded.
+	pub fn import_defaults() -> Vec<ThumbnailVariantConfig> {
+		vec![Self::grid_1x()]
+	}
+
 	/// Map a size to the closest standard variant
 	pub fn from_size(size: u32) -> Option<ThumbnailVariantConfig> {
 		match size {
@@ -130,6 +135,14 @@ mod tests {
 		assert_eq!(defaults[0].size, 256);
 		assert_eq!(defaults[1].size, 512);
 		assert_eq!(defaults[2].size, 1024);
+	}
+
+	#[test]
+	fn test_import_defaults() {
+		let import = ThumbnailVariants::import_defaults();
+		assert_eq!(import.len(), 1);
+		assert_eq!(import[0].size, 256);
+		assert_eq!(import[0].variant.as_str(), "grid@1x");
 	}
 
 	#[test]

@@ -34,6 +34,81 @@ cargo run --bin sd-cli -- <command>      # Run CLI (binary is sd-cli, not spaced
 
 `start.ps1` prunes the opposite profile by default (`target/debug` when running release, and vice versa) so debug+release trees do not both grow toward 10GB+. Pass `-KeepOtherProfile` to keep both.
 
+### Async media derivatives (add ≠ generate)
+
+Photo **add / watcher / index** paths must not generate thumbnails or face vectors inline.
+
+- Status lives on `sidecar.status` (`pending` | `ready` | `failed`)
+  - thumbnail: `kind=thumb`, variant e.g. `grid@1x`
+  - face embedding: `kind=embeddings`, variant `face`
+  - scene embedding: `kind=embeddings`, variant `scene` (CLIP/DINO for visual clustering)
+
+### Scene embedding (GPU)
+
+- Feature flags: `scene-embed` (ORT CPU), `scene-embed-cuda` (ORT + CUDA EP)
+- Backends: OpenCLIP ViT-B/32 (default), DINOv2 ViT-B/14, histogram baseline
+- Env: `SD_SCENE_EMBED_BACKEND=openclip|dinov2|histogram`, `SD_SCENE_EMBED_MAX_CONCURRENT=2`
+- Weights: `{data_dir}/models/image_embedding/{openclip-vit-b-32,dinov2-vit-b-14}.onnx`
+- Job: `SceneEmbedJob` drains pending `embeddings/scene` sidecars
+- Eval: `ops::media::scene_embed::eval::evaluate_backends()` + `scripts/bench-scene-embed.ps1`
+- Helpers: `ops::media::derivative_queue`
+  - `schedule_derivative_enqueue` — mark pending + debounced job flush (watcher path)
+  - `enqueue_thumbnails_for_entries` — batch mark + dispatch one job
+  - `derivative_status_for_content` — snapshot of readiness
+- Query: `media.derivativeStatus` (`DerivativeStatusQuery`) for UI polling
+- Watcher `run_processors` only runs content hash + schedule; `ThumbnailJob` drains the queue
+- Bulk index (Content/Deep) batch-enqueues thumbs after discovery, non-blocking
+
+### Bulk import / thumbnail throttling (Docker & WSL)
+
+Bulk photo import used to spawn unbounded concurrent decodes and multi-size thumbnails, which OOMs 2G containers and freezes the host. Defaults are now conservative:
+
+- Import thumbnails: only `grid@1x` (see `ThumbnailVariants::import_defaults`)
+- Job defaults: `batch_size=16`, `max_concurrent=2` (overridable)
+- Watcher default: `thumbstrip` **disabled** (opt-in; ~6s per video)
+
+Environment knobs (also set in `apps/server/docker-compose.yml`):
+
+```bash
+SD_THUMB_MAX_CONCURRENT=2   # in-flight thumbnail generations
+SD_THUMB_BATCH_SIZE=16      # discovery batch size before process loop
+FFMPEG_PATH=/path/to/ffmpeg # optional NVENC-capable binary (also accepts FFMPEG=)
+```
+
+### WSL2 Docker + NVIDIA GPU
+
+1. Host: current NVIDIA driver with WSL support; in WSL run `nvidia-smi`.
+2. Install NVIDIA Container Toolkit; verify:
+   `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`
+3. CPU image (default, higher memory limit for import):
+   `docker compose -f apps/server/docker-compose.yml up -d --build`
+4. GPU overlay (CUDA runtime image + device reservation):
+   `docker compose -f apps/server/docker-compose.yml -f apps/server/docker-compose.gpu.yml up -d --build`
+5. Confirm: `docker compose exec spacedrive nvidia-smi`
+6. Operator guide: `apps/server/README-GPU.md`
+7. NVENC example overlay: `apps/server/docker-compose.nvenc.example.yml`
+8. Import results template: `docs/superpowers/plans/2026-07-11-import-bench-report.md`
+
+Notes: stock Debian/Ubuntu `ffmpeg` usually lacks `h264_nvenc`. GPU passthrough mainly enables future AI/ORT/Whisper and any host-side NVENC ffmpeg you install. **JPEG/HEIC thumbnails remain CPU-bound** unless you enable the optional turbojpeg path; use concurrency limits above to stop import freezes.
+
+Optional fast JPEG (libjpeg-turbo) feature chain:
+
+```bash
+# Host build (needs libturbojpeg + NASM/cmake on some platforms)
+cargo build -p sd-server --features heif,ffmpeg,turbojpeg
+
+# GPU image enables turbojpeg by default (see apps/server/Dockerfile.gpu)
+```
+
+Offline decode/resize micro-bench (not a full daemon import):
+
+```powershell
+./scripts/bench-thumbnail-import.ps1 -Count 100 -Concurrency 2
+./scripts/bench-thumbnail-import.ps1 -Count 100 -Concurrency 8
+```
+
+Server logs thumbnail knobs and ffmpeg HW encoder presence at startup (`log_import_runtime_hints`).
+
 ### Disk / target cache control
 
 Rust monorepos easily reach multi-GB `target/` dirs because each profile keeps its own deps tree.

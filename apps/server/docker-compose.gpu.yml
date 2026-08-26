@@ -1,0 +1,40 @@
+# GPU overlay for WSL2 / Linux hosts with NVIDIA Container Toolkit.
+#
+# Prerequisites:
+#   1. Windows NVIDIA driver with WSL support
+#   2. In WSL: `nvidia-smi` works
+#   3. NVIDIA Container Toolkit installed; verify:
+#      docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+#
+# Usage (from apps/server/):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# Notes:
+#   - Stock ffmpeg in the image is usually without NVENC. GPU passthrough still helps
+#     future AI/ORT/Whisper builds; for NVENC video encode you need an ffmpeg with
+#     h264_nvenc.
+#   - Raise thumbnail concurrency only after confirming RAM headroom.
+
+services:
+  spacedrive:
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile.gpu
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+      - SD_THUMB_MAX_CONCURRENT=${SD_THUMB_MAX_CONCURRENT:-2}
+      - SD_THUMB_BATCH_SIZE=${SD_THUMB_BATCH_SIZE:-16}
+      # Point at a host/NVENC ffmpeg if you mount one into the container:
+      # - FFMPEG_PATH=/opt/ffmpeg-nvenc/bin/ffmpeg
+    gpus: all
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 1G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

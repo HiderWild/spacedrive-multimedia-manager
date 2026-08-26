@@ -12,10 +12,7 @@ use std::{
 	process::Stdio,
 	time::{Duration, Instant},
 };
-use tokio::{
-	io::{AsyncBufReadExt, BufReader},
-	process::Command,
-};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{debug, info, warn};
 
 /// Information about a generated proxy
@@ -91,8 +88,8 @@ impl ProxyGenerator {
 		// Build FFmpeg command
 		let args = self.build_ffmpeg_args(input, output)?;
 
-		// Spawn FFmpeg process
-		let mut cmd = Command::new("ffmpeg");
+		// Spawn FFmpeg process (honours FFMPEG_PATH for NVENC-capable builds)
+		let mut cmd = crate::ops::media::ffmpeg_bin::tokio_command();
 		cmd.args(args)
 			.stdin(Stdio::null())
 			.stdout(Stdio::null())

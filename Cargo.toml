@@ -98,7 +98,7 @@ arrow-schema        = "53.3"
 indexmap            = "2.7"
 dashmap             = "6.1"
 toml                = "0.8"
-ort                 = { version = "2.0.0-rc.9", default-features = false, features = ["download-binaries", "tls-native"] }
+ort                 = { version = "2.0.0-rc.9", default-features = false, features = ["download-binaries", "tls-native", "std"] }
 
 # Proper IOS Support
 # TODO: Fix the fork - it has compilation errors with TimerFuture

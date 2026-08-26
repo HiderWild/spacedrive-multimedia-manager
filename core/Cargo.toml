@@ -14,8 +14,15 @@ whisper = ["dep:whisper-rs", "dep:hound", "dep:rubato"]
 speech-to-text = ["ffmpeg", "whisper"]
 # AI features umbrella (heavy deps, can be disabled for lite builds or mobile)
 ai = ["speech-to-text"]
+# Linux GPU: enable whisper-rs/cuda (needs CUDA toolkit; not for default builds).
+whisper-cuda = ["whisper", "speech-to-text", "whisper-rs/cuda"]
+# Scene embeddings via ONNX Runtime (OpenCLIP / DINOv2). CUDA when scene-embed-cuda.
+scene-embed = ["dep:ort"]
+scene-embed-cuda = ["scene-embed", "ort/cuda"]
 # HEIF image support (extends sd-images with HEIF format)
 heif = ["sd-images/heif"]
+# Fast JPEG decode for thumbnails via libjpeg-turbo (optional; needs turbojpeg/nasm)
+turbojpeg = ["sd-images/turbojpeg"]
 # Mobile platform support (excludes wasm which doesn't work on iOS)
 mobile = []
 # CLI support (clap is now always available)
@@ -136,6 +143,9 @@ whisper-rs = { version = "0.15.1", optional = true }
 hound      = { version = "3.5", optional = true }   # WAV file reading
 rubato     = { version = "0.16", optional = true }  # Audio resampling to 16kHz
 
+	# ONNX Runtime for scene embeddings (optional; CUDA via scene-embed-cuda)
+	ort = { workspace = true, optional = true }
+
 # Networking
 # Iroh P2P networking
 iroh = { version = "0.95.1", features = ["discovery-local-network"] }
@@ -227,6 +237,7 @@ windows-sys = { version = "0.52", features = ["Win32_Storage_FileSystem", "Win32
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 whisper-rs = { version = "0.15.1", features = ["metal"], optional = true }
+
 
 # iOS-specific dependencies for volume detection via Objective-C FFI
 [target.'cfg(target_os = "ios")'.dependencies]

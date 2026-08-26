@@ -21,10 +21,7 @@ use std::{
 	path::{Path, PathBuf},
 	process::Stdio,
 };
-use tokio::{
-	io::{AsyncBufReadExt, BufReader},
-	process::Command,
-};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{debug, info};
 
 /// Audio bitrate (kbps) attached to every rendition that has source audio.
@@ -390,7 +387,7 @@ impl StreamGenerator {
 	/// filenames relative to it, so DASH packaging passes the package directory;
 	/// HLS uses absolute segment paths and passes `None`.
 	async fn run_ffmpeg(&self, args: Vec<OsString>, cwd: Option<&Path>) -> StreamResult<()> {
-		let mut cmd = Command::new("ffmpeg");
+		let mut cmd = crate::ops::media::ffmpeg_bin::tokio_command();
 		cmd.args(args)
 			.stdin(Stdio::null())
 			.stdout(Stdio::null())
