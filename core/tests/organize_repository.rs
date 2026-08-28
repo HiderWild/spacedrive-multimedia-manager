@@ -1395,5 +1395,341 @@ async fn list_tasks_pages_and_get_task_returns_root_item() {
 	assert_eq!(fetched.root_item_id, first_root_id);
 }
 
+#[tokio::test]
+async fn children_filters_use_inherited_effective_decisions() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let child_id = Uuid::new_v4();
+	let sibling_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Effective", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert effective-decision task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(3);
+	root.unit_count = Some(2);
+	let mut child = item(task_id, child_id, Some(1), "child");
+	child.id = Some(2);
+	child.kind = OrganizeItemKind::File;
+	child.tree_start = Some(1);
+	child.tree_end = Some(2);
+	child.unit_count = Some(1);
+	let mut sibling = item(task_id, sibling_id, Some(1), "sibling");
+	sibling.id = Some(3);
+	sibling.kind = OrganizeItemKind::File;
+	sibling.tree_start = Some(2);
+	sibling.tree_end = Some(3);
+	sibling.unit_count = Some(1);
+	let revision = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root, child, sibling],
+			SnapshotTotals {
+				total_entries: 3,
+				total_units: 2,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert effective-decision tree");
+	repo.apply_decision(DecisionTransactionRequest {
+		task_id,
+		selection: OrganizeSelectionInput::Items {
+			item_ids: vec![root_id],
+		},
+		decision: Some(DecisionValue::keep()),
+		expected_revision: revision,
+		confirm_descendant_override: true,
+		confirm_ancestor_split: true,
+	})
+	.await
+	.expect("mark root kept");
+	let page = repo
+		.children(OrganizeChildrenInput {
+			task_id,
+			parent_item_id: root_id,
+			cursor: None,
+			limit: 10,
+			sort: OrganizeItemSort::Name,
+			direction: OrganizeSortDirection::Asc,
+			filter: OrganizeItemFilter::Keep,
+		})
+		.await
+		.expect("filter children by effective keep");
+	assert_eq!(page.items.len(), 2);
+	let selected = repo
+		.resolve_selection(
+			task_id,
+			2,
+			OrganizeSelectionInput::DirectChildren {
+				parent_item_id: root_id,
+				filter: SelectionFilter::Unmarked,
+				excluded_item_ids: Vec::new(),
+			},
+		)
+		.await
+		.expect("resolve effective unmarked selection");
+	assert!(selected.is_empty());
+}
+
+#[tokio::test]
+async fn accepting_addition_under_destructive_root_requires_confirmation() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let addition_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Addition", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert addition task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(1);
+	root.unit_count = Some(1);
+	let revision = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root],
+			SnapshotTotals {
+				total_entries: 1,
+				total_units: 1,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert addition root");
+	let discarded_revision = repo
+		.apply_decision(DecisionTransactionRequest {
+			task_id,
+			selection: OrganizeSelectionInput::Items {
+				item_ids: vec![root_id],
+			},
+			decision: Some(DecisionValue::discard()),
+			expected_revision: revision,
+			confirm_descendant_override: true,
+			confirm_ancestor_split: true,
+		})
+		.await
+		.expect("discard root");
+	let discarded_revision = match discarded_revision {
+		OrganizeDecisionOutcome::Applied { revision, .. } => revision,
+		other => panic!("unexpected discard outcome: {other:?}"),
+	};
+	let mut addition = item(task_id, addition_id, Some(1), "new");
+	addition.id = Some(2);
+	repo.store_change_scan(
+		task_id,
+		ChangeScanResult {
+			additions: vec![addition],
+			changed_ids: Vec::new(),
+			missing_ids: Vec::new(),
+		},
+	)
+	.await
+	.expect("store pending addition");
+	let outcome = repo
+		.accept_changes(OrganizeAcceptChangesInput {
+			task_id,
+			expected_revision: discarded_revision + 1,
+			include_addition_ids: vec![addition_id],
+			remove_missing_ids: Vec::new(),
+			refresh_changed_ids: Vec::new(),
+			preserve_changed_decisions: false,
+			confirm_inherited_destructive: false,
+		})
+		.await
+		.expect("return inherited destructive confirmation");
+	assert!(matches!(
+		outcome,
+		OrganizeAcceptChangesOutcome::ConfirmationRequired {
+			discard_units: 1,
+			move_units: 0,
+			conflicting_roots,
+			..
+		} if conflicting_roots == vec![root_id]
+	));
+}
+
+#[tokio::test]
+async fn change_scan_ignores_children_covered_by_applied_discard_root() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let child_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\AppliedScan", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert applied-scan task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(2);
+	root.unit_count = Some(1);
+	let mut child = item(task_id, child_id, Some(1), "child");
+	child.id = Some(2);
+	child.kind = OrganizeItemKind::File;
+	child.tree_start = Some(1);
+	child.tree_end = Some(2);
+	child.unit_count = Some(1);
+	let revision = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root, child],
+			SnapshotTotals {
+				total_entries: 2,
+				total_units: 1,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert applied-scan tree");
+	repo.apply_decision(DecisionTransactionRequest {
+		task_id,
+		selection: OrganizeSelectionInput::Items {
+			item_ids: vec![root_id],
+		},
+		decision: Some(DecisionValue::discard()),
+		expected_revision: revision,
+		confirm_descendant_override: true,
+		confirm_ancestor_split: true,
+	})
+	.await
+	.expect("discard scan root");
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET operation_state = 'applied' WHERE task_id = ? AND uuid = ?",
+		[task_id.into(), root_id.into()],
+	))
+	.await
+	.expect("mark discard root applied");
+	repo.store_change_scan(
+		task_id,
+		ChangeScanResult {
+			additions: Vec::new(),
+			changed_ids: vec![child_id],
+			missing_ids: Vec::new(),
+		},
+	)
+	.await
+	.expect("store scan under applied root");
+	let child = organize_task_item::Entity::find()
+		.filter(organize_task_item::Column::TaskId.eq(task_id))
+		.filter(organize_task_item::Column::Uuid.eq(child_id))
+		.one(&db)
+		.await
+		.expect("read scanned child")
+		.expect("child remains in snapshot");
+	assert_eq!(child.external_state, "present");
+}
+
+#[tokio::test]
+async fn removing_missing_parent_rejects_cascade_over_applied_child() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	pragma_foreign_keys(&db).await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let child_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Cascade", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert cascade task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(2);
+	let mut child = item(task_id, child_id, Some(1), "child");
+	child.id = Some(2);
+	child.tree_start = Some(1);
+	child.tree_end = Some(2);
+	let revision = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root, child],
+			SnapshotTotals {
+				total_entries: 2,
+				total_units: 1,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert cascade tree");
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET external_state = 'missing', operation_state = 'applied' WHERE task_id = ? AND uuid = ?",
+		[task_id.into(), child_id.into()],
+	))
+	.await
+	.expect("mark child applied and missing");
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET external_state = 'missing' WHERE task_id = ? AND uuid = ?",
+		[task_id.into(), root_id.into()],
+	))
+	.await
+	.expect("mark parent missing");
+	let error = repo
+		.accept_changes(OrganizeAcceptChangesInput {
+			task_id,
+			expected_revision: revision,
+			include_addition_ids: Vec::new(),
+			remove_missing_ids: vec![root_id],
+			refresh_changed_ids: Vec::new(),
+			preserve_changed_decisions: false,
+			confirm_inherited_destructive: false,
+		})
+		.await
+		.expect_err("missing parent must not cascade over applied child");
+	assert!(matches!(
+		error,
+		OrganizeRepositoryError::Organize(OrganizeError::AppliedDecisionImmutable(id))
+			if id == child_id
+	));
+}
+
+#[tokio::test]
+async fn concurrent_overlapping_task_creation_returns_one_business_conflict() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let first_id = Uuid::new_v4();
+	let second_id = Uuid::new_v4();
+	let first_repo = OrganizeRepository::new(&db);
+	let second_repo = OrganizeRepository::new(&db);
+	let (first, second) = tokio::join!(
+		first_repo.insert_scanning_task(task(
+			first_id,
+			r"C:\Concurrent",
+			OrganizeTaskStatus::Active,
+		)),
+		second_repo.insert_scanning_task(task(
+			second_id,
+			r"c:\concurrent",
+			OrganizeTaskStatus::Active,
+		)),
+	);
+	assert_eq!(
+		[first.is_ok(), second.is_ok()]
+			.into_iter()
+			.filter(|succeeded| *succeeded)
+			.count(),
+		1
+	);
+	let conflict = if let Err(error) = first {
+		error
+	} else {
+		second.expect_err("exactly one concurrent insert must conflict")
+	};
+	assert!(matches!(
+		conflict,
+		OrganizeRepositoryError::Organize(OrganizeError::UnsafeTopology(_))
+	));
+}
+
 #[allow(dead_code)]
 fn _timestamp_type_is_utc(_: DateTime<Utc>) {}

@@ -8,6 +8,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -32,6 +33,23 @@ pub enum OrganizeRepositoryError {
 	Organize(#[from] OrganizeError),
 	#[error(transparent)]
 	Database(#[from] DbErr),
+}
+
+static TASK_INSERT_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+fn is_sqlite_busy(error: &DbErr) -> bool {
+	let message = error.to_string().to_ascii_lowercase();
+	message.contains("database is locked") || message.contains("database is busy")
+}
+
+fn map_overlap_error(error: DbErr) -> OrganizeRepositoryError {
+	if is_sqlite_busy(&error) {
+		OrganizeRepositoryError::Organize(OrganizeError::UnsafeTopology(
+			"another organize task is being created for an overlapping root".into(),
+		))
+	} else {
+		OrganizeRepositoryError::Database(error)
+	}
 }
 
 async fn task_in_state(
@@ -113,15 +131,14 @@ async fn mark_external_state(
 	item_ids: &[Uuid],
 	state: &str,
 ) -> Result<()> {
+	let items = organize_task_item::Entity::find()
+		.filter(organize_task_item::Column::TaskId.eq(task_id))
+		.all(txn)
+		.await?;
 	for item_id in item_ids {
-		if let Some(item) = organize_task_item::Entity::find()
-			.filter(organize_task_item::Column::TaskId.eq(task_id))
-			.filter(organize_task_item::Column::Uuid.eq(*item_id))
-			.one(txn)
-			.await?
-		{
-			if item.operation_state != operation_state(OrganizeOperationState::Applied) {
-				let mut active: organize_task_item::ActiveModel = item.into();
+		if let Some(item) = items.iter().find(|item| item.uuid == *item_id) {
+			if !is_covered_by_applied_destructive_root(&items, item) {
+				let mut active: organize_task_item::ActiveModel = item.clone().into();
 				active.external_state = Set(state.to_string());
 				active.updated_at = Set(Utc::now());
 				active.update(txn).await?;
@@ -174,21 +191,74 @@ fn explicit_ancestor<'a>(
 	items: &'a [organize_task_item::Model],
 	item: &organize_task_item::Model,
 ) -> Option<&'a organize_task_item::Model> {
-	let start = item.tree_start?;
-	items
+	let by_id = items
 		.iter()
-		.filter(|candidate| {
-			candidate.uuid != item.uuid
-				&& candidate.decision_kind.is_some()
-				&& candidate.membership_state == "included"
-				&& candidate
-					.tree_start
-					.is_some_and(|candidate_start| candidate_start < start)
-				&& candidate
-					.tree_end
-					.is_some_and(|candidate_end| candidate_end > start)
-		})
-		.max_by_key(|candidate| candidate.tree_start)
+		.map(|candidate| (candidate.id, candidate))
+		.collect::<HashMap<_, _>>();
+	let mut parent_id = item.parent_id;
+	while let Some(id) = parent_id {
+		let candidate = by_id.get(&id).copied()?;
+		if candidate.membership_state == "included" && candidate.decision_kind.is_some() {
+			return Some(candidate);
+		}
+		parent_id = candidate.parent_id;
+	}
+	None
+}
+
+fn effective_decision<'a>(
+	items: &'a [organize_task_item::Model],
+	item: &organize_task_item::Model,
+) -> Option<&'a organize_task_item::Model> {
+	if item.membership_state == "included" && item.decision_kind.is_some() {
+		items.iter().find(|candidate| candidate.uuid == item.uuid)
+	} else {
+		explicit_ancestor(items, item)
+	}
+}
+
+fn is_covered_by_applied_destructive_root(
+	items: &[organize_task_item::Model],
+	item: &organize_task_item::Model,
+) -> bool {
+	let by_id = items
+		.iter()
+		.map(|candidate| (candidate.id, candidate))
+		.collect::<HashMap<_, _>>();
+	let mut current = Some(item);
+	while let Some(candidate) = current {
+		if candidate.operation_state == operation_state(OrganizeOperationState::Applied)
+			&& matches!(candidate.decision_kind.as_deref(), Some("discard" | "move"))
+		{
+			return true;
+		}
+		current = candidate
+			.parent_id
+			.and_then(|parent_id| by_id.get(&parent_id).copied());
+	}
+	false
+}
+
+fn applied_descendant_of(items: &[organize_task_item::Model], root_ids: &[Uuid]) -> Option<Uuid> {
+	let by_id = items
+		.iter()
+		.map(|candidate| (candidate.id, candidate))
+		.collect::<HashMap<_, _>>();
+	items.iter().find_map(|candidate| {
+		if candidate.operation_state != operation_state(OrganizeOperationState::Applied) {
+			return None;
+		}
+		let mut current = Some(candidate);
+		while let Some(item) = current {
+			if root_ids.contains(&item.uuid) {
+				return Some(candidate.uuid);
+			}
+			current = item
+				.parent_id
+				.and_then(|parent_id| by_id.get(&parent_id).copied());
+		}
+		None
+	})
 }
 
 async fn rebuild_included_tree(
@@ -620,15 +690,35 @@ impl<'db> OrganizeRepository<'db> {
 		&self,
 		draft: NewOrganizeTask,
 	) -> Result<organize_task::Model> {
-		let txn = self.db.begin().await?;
-		if let Some(existing_id) = find_overlapping_active_on(&txn, &draft.root_path_key).await? {
+		let _insert_guard = TASK_INSERT_LOCK
+			.get_or_init(|| tokio::sync::Mutex::new(()))
+			.lock()
+			.await;
+		let txn = self.db.begin().await.map_err(map_overlap_error)?;
+		let existing = find_overlapping_active_on(&txn, &draft.root_path_key)
+			.await
+			.map_err(|error| match error {
+				OrganizeRepositoryError::Database(error) => map_overlap_error(error),
+				other => other,
+			})?;
+		if let Some(existing_id) = existing {
 			txn.rollback().await?;
 			return Err(OrganizeError::UnsafeTopology(format!(
 				"organize task root overlaps active task {existing_id}"
 			))
 			.into());
 		}
-		let model = task_active_model(draft).insert(&txn).await?;
+		let model = match task_active_model(draft).insert(&txn).await {
+			Ok(model) => model,
+			Err(error) if is_sqlite_busy(&error) => {
+				let _ = txn.rollback().await;
+				return Err(map_overlap_error(error).into());
+			}
+			Err(error) => {
+				let _ = txn.rollback().await;
+				return Err(error.into());
+			}
+		};
 		txn.commit().await?;
 		Ok(model)
 	}
@@ -821,13 +911,17 @@ impl<'db> OrganizeRepository<'db> {
 			.one(self.db)
 			.await?
 			.ok_or_else(|| OrganizeError::InvalidTree("children parent disappeared".into()))?;
+		let all_items = organize_task_item::Entity::find()
+			.filter(organize_task_item::Column::TaskId.eq(input.task_id))
+			.all(self.db)
+			.await?;
 		let children = organize_task_item::Entity::find()
 			.filter(organize_task_item::Column::TaskId.eq(input.task_id))
 			.filter(organize_task_item::Column::ParentId.eq(parent.id))
 			.all(self.db)
 			.await?
 			.into_iter()
-			.filter(|item| selection_filter_matches(item, input.filter))
+			.filter(|item| selection_filter_matches(item, &all_items, input.filter))
 			.collect::<Vec<_>>();
 		let matching_child_count = children.len() as u64;
 		let limit = input.limit.clamp(1, 200) as usize;
@@ -1020,6 +1114,10 @@ impl<'db> OrganizeRepository<'db> {
 				affected_bytes,
 				conflicting_roots: inherited_conflicts,
 			});
+		}
+		if let Some(applied_id) = applied_descendant_of(&all_items, &input.remove_missing_ids) {
+			txn.rollback().await?;
+			return Err(OrganizeError::AppliedDecisionImmutable(applied_id).into());
 		}
 
 		for item in additions {
@@ -1421,6 +1519,10 @@ async fn selection_ids<C: sea_orm::ConnectionTrait>(
 				.one(txn)
 				.await?
 				.ok_or_else(|| OrganizeError::InvalidTree("selection parent disappeared".into()))?;
+			let all_items = organize_task_item::Entity::find()
+				.filter(organize_task_item::Column::TaskId.eq(task_id))
+				.all(txn)
+				.await?;
 			let children = organize_task_item::Entity::find()
 				.filter(organize_task_item::Column::TaskId.eq(task_id))
 				.filter(organize_task_item::Column::ParentId.eq(parent.id))
@@ -1429,7 +1531,7 @@ async fn selection_ids<C: sea_orm::ConnectionTrait>(
 				.await?;
 			Ok(children
 				.into_iter()
-				.filter(|item| selection_filter_matches(item, filter))
+				.filter(|item| selection_filter_matches(item, &all_items, filter))
 				.filter(|item| !excluded_item_ids.contains(&item.uuid))
 				.map(|item| item.uuid)
 				.collect())
@@ -1437,13 +1539,19 @@ async fn selection_ids<C: sea_orm::ConnectionTrait>(
 	}
 }
 
-fn selection_filter_matches(item: &organize_task_item::Model, filter: SelectionFilter) -> bool {
+fn selection_filter_matches(
+	item: &organize_task_item::Model,
+	all_items: &[organize_task_item::Model],
+	filter: SelectionFilter,
+) -> bool {
+	let effective_decision =
+		effective_decision(all_items, item).and_then(|ancestor| ancestor.decision_kind.as_deref());
 	match filter {
 		SelectionFilter::All => true,
-		SelectionFilter::Unmarked => item.decision_kind.is_none(),
-		SelectionFilter::Keep => item.decision_kind.as_deref() == Some("keep"),
-		SelectionFilter::Discard => item.decision_kind.as_deref() == Some("discard"),
-		SelectionFilter::Move => item.decision_kind.as_deref() == Some("move"),
+		SelectionFilter::Unmarked => effective_decision.is_none(),
+		SelectionFilter::Keep => effective_decision == Some("keep"),
+		SelectionFilter::Discard => effective_decision == Some("discard"),
+		SelectionFilter::Move => effective_decision == Some("move"),
 		SelectionFilter::Failed => item.operation_state == "failed",
 		SelectionFilter::Changed => item.external_state == "changed",
 		SelectionFilter::Missing => item.external_state == "missing",
