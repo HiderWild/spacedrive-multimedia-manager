@@ -2,6 +2,11 @@
 
 set -euEo pipefail
 
+if ! command -v powershell.exe &>/dev/null; then
+  echo "powershell.exe is required to run the type-generation drift check through the Spacedrive build policy" >&2
+  exit 1
+fi
+
 # Fail (non-zero exit) when the committed TypeScript types drift from the Rust
 # `Type`-deriving structs. Regenerate into a temp copy, diff against the
 # committed file, then restore the original so the working tree is never mutated.
@@ -12,15 +17,11 @@ set -euEo pipefail
 _root="$(CDPATH='' cd "$(dirname "$0")/.." && pwd -P)"
 _generated="${_root}/packages/ts-client/src/generated/types.ts"
 _manifest="${_root}/core/Cargo.toml"
-
-if ! command -v cargo &>/dev/null; then
-  echo "cargo is required to run the type-generation drift check" >&2
-  exit 1
-fi
+_wrapper="${_root}/scripts/invoke-spacedrive-cargo.ps1"
 
 if [ ! -f "$_generated" ]; then
   echo "Generated types not found at: ${_generated}" >&2
-  echo "Run the generator first: cargo run --bin generate_typescript_types --manifest-path core/Cargo.toml" >&2
+  echo "Run the generator first through the policy wrapper: powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${_wrapper}\" run --bin generate_typescript_types --manifest-path \"${_manifest}\"" >&2
   exit 1
 fi
 
@@ -36,7 +37,7 @@ restore() {
 trap restore EXIT
 
 echo "Regenerating TypeScript types to check for drift..."
-cargo run --quiet --bin generate_typescript_types --manifest-path "$_manifest" >/dev/null
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$_wrapper" run --quiet --bin generate_typescript_types --manifest-path "$_manifest" >/dev/null
 
 if diff -u "$_backup" "$_generated" >/tmp/ts-types-drift.diff 2>&1; then
   echo "TypeScript types are in sync with Rust."
@@ -48,7 +49,7 @@ echo "TypeScript types are OUT OF SYNC with Rust 'Type'-deriving structs." >&2
 echo "A Rust type changed but the generated TS was not regenerated." >&2
 echo "" >&2
 echo "Fix it by running:" >&2
-echo "  cargo run --bin generate_typescript_types --manifest-path core/Cargo.toml" >&2
+echo "  powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${_wrapper}\" run --bin generate_typescript_types --manifest-path \"${_manifest}\"" >&2
 echo "then commit the updated packages/ts-client/src/generated/types.ts" >&2
 echo "" >&2
 echo "Drift:" >&2

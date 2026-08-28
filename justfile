@@ -3,11 +3,11 @@
 # Install JS dependencies and set up native deps + cargo config
 setup:
     bun install
-    cargo xtask setup
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" xtask setup
 
 # Run the daemon (default dev workflow: just dev-daemon + just dev-desktop)
 dev-daemon *ARGS:
-	cargo run --features ffmpeg,heif --bin sd-daemon {{ARGS}}
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" run --features ffmpeg,heif --bin sd-daemon {{ARGS}}
 
 # Run the desktop app in dev mode
 dev-desktop:
@@ -27,23 +27,23 @@ dev-mobile-android:
 
 # Build the native mobile core
 build-mobile:
-	cargo xtask build-mobile
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" xtask build-mobile
 
 # Run the headless server (web UI, no desktop app)
 dev-server *ARGS:
-    cargo run --bin sd-server {{ARGS}}
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" run --bin sd-server {{ARGS}}
 
 # Run all workspace tests
 test:
-    cargo test --workspace
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" test --workspace
 
 # Build everything (default members)
 build:
-    cargo build
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" build
 
 # Build in release mode
 build-release:
-    cargo build --release
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" build --release
 
 # Report / prune Rust target + optional registry cache (Windows PowerShell)
 clean-rust:
@@ -56,7 +56,7 @@ clean-rust-all:
 # Format and lint
 check:
     cargo fmt --check
-    cargo clippy --workspace
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" clippy --workspace
 
 # Format code
 fmt:
@@ -64,7 +64,7 @@ fmt:
 
 # Regenerate the TypeScript client types from Rust `Type`-deriving structs
 generate-types:
-    cargo run --bin generate_typescript_types --manifest-path core/Cargo.toml
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" run --bin generate_typescript_types --manifest-path "{{justfile_directory()}}/core/Cargo.toml"
 
 # Fail if committed TS types have drifted from Rust (used in CI)
 check-types:
@@ -94,4 +94,4 @@ spaceui-unlink:
 
 # Run the CLI
 cli *ARGS:
-    cargo run --bin sd-cli -- {{ARGS}}
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-spacedrive-cargo.ps1" run --bin sd-cli -- {{ARGS}}
