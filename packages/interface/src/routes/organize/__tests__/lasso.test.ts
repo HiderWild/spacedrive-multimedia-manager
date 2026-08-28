@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'bun:test';
-import {computeLassoSelection, edgeScrollVelocity} from '../selection';
+import {computeLassoSelection, edgeScrollVelocity, isLassoDrag, lassoRect} from '../selection';
 
 	describe('organize lasso', () => {
 	test('recomputes from the pointer-down baseline so backward shrink removes cards', () => {
@@ -13,5 +13,12 @@ import {computeLassoSelection, edgeScrollVelocity} from '../selection';
 		expect(edgeScrollVelocity(0, viewport)).toBe(-24);
 		expect(edgeScrollVelocity(500, viewport)).toBe(24);
 		expect(edgeScrollVelocity(250, viewport)).toBe(0);
+	});
+
+	test('pointer wiring normalizes backward drags and ignores click-sized movement', () => {
+		const rect = lassoRect(100, 200, 40, 80);
+		expect(rect).toMatchObject({left: 40, right: 100, top: 80, bottom: 200, width: 60, height: 120});
+		expect(isLassoDrag(10, 10, 12, 12)).toBe(false);
+		expect(isLassoDrag(10, 10, 14, 10)).toBe(true);
 	});
 });

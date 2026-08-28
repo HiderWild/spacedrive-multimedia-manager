@@ -3,6 +3,18 @@ export function computeLassoSelection(pointerDownSelection: Set<string>, current
 	return new Set(currentIntersections);
 }
 
+export function lassoRect(startX: number, startY: number, currentX: number, currentY: number): DOMRect {
+	const left = Math.min(startX, currentX);
+	const right = Math.max(startX, currentX);
+	const top = Math.min(startY, currentY);
+	const bottom = Math.max(startY, currentY);
+	return {left, right, top, bottom, width: right - left, height: bottom - top, x: left, y: top, toJSON: () => ({})} as DOMRect;
+}
+
+export function isLassoDrag(startX: number, startY: number, currentX: number, currentY: number, threshold = 3): boolean {
+	return Math.hypot(currentX - startX, currentY - startY) >= threshold;
+}
+
 export function intersectRenderedCards(rect: DOMRect, cards: Iterable<HTMLElement>): Set<string> {
 	const result = new Set<string>();
 	for (const card of cards) {
