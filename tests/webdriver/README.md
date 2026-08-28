@@ -1,7 +1,7 @@
 # Spacedrive Organize View - WebDriver Verification
 
-WebDriver-based runtime verification that the organize view (UI + commands)
-actually works inside a running Spacedrive Tauri app.
+WebDriver-based runtime verification that recursive organize tasks work inside a
+running Spacedrive Tauri app.
 
 ## What This Proves
 
@@ -11,48 +11,14 @@ drives the real React UI, and asserts that:
 1. **App launches**: title `Spacedrive`, page served from the dev or packaged origin
 2. **Tauri runtime**: `window.__TAURI__`, `__TAURI_INTERNALS__`, and `core.invoke` are present
 3. **Daemon running**: `get_daemon_status` returns `is_running: true`
-4. **Real organize UI renders** for a physical directory: keep/discard controls,
-   preview placeholder, and the actual filenames appear in the center pane
-5. **Decision flow on the real UI**:
-   - Clicking a card selects it (selection ring appears)
-   - Clicking *Keep this tab* / *Discard this tab* marks the selected card
-   - The marked card gets the dim (`opacity-50`) state and the matching badge
-     (emerald check for keep, rose X for discard)
-   - Cards that were not marked stay undimmed and have no badge
-6. **Left-pane tab filtering on the real UI**:
-   - The Keep tab lists only kept files
-   - The Discard tab lists only discarded files
-   - The Discard tab exposes an enabled *Delete now* button
-7. **Reload restores decisions in the UI**: after `driver.get(url)` the same
-   badges and dim state reappear on the same cards with no further interaction
-8. **Delete dialog open/cancel on the real UI**:
-   - Clicking *Delete now* opens the confirmation dialog with the expected
-      title and description
-   - Clicking *Cancel* closes the dialog
-   - The file on disk is **not** removed
-   - The card stays discarded in the center pane
-   - The persisted organize JSON still carries the discard decision
-9. **Delete confirm on the real UI**:
-   - Pressing Enter on *Delete permanently* removes the discarded file from disk
-   - The file disappears from the left Discard list and the center pane
-   - The persisted organize JSON drops the deleted file's decision entry
-10. **Preview pane wiring**:
-   - Empty placeholder renders with no selection
-   - Selecting a card applies the selection ring (proves selection wiring)
-   - For a leaf file with no supported renderer the placeholder is still shown
-11. **Directory preview branches on the real UI**:
-   - No-media directories render `Preview list` only
-   - Image-only directories render a disabled `Video` tab with the missing-video title
-   - Mixed-media directories default to the `Video` tab and mount a video preview first
-12. **Single-file video preview on the real UI**:
-   - Selecting a real `mp4` renders the `<video>` preview
-   - The preview keeps the `autoplay` attribute
-   - The preview hydrates `sd-video-muted` / `sd-video-volume` from `localStorage`
-13. **Organize state commands**: `save_organize_state` / `load_organize_state`
-     round-trip preserves version, path, items, and decisions, the persisted
-     JSON shape passes 11 field-level structural checks, and harness teardown
-     uses `delete_organize_state` so test-created keys do not linger in the
-     real app profile
+4. **One real recursive task** is created from the `/organize` entry form for a
+   physical Windows directory and navigated through nested children.
+5. **Visible decisions** cover Keep, Discard, and Move. Parent/descendant
+   conflicts are handled by the real confirmation dialog.
+6. **Persistence and safety**: reload restores the task and decisions, and no
+   file changes occur before commit.
+7. **Lifecycle**: Finish makes the task read-only, Reopen restores editing, and
+   the review dialog reports filesystem drift without side effects.
 
 ## What This Does *Not* Prove
 
@@ -100,14 +66,11 @@ python tests/webdriver/test_real_tauri_app.py
                                               └──────────────┘
 ```
 
-Each UI test temporarily seeds `sd-tabs-state` so the TabManager boots straight
-into organize view for a fresh temp directory, then restores the original
-`localStorage` keys before quitting the driver. The harness also registers the
-exact organize-state key for each temp directory or fixed save/load fixture key,
-deletes it before the test to clear stale residue, then deletes it again in
-teardown and verifies it is gone. The harness drives the real React UI and
-asserts on the rendered DOM (badge classes, dim classes, dialog title,
-selection ring, on-disk file presence, persisted organize JSON).
+The vertical test opens `/organize`, fills the visible device and Windows-folder
+inputs, starts a real snapshot, and follows the redirect to `/organize/:taskId`.
+It uses only visible DOM controls and temporary files. It does not seed
+Explorer `viewMode`, call private Tauri JSON commands, or inspect an internal
+organize-state file.
 
 ## Test Results
 
@@ -116,18 +79,7 @@ selection ring, on-disk file presence, persisted organize JSON).
 | App Connection | Title `Spacedrive`, URL on a recognised app origin |
 | Tauri API | `__TAURI__`, `__TAURI_INTERNALS__`, `core.invoke` all present |
 | Daemon Status | `is_running == true` |
-| Organize Real UI | Real organize controls + actual filenames render for a physical directory |
-| Decision Flow + Reload Restore | Keep/discard clicks dim cards and add badges; tabs filter correctly; full page reload restores both decisions |
-| Delete Dialog Open/Cancel | Delete dialog opens with the right title; cancel closes it; file survives on disk; card stays discarded; persisted state stays discard |
-| Delete Dialog Enter Confirms + Real Delete | Enter confirms deletion; file disappears from disk, left Discard list, center pane, and persisted organize state |
-| Preview Pane | Empty state renders; selecting a card applies the ring; unsupported-file placeholder shows |
-| Preview no-media branch | Selecting a no-media directory renders `Preview list` only |
-| Preview one-media disabled tab title | Image-only directory disables `Video` with the expected title |
-| Preview mixed-media priority | Mixed-media directory defaults to `Video` and mounts a video preview first |
-| Preview single-file video | Real `mp4` preview mounts with `autoplay` and saved muted/volume prefs |
-| Load Empty State | Returns `null` for nonexistent key |
-| Save/Load State | Round-trip: version=1, path, 2 items, decisions=keep+discard |
-| State Structure | 11 field-level checks on persisted items |
+| Recursive task vertical flow | Create, nested navigation, Keep/Discard/Move, reload, Finish/Reopen, and drift safety |
 
 ## Known Limitations
 

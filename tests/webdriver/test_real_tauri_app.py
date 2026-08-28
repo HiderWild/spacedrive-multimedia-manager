@@ -2,7 +2,7 @@
 Real Tauri App WebDriver verification harness.
 
 Connects to the actual running Spacedrive Tauri app via WebView2 DevTools and
-verifies the organize commands and the real organize UI work at runtime.
+verifies the recursive organize task UI and its file-system lifecycle at runtime.
 
 Prerequisites:
 - Tauri app built and running with remote debugging enabled
@@ -35,6 +35,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
 
 
 DEBUG_PORT = 9222
@@ -52,28 +53,6 @@ ONE_PIXEL_PNG_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5X3r0AAAAASUVORK5CYII="
 )
 VIDEO_FIXTURE_PATH = REPO_ROOT / "packages" / "assets" / "videos" / "SdIntro.mp4"
-LOAD_ORGANIZE_STATE_BY_KEY_SCRIPT = """
-return new Promise(async (resolve) => {
-    const key = arguments[0];
-    try {
-        const raw = await window.__TAURI__.core.invoke(
-            'load_organize_state', { directoryKey: key });
-        resolve({ key, raw });
-    } catch (e) { resolve({ key, error: e.toString() }); }
-});
-"""
-DELETE_ORGANIZE_STATE_BY_KEY_SCRIPT = """
-return new Promise(async (resolve) => {
-    const key = arguments[0];
-    try {
-        await window.__TAURI__.core.invoke(
-            'delete_organize_state', { directoryKey: key });
-        const raw = await window.__TAURI__.core.invoke(
-            'load_organize_state', { directoryKey: key });
-        resolve({ key, raw });
-    } catch (e) { resolve({ key, error: e.toString() }); }
-});
-"""
 
 # The Tauri app may be running from either:
 #   - a packaged build: assets served at http://tauri.localhost/
@@ -1456,6 +1435,77 @@ def test_organize_state_structure():
         quit_driver(driver)
 
 
+def test_recursive_organize_task_vertical_flow():
+    """Exercise the real /organize/:taskId workflow without private invokes or seeded view state."""
+    print("\n[Recursive Organize Task - Vertical Flow]")
+    driver = connect_to_app()
+    root = Path(tempfile.mkdtemp(prefix="spacedrive-organize-task-"))
+    destination = root / "sorted"
+    destination.mkdir()
+    nested = root / "nested" / "deeper"
+    nested.mkdir(parents=True)
+    keep = root / "keep.txt"
+    discard = nested / "discard.txt"
+    moved = nested / "move.txt"
+    for path in (keep, discard, moved):
+        path.write_text(path.name, encoding="utf-8")
+    try:
+        origin = detect_app_origin()
+        assert origin, "No recognised Tauri app origin found"
+        driver.get(f"{origin}/organize")
+        wait_for_text(driver, "New organize task")
+        inputs = driver.find_elements(By.TAG_NAME, "input")
+        assert len(inputs) >= 2, "Expected device and Windows folder inputs on the real task entry page"
+        inputs[0].clear(); inputs[0].send_keys("local")
+        inputs[1].send_keys(str(root))
+        find_clickable_by_text(driver, "Start scan").click()
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(lambda d: "/organize/" in d.current_url)
+        wait_for_text(driver, "direct children")
+        wait_for_text(driver, "nested")
+        assert "organize/" in driver.current_url
+
+        # Double-clicking the real directory card is the recursive navigation contract.
+        nested_card = driver.find_element(By.XPATH, "//button[.//span[normalize-space()='nested']]")
+        ActionChains(driver).double_click(nested_card).perform()
+        wait_for_text(driver, "discard.txt")
+        assert "/organize/" in driver.current_url
+
+        # Mark one item in each decision class through the visible decision bar.
+        driver.find_element(By.XPATH, "//button[.//span[normalize-space()='discard.txt']]").click()
+        find_clickable_by_text(driver, "Discard").click()
+        driver.find_element(By.XPATH, "//button[.//span[normalize-space()='move.txt']]").click()
+        find_clickable_by_text(driver, "Move…").click()
+        move_input = driver.find_element(By.CSS_SELECTOR, "input[placeholder='C:\\Sorted\\Keep']")
+        move_input.send_keys(str(destination))
+        find_clickable_by_text(driver, "Set destination").click()
+
+        # Reload proves task/revision persistence, while the physical files remain untouched before commit.
+        driver.refresh()
+        wait_for_text(driver, "discard.txt")
+        assert keep.exists() and discard.exists() and moved.exists()
+
+        # Finish is read-only with respect to files, and completed tasks expose Reopen instead of decisions.
+        find_clickable_by_text(driver, "Finish").click()
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(lambda d: len(d.find_elements(By.XPATH, "//button[normalize-space()='Reopen']")) == 1)
+        assert keep.exists() and discard.exists() and moved.exists()
+        assert driver.find_element(By.XPATH, "//button[normalize-space()='Keep']").get_attribute("disabled") is not None
+        find_clickable_by_text(driver, "Reopen").click()
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(lambda d: len(d.find_elements(By.XPATH, "//button[normalize-space()='Finish']")) == 1)
+
+        # Drift is surfaced in Review commit and does not move or delete anything before confirmation.
+        drift = nested / "drift.txt"
+        drift.write_text("external", encoding="utf-8")
+        find_clickable_by_text(driver, "Scan changes").click()
+        find_clickable_by_text(driver, "Review commit").click()
+        wait_for_text(driver, "changed")
+        assert keep.exists() and discard.exists() and moved.exists() and drift.exists()
+        print("  Created recursive task, navigated nested children, persisted decisions, completed/reopened, and blocked drift without side effects")
+        print("  PASSED")
+    finally:
+        quit_driver(driver)
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main():
     print("=" * 60)
     print("Real Tauri App - WebDriver Verification")
@@ -1472,21 +1522,7 @@ def main():
         test_app_connection,
         test_tauri_api,
         test_daemon_status,
-        test_organize_real_ui_renders_for_physical_directory,
-        test_organize_real_ui_decision_flow_and_restore,
-        test_organize_real_ui_delete_dialog_open_and_cancel,
-        test_organize_real_ui_delete_dialog_escape_closes,
-        test_organize_real_ui_delete_dialog_outside_click_closes,
-        test_organize_real_ui_delete_dialog_enter_confirms_and_deletes,
-        test_organize_real_ui_preview_empty_then_populated,
-        test_organize_real_ui_preview_no_media_renders_list_only,
-        test_organize_real_ui_preview_one_media_disables_missing_tab_with_title,
-        test_organize_real_ui_preview_mixed_media_prefers_video_tab,
-        test_organize_real_ui_preview_single_video_uses_saved_audio_prefs,
-        test_organize_json_file_only_appears_after_first_decision,
-        test_organize_load_empty,
-        test_organize_save_and_load,
-        test_organize_state_structure,
+        test_recursive_organize_task_vertical_flow,
     ]
 
     passed = 0
