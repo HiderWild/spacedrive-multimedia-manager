@@ -1,29 +1,50 @@
 import { useMemo } from "react";
-import type { File } from "@sd/ts-client";
+import type {
+	DirectoryListingInput,
+	DirectoryListingOutput,
+	File,
+} from "@sd/ts-client";
 import { File as FileComponent } from "../../routes/explorer/File";
 import { useNormalizedQuery } from "../../contexts/SpacedriveContext";
 import { Folder } from "@sd/assets/icons";
 
 interface DirectoryPreviewProps {
 	file: File;
+	/**
+	 * Optional bounded candidates supplied by a fixed organize snapshot.
+	 * When present, the live directory query is disabled.
+	 */
+	previewFiles?: File[];
+	onPreviewFile?: (file: File) => void;
+	selectedPreviewFileId?: string | null;
+	previewLabel?: string;
 }
 
-export function DirectoryPreview({ file }: DirectoryPreviewProps) {
-	const directoryQuery = useNormalizedQuery({
+export function DirectoryPreview({
+	file,
+	previewFiles,
+	onPreviewFile,
+	selectedPreviewFileId,
+	previewLabel,
+}: DirectoryPreviewProps) {
+	const directoryQuery = useNormalizedQuery<
+		DirectoryListingInput,
+		DirectoryListingOutput
+	>({
 		query: "files.directory_listing",
 		input: {
 			path: file.sd_path,
 			limit: null,
 			include_hidden: false,
-			sort_by: "modified" as any,
+			sort_by: "modified",
 			folders_first: true,
 		},
 		resourceType: "file",
 		pathScope: file.sd_path,
-		enabled: true,
+		enabled: previewFiles === undefined,
 	});
 
-	const allFiles = (directoryQuery.data as any)?.files || [];
+	const allFiles = previewFiles ?? directoryQuery.data?.files ?? [];
 
 	const directories = useMemo(() => {
 		return allFiles;
@@ -32,7 +53,7 @@ export function DirectoryPreview({ file }: DirectoryPreviewProps) {
 	const gridSize = 120;
 	const gapSize = 12;
 
-	if (directoryQuery.isLoading) {
+	if (previewFiles === undefined && directoryQuery.isLoading) {
 		return (
 			<div className="w-full h-full flex items-center justify-center">
 				<div className="text-center">
@@ -65,7 +86,9 @@ export function DirectoryPreview({ file }: DirectoryPreviewProps) {
 						{file.name}
 					</div>
 					<div className="text-sm text-ink-dull mt-2">
-						No subdirectories
+						{previewFiles === undefined
+							? "No subdirectories"
+							: "No image or video samples"}
 					</div>
 				</div>
 			</div>
@@ -85,9 +108,17 @@ export function DirectoryPreview({ file }: DirectoryPreviewProps) {
 				}}
 			>
 				{directories.map((dir: File) => (
-					<div
+					<button
+						type="button"
 						key={dir.id}
-						className="flex flex-col items-center gap-2 p-1 rounded-lg hover:bg-app-hover/20"
+						onClick={() => onPreviewFile?.(dir)}
+						className={`flex flex-col items-center gap-2 rounded-lg p-1 text-left transition-colors hover:bg-app-hover/20 ${
+							selectedPreviewFileId === dir.id
+								? "bg-sidebar-selected/70 ring-1 ring-accent/60"
+								: ""
+						}`}
+						aria-label={`Preview ${dir.name}`}
+						aria-pressed={selectedPreviewFileId === dir.id}
 					>
 						<div className="rounded-lg p-2">
 							<FileComponent.Thumb file={dir} size={thumbSize} />
@@ -97,9 +128,14 @@ export function DirectoryPreview({ file }: DirectoryPreviewProps) {
 								{dir.name}
 							</div>
 						</div>
-					</div>
+					</button>
 				))}
 			</div>
+			{previewLabel && (
+				<div className="px-6 pb-4 text-center text-xs text-ink-faint">
+					{previewLabel}
+				</div>
+			)}
 		</div>
 	);
 }

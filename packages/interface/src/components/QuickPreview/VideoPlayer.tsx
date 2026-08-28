@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { File } from "@sd/ts-client";
 import { useServer } from "../../contexts/ServerContext";
+import { File as FileComponent } from "../../routes/explorer/File";
 import { Subtitles, type SubtitleSettings } from "./Subtitles";
 import { SubtitleSettingsMenu } from "./SubtitleSettingsMenu";
 import { useZoomPan } from "./useZoomPan";
@@ -37,6 +38,7 @@ export function VideoPlayer({
 	const containerRef = useRef<HTMLDivElement>(null);
 	const videoContainerRef = useRef<HTMLDivElement>(null);
 	const [playing, setPlaying] = useState(false);
+	const [videoError, setVideoError] = useState(false);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [duration, setDuration] = useState(0);
 	const [volume, setVolume] = useState(() => {
@@ -73,6 +75,10 @@ export function VideoPlayer({
 		file.video_media_data.fps_num > 0
 			? file.video_media_data.fps_den / file.video_media_data.fps_num
 			: 1 / 30;
+
+	useEffect(() => {
+		setVideoError(false);
+	}, [src]);
 
 	// Expose controls state to parent
 	useEffect(() => {
@@ -361,6 +367,7 @@ export function VideoPlayer({
 						autoPlay
 						playsInline
 						className="max-h-full max-w-full object-contain"
+						onError={() => setVideoError(true)}
 						onClick={togglePlay}
 						onPlay={() => setPlaying(true)}
 						onPause={() => setPlaying(false)}
@@ -377,6 +384,13 @@ export function VideoPlayer({
 					/>
 				</div>
 			</div>
+
+			{videoError && (
+				<div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-black text-center text-sm text-ink-dull">
+					<FileComponent.Thumb file={file} size={180} />
+					<span>Video preview is unavailable.</span>
+				</div>
+			)}
 
 			{/* Subtitles */}
 			{subtitlesEnabled && (
