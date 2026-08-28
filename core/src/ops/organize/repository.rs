@@ -6,17 +6,19 @@ use sea_orm::{
 	DatabaseTransaction, DbErr, EntityTrait, NotSet, PaginatorTrait, QueryFilter, QueryOrder, Set,
 	TransactionTrait,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::domain::addressing::SdPath;
 use crate::infra::db::entities::{organize_task, organize_task_item};
 use crate::infra::job::types::JobId;
 use crate::ops::organize::error::OrganizeError;
 use crate::ops::organize::model::{
 	DecisionResolution, DecisionTreeState, DecisionValue, ExplicitDecisionRoot,
-	OrganizeDecisionConflictKind, OrganizeItemKind, OrganizeOperationState, OrganizeTaskStatus,
-	TreeItemComputed,
+	OrganizeDecisionConflictKind, OrganizeItemKind, OrganizeOperationState,
+	OrganizeProgressSummary, OrganizeTaskStatus, TreeItemComputed,
 };
 use crate::ops::organize::path::paths_overlap;
 use crate::ops::organize::tree::{
@@ -118,10 +120,40 @@ async fn mark_external_state(
 			.one(txn)
 			.await?
 		{
-			let mut active: organize_task_item::ActiveModel = item.into();
-			active.external_state = Set(state.to_string());
-			active.updated_at = Set(Utc::now());
-			active.update(txn).await?;
+			if item.operation_state != operation_state(OrganizeOperationState::Applied) {
+				let mut active: organize_task_item::ActiveModel = item.into();
+				active.external_state = Set(state.to_string());
+				active.updated_at = Set(Utc::now());
+				active.update(txn).await?;
+			}
+		}
+	}
+	Ok(())
+}
+
+async fn validate_accept_ids(
+	txn: &DatabaseTransaction,
+	task_id: Uuid,
+	item_ids: &[Uuid],
+	membership_state: &str,
+	external_state: &str,
+) -> Result<()> {
+	for item_id in item_ids.iter().copied().collect::<HashSet<_>>() {
+		let item = organize_task_item::Entity::find()
+			.filter(organize_task_item::Column::TaskId.eq(task_id))
+			.filter(organize_task_item::Column::Uuid.eq(item_id))
+			.one(txn)
+			.await?
+			.ok_or_else(|| OrganizeError::InvalidTaskState("accept item is not in task".into()))?;
+		if item.operation_state == operation_state(OrganizeOperationState::Applied) {
+			return Err(OrganizeError::AppliedDecisionImmutable(item.uuid).into());
+		}
+		if item.membership_state != membership_state || item.external_state != external_state {
+			return Err(OrganizeError::InvalidTaskState(format!(
+				"accept item {} must be {membership_state}/{external_state}",
+				item.uuid
+			))
+			.into());
 		}
 	}
 	Ok(())
@@ -419,13 +451,90 @@ pub struct DecisionRecord {
 	pub operation_state: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizeTaskSummary {
+	pub id: Uuid,
+	pub name: String,
+	pub root_path: String,
+	pub root_sd_path: SdPath,
+	pub status: OrganizeTaskStatus,
+	pub revision: i64,
+	pub snapshot_version: i32,
+	pub total_entries: u64,
+	pub total_bytes: u64,
+	pub progress: OrganizeProgressSummary,
+	pub scan_issue_count: u64,
+	pub pending_addition_count: u64,
+	pub failed_operation_count: u64,
+	pub changed_count: u64,
+	pub missing_count: u64,
+	pub scan_job_id: Option<JobId>,
+	pub commit_job_id: Option<JobId>,
+	pub last_error: Option<String>,
+	pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OrganizeListInput {
+	pub statuses: Option<Vec<OrganizeTaskStatus>>,
+	pub cursor: Option<String>,
+	pub limit: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct OrganizeListOutput {
+	pub tasks: Vec<OrganizeTaskSummary>,
+	pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OrganizeGetInput {
+	pub task_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct OrganizeGetOutput {
+	pub task: OrganizeTaskSummary,
+	pub root_item_id: Uuid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OrganizeItemFilter {
+	All,
+	Unmarked,
+	Keep,
+	Discard,
+	Move,
+	Failed,
+	Changed,
+	Missing,
+}
+
+pub type SelectionFilter = OrganizeItemFilter;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OrganizeItemSort {
+	Name,
+	Modified,
+	Size,
+	Progress,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OrganizeSortDirection {
+	Asc,
+	Desc,
+}
+
 #[derive(Debug, Clone)]
 pub struct OrganizeChildrenInput {
 	pub task_id: Uuid,
 	pub parent_item_id: Uuid,
 	pub cursor: Option<String>,
 	pub limit: u32,
-	pub filter: SelectionFilter,
+	pub sort: OrganizeItemSort,
+	pub direction: OrganizeSortDirection,
+	pub filter: OrganizeItemFilter,
 }
 
 #[derive(Debug, Clone)]
@@ -623,8 +732,101 @@ impl<'db> OrganizeRepository<'db> {
 			.collect())
 	}
 
+	pub async fn list_tasks(&self, input: OrganizeListInput) -> Result<OrganizeListOutput> {
+		let status_keys = input.statuses.as_ref().map(|statuses| {
+			let mut keys = statuses
+				.iter()
+				.map(|status| task_status(*status))
+				.collect::<Vec<_>>();
+			keys.sort();
+			keys.dedup();
+			keys
+		});
+		let cursor = input.cursor.as_deref().map(parse_task_cursor).transpose()?;
+		if let Some(cursor) = &cursor {
+			if cursor.statuses != status_keys {
+				return Err(
+					OrganizeError::InvalidTree("task cursor filter mismatch".into()).into(),
+				);
+			}
+		}
+		let mut query = organize_task::Entity::find();
+		if let Some(statuses) = &status_keys {
+			if statuses.is_empty() {
+				return Ok(OrganizeListOutput {
+					tasks: Vec::new(),
+					next_cursor: None,
+				});
+			}
+			query = query.filter(organize_task::Column::Status.is_in(statuses.clone()));
+		}
+		let mut rows = query
+			.order_by_desc(organize_task::Column::UpdatedAt)
+			.order_by_desc(organize_task::Column::Id)
+			.all(self.db)
+			.await?;
+		if let Some(cursor) = cursor {
+			rows.retain(|row| (row.updated_at, row.id) < (cursor.updated_at, cursor.task_id));
+		}
+		let limit = input.limit.clamp(1, 100) as usize;
+		let has_next = rows.len() > limit;
+		rows.truncate(limit);
+		let next_cursor = has_next.then(|| {
+			let row = rows.last().expect("non-empty page has a next cursor");
+			encode_task_cursor(&TaskCursor {
+				statuses: status_keys.clone(),
+				updated_at: row.updated_at,
+				task_id: row.id,
+			})
+		});
+		let mut tasks = Vec::with_capacity(rows.len());
+		for row in rows {
+			tasks.push(task_summary(self.db, row).await?);
+		}
+		Ok(OrganizeListOutput { tasks, next_cursor })
+	}
+
+	pub async fn get_task(&self, task_id: Uuid) -> Result<OrganizeGetOutput> {
+		let task = organize_task::Entity::find_by_id(task_id)
+			.one(self.db)
+			.await?
+			.ok_or_else(|| {
+				OrganizeError::InvalidTaskState("organize task does not exist".into())
+			})?;
+		let root_item_id = organize_task_item::Entity::find()
+			.filter(organize_task_item::Column::TaskId.eq(task_id))
+			.filter(organize_task_item::Column::ParentId.is_null())
+			.filter(organize_task_item::Column::MembershipState.eq("included"))
+			.order_by_asc(organize_task_item::Column::TreeStart)
+			.one(self.db)
+			.await?
+			.ok_or_else(|| OrganizeError::InvalidTree("organize task has no root item".into()))?
+			.uuid;
+		Ok(OrganizeGetOutput {
+			task: task_summary(self.db, task).await?,
+			root_item_id,
+		})
+	}
+
 	pub async fn children(&self, input: OrganizeChildrenInput) -> Result<OrganizeChildrenOutput> {
 		let revision = self.get_task_revision(input.task_id).await?;
+		let cursor = input
+			.cursor
+			.as_deref()
+			.map(parse_child_cursor)
+			.transpose()?;
+		if let Some(cursor) = &cursor {
+			if cursor.revision != revision
+				|| cursor.parent_item_id != input.parent_item_id
+				|| cursor.filter != input.filter
+				|| cursor.sort != input.sort
+				|| cursor.direction != input.direction
+			{
+				return Err(
+					OrganizeError::InvalidTree("child cursor does not match query".into()).into(),
+				);
+			}
+		}
 		let parent = organize_task_item::Entity::find()
 			.filter(organize_task_item::Column::TaskId.eq(input.task_id))
 			.filter(organize_task_item::Column::Uuid.eq(input.parent_item_id))
@@ -641,22 +843,27 @@ impl<'db> OrganizeRepository<'db> {
 			.collect::<Vec<_>>();
 		let matching_child_count = children.len() as u64;
 		let limit = input.limit.clamp(1, 200) as usize;
-		let start = input
-			.cursor
-			.as_deref()
-			.map(parse_child_cursor)
-			.transpose()?;
 		let mut children = children;
 		children.sort_by(|left, right| {
-			left.name
-				.cmp(&right.name)
-				.then_with(|| left.uuid.cmp(&right.uuid))
+			let ordering = child_sort_cmp(left, right, input.sort);
+			match input.direction {
+				OrganizeSortDirection::Asc => ordering,
+				OrganizeSortDirection::Desc => ordering.reverse(),
+			}
 		});
-		let start_index = start
-			.map(|(name, uuid)| {
+		let start_index = cursor
+			.as_ref()
+			.map(|cursor| {
 				children
 					.iter()
-					.position(|item| (item.name.as_str(), item.uuid) > (name.as_str(), uuid))
+					.position(|item| match input.direction {
+						OrganizeSortDirection::Asc => {
+							child_cursor_cmp(item, cursor, input.sort).is_gt()
+						}
+						OrganizeSortDirection::Desc => {
+							child_cursor_cmp(item, cursor, input.sort).is_lt()
+						}
+					})
 					.unwrap_or(children.len())
 			})
 			.unwrap_or(0);
@@ -664,7 +871,18 @@ impl<'db> OrganizeRepository<'db> {
 		let page = children[start_index..end_index].to_vec();
 		let next_cursor = (end_index < children.len()).then(|| {
 			let item = &page[page.len() - 1];
-			format!("{}|{}", item.name, item.uuid)
+			encode_child_cursor(&ChildCursor {
+				revision,
+				parent_item_id: input.parent_item_id,
+				filter: input.filter,
+				sort: input.sort,
+				direction: input.direction,
+				name: item.name.clone(),
+				modified_at_100ns: item.modified_at_100ns,
+				size_bytes: item.size_bytes,
+				progress: item.unit_count.unwrap_or(0),
+				item_id: item.uuid,
+			})
 		});
 		Ok(OrganizeChildrenOutput {
 			revision,
@@ -695,9 +913,28 @@ impl<'db> OrganizeRepository<'db> {
 	pub async fn store_change_scan(&self, task_id: Uuid, result: ChangeScanResult) -> Result<i64> {
 		let txn = self.db.begin().await?;
 		let task = task_in_state(&txn, task_id, &[OrganizeTaskStatus::Active]).await?;
+		for draft in &result.additions {
+			if draft.task_id != task_id {
+				txn.rollback().await?;
+				return Err(OrganizeError::InvalidTaskState(
+					"change-scan addition belongs to another task".into(),
+				)
+				.into());
+			}
+			if draft.operation_state == OrganizeOperationState::Applied {
+				txn.rollback().await?;
+				return Err(OrganizeError::AppliedDecisionImmutable(draft.uuid).into());
+			}
+		}
 		for draft in result.additions {
 			let mut draft = draft;
 			draft.membership_state = "pending_addition".to_string();
+			draft.external_state = "present".to_string();
+			draft.decision_kind = None;
+			draft.move_destination = None;
+			draft.operation_state = OrganizeOperationState::None;
+			draft.last_error = None;
+			draft.applied_at = None;
 			draft.tree_start = None;
 			draft.tree_end = None;
 			draft.unit_count = None;
@@ -732,13 +969,34 @@ impl<'db> OrganizeRepository<'db> {
 				current_revision: task.revision,
 			});
 		}
+		validate_accept_ids(
+			&txn,
+			input.task_id,
+			&input.include_addition_ids,
+			"pending_addition",
+			"present",
+		)
+		.await?;
+		validate_accept_ids(
+			&txn,
+			input.task_id,
+			&input.remove_missing_ids,
+			"included",
+			"missing",
+		)
+		.await?;
+		validate_accept_ids(
+			&txn,
+			input.task_id,
+			&input.refresh_changed_ids,
+			"included",
+			"changed",
+		)
+		.await?;
 		let all_items = organize_task_item::Entity::find()
 			.filter(organize_task_item::Column::TaskId.eq(input.task_id))
 			.all(&txn)
 			.await?;
-		ensure_no_applied_items(&txn, input.task_id, &input.include_addition_ids).await?;
-		ensure_no_applied_items(&txn, input.task_id, &input.remove_missing_ids).await?;
-		ensure_no_applied_items(&txn, input.task_id, &input.refresh_changed_ids).await?;
 		let additions = selected_items(&all_items, &input.include_addition_ids);
 		let mut inherited_conflicts = Vec::new();
 		let mut discard_units = 0;
@@ -803,6 +1061,8 @@ impl<'db> OrganizeRepository<'db> {
 					active.decision_kind = Set(None);
 					active.move_destination = Set(None);
 					active.operation_state = Set(operation_state(OrganizeOperationState::None));
+					active.last_error = Set(None);
+					active.applied_at = Set(None);
 				}
 				active.updated_at = Set(Utc::now());
 				active.update(&txn).await?;
@@ -879,6 +1139,7 @@ impl<'db> OrganizeRepository<'db> {
 		}
 		let revision = task.revision + 1;
 		let mut active: organize_task::ActiveModel = task.into();
+		active.status = Set(task_status(OrganizeTaskStatus::Active));
 		active.revision = Set(revision);
 		active.updated_at = Set(Utc::now());
 		active.update(&txn).await?;
@@ -1201,13 +1462,189 @@ fn selection_filter_matches(item: &organize_task_item::Model, filter: SelectionF
 	}
 }
 
-fn parse_child_cursor(cursor: &str) -> Result<(String, Uuid)> {
-	let (name, uuid) = cursor
-		.rsplit_once('|')
-		.ok_or_else(|| OrganizeError::InvalidTree("invalid child cursor".into()))?;
-	let uuid = Uuid::parse_str(uuid)
-		.map_err(|_| OrganizeError::InvalidTree("invalid child cursor".into()))?;
-	Ok((name.to_string(), uuid))
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TaskCursor {
+	statuses: Option<Vec<String>>,
+	updated_at: DateTime<Utc>,
+	task_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ChildCursor {
+	revision: i64,
+	parent_item_id: Uuid,
+	filter: OrganizeItemFilter,
+	sort: OrganizeItemSort,
+	direction: OrganizeSortDirection,
+	name: String,
+	modified_at_100ns: i64,
+	size_bytes: i64,
+	progress: i64,
+	item_id: Uuid,
+}
+
+const URL_SAFE_BASE64: &[u8; 64] =
+	b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+fn encode_opaque<T: Serialize>(value: &T) -> String {
+	let json = serde_json::to_vec(value).expect("organize cursor serialization");
+	let mut encoded = String::with_capacity(json.len().div_ceil(3) * 4);
+	for chunk in json.chunks(3) {
+		let first = chunk[0] as u32;
+		let second = chunk.get(1).copied().unwrap_or(0) as u32;
+		let third = chunk.get(2).copied().unwrap_or(0) as u32;
+		let value = (first << 16) | (second << 8) | third;
+		encoded.push(URL_SAFE_BASE64[((value >> 18) & 0x3f) as usize] as char);
+		encoded.push(URL_SAFE_BASE64[((value >> 12) & 0x3f) as usize] as char);
+		if chunk.len() > 1 {
+			encoded.push(URL_SAFE_BASE64[((value >> 6) & 0x3f) as usize] as char);
+		}
+		if chunk.len() > 2 {
+			encoded.push(URL_SAFE_BASE64[(value & 0x3f) as usize] as char);
+		}
+	}
+	encoded
+}
+
+fn decode_opaque(cursor: &str) -> Result<Vec<u8>> {
+	if cursor.is_empty() || cursor.len() % 4 == 1 {
+		return Err(OrganizeError::InvalidTree("invalid opaque cursor".into()).into());
+	}
+	let mut decoded = Vec::with_capacity(cursor.len() * 3 / 4);
+	let mut value = 0_u32;
+	let mut bits = 0_u8;
+	for byte in cursor.bytes() {
+		let digit = URL_SAFE_BASE64
+			.iter()
+			.position(|candidate| *candidate == byte)
+			.ok_or_else(|| OrganizeError::InvalidTree("invalid opaque cursor".into()))?
+			as u32;
+		value = (value << 6) | digit;
+		bits += 6;
+		if bits >= 8 {
+			bits -= 8;
+			decoded.push((value >> bits) as u8);
+			value &= (1 << bits) - 1;
+		}
+	}
+	Ok(decoded)
+}
+
+fn parse_task_cursor(cursor: &str) -> Result<TaskCursor> {
+	serde_json::from_slice(&decode_opaque(cursor)?).map_err(|_| {
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree("invalid task cursor".into()))
+	})
+}
+
+fn encode_task_cursor(cursor: &TaskCursor) -> String {
+	encode_opaque(cursor)
+}
+
+fn parse_child_cursor(cursor: &str) -> Result<ChildCursor> {
+	serde_json::from_slice(&decode_opaque(cursor)?).map_err(|_| {
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree("invalid child cursor".into()))
+	})
+}
+
+fn encode_child_cursor(cursor: &ChildCursor) -> String {
+	encode_opaque(cursor)
+}
+
+fn child_sort_cmp(
+	left: &organize_task_item::Model,
+	right: &organize_task_item::Model,
+	sort: OrganizeItemSort,
+) -> std::cmp::Ordering {
+	let ordering = match sort {
+		OrganizeItemSort::Name => left.name.cmp(&right.name),
+		OrganizeItemSort::Modified => left.modified_at_100ns.cmp(&right.modified_at_100ns),
+		OrganizeItemSort::Size => left.size_bytes.cmp(&right.size_bytes),
+		OrganizeItemSort::Progress => left
+			.unit_count
+			.unwrap_or(0)
+			.cmp(&right.unit_count.unwrap_or(0)),
+	};
+	ordering.then_with(|| left.uuid.cmp(&right.uuid))
+}
+
+fn child_cursor_cmp(
+	item: &organize_task_item::Model,
+	cursor: &ChildCursor,
+	sort: OrganizeItemSort,
+) -> std::cmp::Ordering {
+	let ordering = match sort {
+		OrganizeItemSort::Name => item.name.cmp(&cursor.name),
+		OrganizeItemSort::Modified => item.modified_at_100ns.cmp(&cursor.modified_at_100ns),
+		OrganizeItemSort::Size => item.size_bytes.cmp(&cursor.size_bytes),
+		OrganizeItemSort::Progress => item.unit_count.unwrap_or(0).cmp(&cursor.progress),
+	};
+	ordering.then_with(|| item.uuid.cmp(&cursor.item_id))
+}
+
+async fn task_summary(
+	db: &DatabaseConnection,
+	task: organize_task::Model,
+) -> Result<OrganizeTaskSummary> {
+	let items = organize_task_item::Entity::find()
+		.filter(organize_task_item::Column::TaskId.eq(task.id))
+		.all(db)
+		.await?;
+	let included = items
+		.iter()
+		.filter(|item| item.membership_state == "included")
+		.cloned()
+		.collect::<Vec<_>>();
+	let state = decision_tree_state(&included)?;
+	let progress = reduce_progress(&state.nodes, &state.decisions)?;
+	let failed_operation_count = compact_operation_roots(&state.decisions)
+		.into_iter()
+		.filter(|root| root.operation_state == OrganizeOperationState::Failed)
+		.count() as u64;
+	let total_bytes = included
+		.iter()
+		.filter(|item| item.kind == "file")
+		.map(|item| item.size_bytes.max(0) as u64)
+		.sum();
+	Ok(OrganizeTaskSummary {
+		id: task.id,
+		name: task.name,
+		root_path: task.root_path.clone(),
+		root_sd_path: SdPath::physical(task.device_slug, task.root_path),
+		status: parse_task_status(&task.status)?,
+		revision: task.revision,
+		snapshot_version: task.snapshot_version,
+		total_entries: included.len() as u64,
+		total_bytes,
+		progress,
+		scan_issue_count: task.scan_issue_count.max(0) as u64,
+		pending_addition_count: task.pending_addition_count.max(0) as u64,
+		failed_operation_count,
+		changed_count: items
+			.iter()
+			.filter(|item| item.external_state == "changed")
+			.count() as u64,
+		missing_count: items
+			.iter()
+			.filter(|item| item.external_state == "missing")
+			.count() as u64,
+		scan_job_id: task.scan_job_id.map(JobId::from),
+		commit_job_id: task.commit_job_id.map(JobId::from),
+		last_error: task.last_error,
+		completed_at: task.completed_at,
+	})
+}
+
+fn parse_task_status(value: &str) -> Result<OrganizeTaskStatus> {
+	match value {
+		"scanning" => Ok(OrganizeTaskStatus::Scanning),
+		"active" => Ok(OrganizeTaskStatus::Active),
+		"committing" => Ok(OrganizeTaskStatus::Committing),
+		"completed" => Ok(OrganizeTaskStatus::Completed),
+		"failed" => Ok(OrganizeTaskStatus::Failed),
+		status => {
+			Err(OrganizeError::InvalidTaskState(format!("unknown task status: {status}")).into())
+		}
+	}
 }
 
 fn item_active_model(draft: SnapshotItemDraft) -> organize_task_item::ActiveModel {

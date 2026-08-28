@@ -8,7 +8,8 @@ use sd_core::ops::organize::model::{
 use sd_core::ops::organize::repository::{
 	ChangeScanResult, DecisionTransactionRequest, NewOrganizeTask, OrganizeAcceptChangesInput,
 	OrganizeAcceptChangesOutcome, OrganizeChildrenInput, OrganizeDecisionOutcome,
-	OrganizeRepository, OrganizeRepositoryError, OrganizeSelectionInput, SelectionFilter,
+	OrganizeItemFilter, OrganizeItemSort, OrganizeListInput, OrganizeRepository,
+	OrganizeRepositoryError, OrganizeSelectionInput, OrganizeSortDirection, SelectionFilter,
 	SnapshotItemDraft, SnapshotTotals,
 };
 use sea_orm::{
@@ -607,6 +608,8 @@ async fn direct_children_paging_is_stable_and_filters_exclusions() {
 			parent_item_id: root_id,
 			cursor: None,
 			limit: 1,
+			sort: OrganizeItemSort::Name,
+			direction: OrganizeSortDirection::Asc,
 			filter: SelectionFilter::All,
 		})
 		.await
@@ -618,6 +621,8 @@ async fn direct_children_paging_is_stable_and_filters_exclusions() {
 			parent_item_id: root_id,
 			cursor: page.next_cursor,
 			limit: 1,
+			sort: OrganizeItemSort::Name,
+			direction: OrganizeSortDirection::Asc,
 			filter: SelectionFilter::All,
 		})
 		.await
@@ -1034,6 +1039,360 @@ async fn finish_deduplicates_unmarked_units_and_uses_inherited_decisions() {
 		finished,
 		sd_core::ops::organize::repository::OrganizeFinishOutcome::Completed { revision: 3 }
 	));
+}
+
+#[tokio::test]
+async fn change_scan_rejects_foreign_additions_and_skips_applied_items() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let foreign_task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Scan", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert scan task");
+	repo.insert_scanning_task(task(
+		foreign_task_id,
+		r"C:\Foreign",
+		OrganizeTaskStatus::Active,
+	))
+	.await
+	.expect("insert foreign task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	repo.replace_included_snapshot(
+		task_id,
+		vec![root],
+		SnapshotTotals {
+			total_entries: 1,
+			total_units: 1,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert scan root");
+
+	let foreign_addition = item(foreign_task_id, Uuid::new_v4(), None, "foreign");
+	let foreign_error = repo
+		.store_change_scan(
+			task_id,
+			ChangeScanResult {
+				additions: vec![foreign_addition],
+				changed_ids: Vec::new(),
+				missing_ids: Vec::new(),
+			},
+		)
+		.await
+		.expect_err("foreign addition must be rejected");
+	assert!(matches!(
+		foreign_error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+	assert_eq!(repo.get_task_revision(task_id).await.unwrap(), 1);
+
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET decision_kind = 'discard', operation_state = 'applied' WHERE task_id = ? AND uuid = ?",
+		[task_id.into(), root_id.into()],
+	))
+	.await
+	.expect("mark scan root applied");
+	repo.store_change_scan(
+		task_id,
+		ChangeScanResult {
+			additions: Vec::new(),
+			changed_ids: vec![root_id],
+			missing_ids: Vec::new(),
+		},
+	)
+	.await
+	.expect("store scan excluding applied root");
+	let applied = organize_task_item::Entity::find_by_id(1)
+		.one(&db)
+		.await
+		.unwrap()
+		.expect("read applied root");
+	assert_eq!(applied.external_state, "present");
+}
+
+#[tokio::test]
+async fn accept_changes_requires_membership_and_matching_external_state() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let addition_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Accept", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert accept task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	repo.replace_included_snapshot(
+		task_id,
+		vec![root],
+		SnapshotTotals {
+			total_entries: 1,
+			total_units: 1,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert accept root");
+	let mut addition = item(task_id, addition_id, Some(1), "addition");
+	addition.id = Some(2);
+	repo.store_change_scan(
+		task_id,
+		ChangeScanResult {
+			additions: vec![addition],
+			changed_ids: Vec::new(),
+			missing_ids: Vec::new(),
+		},
+	)
+	.await
+	.expect("store pending addition");
+
+	let invalid_include = repo
+		.accept_changes(OrganizeAcceptChangesInput {
+			task_id,
+			expected_revision: 2,
+			include_addition_ids: vec![root_id],
+			remove_missing_ids: Vec::new(),
+			refresh_changed_ids: Vec::new(),
+			preserve_changed_decisions: false,
+			confirm_inherited_destructive: false,
+		})
+		.await
+		.expect_err("included item cannot be accepted as an addition");
+	assert!(matches!(
+		invalid_include,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+
+	let invalid_refresh = repo
+		.accept_changes(OrganizeAcceptChangesInput {
+			task_id,
+			expected_revision: 2,
+			include_addition_ids: Vec::new(),
+			remove_missing_ids: Vec::new(),
+			refresh_changed_ids: vec![addition_id],
+			preserve_changed_decisions: false,
+			confirm_inherited_destructive: false,
+		})
+		.await
+		.expect_err("pending addition cannot be refreshed as changed");
+	assert!(matches!(
+		invalid_refresh,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET external_state = 'missing' WHERE task_id = ? AND uuid = ?",
+		[task_id.into(), root_id.into()],
+	))
+	.await
+	.expect("mark root missing");
+	let invalid_remove = repo
+		.accept_changes(OrganizeAcceptChangesInput {
+			task_id,
+			expected_revision: 2,
+			include_addition_ids: Vec::new(),
+			remove_missing_ids: vec![addition_id],
+			refresh_changed_ids: Vec::new(),
+			preserve_changed_decisions: false,
+			confirm_inherited_destructive: false,
+		})
+		.await
+		.expect_err("pending addition cannot be removed as missing");
+	assert!(matches!(
+		invalid_remove,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+}
+
+#[tokio::test]
+async fn settling_operation_roots_returns_task_to_active() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Settle", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert settle task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	repo.replace_included_snapshot(
+		task_id,
+		vec![root],
+		SnapshotTotals {
+			total_entries: 1,
+			total_units: 1,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert settle root");
+	let committing_revision = repo
+		.lock_for_commit(task_id, 1, Uuid::new_v4().into())
+		.await
+		.expect("lock settle task");
+	let settled_revision = repo
+		.settle_operation_roots(
+			task_id,
+			vec![sd_core::ops::organize::repository::OperationSettlement {
+				item_id: root_id,
+				state: OrganizeOperationState::Applied,
+				last_error: None,
+				applied_at: Some(Utc::now()),
+			}],
+		)
+		.await
+		.expect("settle root");
+	assert_eq!(settled_revision, committing_revision + 1);
+	let settled = organize_task::Entity::find_by_id(task_id)
+		.one(&db)
+		.await
+		.unwrap()
+		.expect("read settled task");
+	assert_eq!(settled.status, "active");
+}
+
+#[tokio::test]
+async fn children_cursor_is_opaque_and_binds_query_metadata() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Cursor", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert cursor task");
+	let root_id = Uuid::new_v4();
+	let first_id = Uuid::new_v4();
+	let second_id = Uuid::new_v4();
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	let mut first = item(task_id, first_id, Some(1), "a");
+	first.id = Some(2);
+	let mut second = item(task_id, second_id, Some(1), "b");
+	second.id = Some(3);
+	repo.replace_included_snapshot(
+		task_id,
+		vec![root, first, second],
+		SnapshotTotals {
+			total_entries: 3,
+			total_units: 2,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert cursor tree");
+	let request = |cursor| OrganizeChildrenInput {
+		task_id,
+		parent_item_id: root_id,
+		cursor,
+		limit: 1,
+		sort: OrganizeItemSort::Name,
+		direction: OrganizeSortDirection::Asc,
+		filter: OrganizeItemFilter::All,
+	};
+	let page = repo
+		.children(request(None))
+		.await
+		.expect("read first cursor page");
+	let cursor = page.next_cursor.clone().expect("next cursor");
+	assert!(!cursor.contains('|'));
+	let next = repo
+		.children(request(Some(cursor.clone())))
+		.await
+		.expect("read second cursor page");
+	assert_eq!(next.items.len(), 1);
+	let invalid_filter = repo
+		.children(OrganizeChildrenInput {
+			filter: OrganizeItemFilter::Changed,
+			..request(Some(cursor.clone()))
+		})
+		.await
+		.expect_err("cursor filter mismatch must be rejected");
+	assert!(matches!(
+		invalid_filter,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree(_))
+	));
+	repo.store_change_scan(
+		task_id,
+		ChangeScanResult {
+			additions: Vec::new(),
+			changed_ids: Vec::new(),
+			missing_ids: Vec::new(),
+		},
+	)
+	.await
+	.expect("advance cursor revision");
+	let invalid_revision = repo
+		.children(request(Some(cursor)))
+		.await
+		.expect_err("cursor revision mismatch must be rejected");
+	assert!(matches!(
+		invalid_revision,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree(_))
+	));
+}
+
+#[tokio::test]
+async fn list_tasks_pages_and_get_task_returns_root_item() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let first_task_id = Uuid::new_v4();
+	let second_task_id = Uuid::new_v4();
+	let first_root_id = Uuid::new_v4();
+	let second_root_id = Uuid::new_v4();
+	for (task_id, root_id, path) in [
+		(first_task_id, first_root_id, r"C:\ListA"),
+		(second_task_id, second_root_id, r"C:\ListB"),
+	] {
+		repo.insert_scanning_task(task(task_id, path, OrganizeTaskStatus::Active))
+			.await
+			.expect("insert listed task");
+		let mut root = item(task_id, root_id, None, "");
+		root.id = Some(if task_id == first_task_id { 1 } else { 2 });
+		repo.replace_included_snapshot(
+			task_id,
+			vec![root],
+			SnapshotTotals {
+				total_entries: 1,
+				total_units: 1,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert listed root");
+	}
+	let first_page = repo
+		.list_tasks(OrganizeListInput {
+			statuses: Some(vec![OrganizeTaskStatus::Active]),
+			cursor: None,
+			limit: 1,
+		})
+		.await
+		.expect("read first task page");
+	assert_eq!(first_page.tasks.len(), 1);
+	let next_cursor = first_page.next_cursor.clone().expect("task next cursor");
+	let second_page = repo
+		.list_tasks(OrganizeListInput {
+			statuses: Some(vec![OrganizeTaskStatus::Active]),
+			cursor: Some(next_cursor),
+			limit: 1,
+		})
+		.await
+		.expect("read second task page");
+	assert_eq!(second_page.tasks.len(), 1);
+	assert_ne!(first_page.tasks[0].id, second_page.tasks[0].id);
+	let fetched = repo.get_task(first_task_id).await.expect("get task");
+	assert_eq!(fetched.task.id, first_task_id);
+	assert_eq!(fetched.root_item_id, first_root_id);
 }
 
 #[allow(dead_code)]
