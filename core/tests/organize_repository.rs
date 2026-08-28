@@ -131,6 +131,21 @@ async fn migration_creates_only_two_organize_tables_and_required_indexes() {
 }
 
 #[tokio::test]
+async fn inserting_scanning_and_active_tasks_preserves_uuid_primary_keys() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+
+	for status in [OrganizeTaskStatus::Scanning, OrganizeTaskStatus::Active] {
+		let task_id = Uuid::new_v4();
+		let inserted = repo
+			.insert_scanning_task(task(task_id, r"C:\Photos", status))
+			.await
+			.expect("insert task with UUID primary key");
+		assert_eq!(inserted.id, task_id);
+	}
+}
+
+#[tokio::test]
 async fn move_destination_and_operation_state_checks_reject_invalid_rows() {
 	let (_temp_dir, db) = migrated_temp_db().await;
 	let task_id = Uuid::new_v4();
