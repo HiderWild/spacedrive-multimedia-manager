@@ -471,3 +471,173 @@ fn is_ancestor_key(ancestor: &str, descendant: &str) -> bool {
 			.strip_prefix(ancestor)
 			.is_some_and(|suffix| suffix.starts_with('\\'))
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use chrono::Utc;
+
+	fn task(id: Uuid) -> organize_task::Model {
+		let now = Utc::now();
+		organize_task::Model {
+			id,
+			name: "Photos".into(),
+			root_path: r"C:\Photos".into(),
+			root_path_key: r"c:\photos".into(),
+			device_slug: "device".into(),
+			volume_id: None,
+			root_entry_uuid: None,
+			status: "active".into(),
+			revision: 7,
+			snapshot_version: 1,
+			total_entries: 4,
+			total_units: 2,
+			total_bytes: 10,
+			scan_issue_count: 0,
+			pending_addition_count: 0,
+			scan_job_id: None,
+			commit_job_id: None,
+			last_error: None,
+			created_at: now,
+			updated_at: now,
+			completed_at: None,
+		}
+	}
+
+	fn item(
+		task_id: Uuid,
+		id: i32,
+		path: &str,
+		kind: &str,
+		start: i64,
+		end: i64,
+		units: i64,
+		bytes: i64,
+		decision_kind: Option<&str>,
+		move_destination: Option<&str>,
+	) -> organize_task_item::Model {
+		let now = Utc::now();
+		organize_task_item::Model {
+			id,
+			uuid: Uuid::new_v4(),
+			task_id,
+			parent_id: None,
+			entry_uuid: None,
+			relative_path: path.into(),
+			relative_path_key: path.to_lowercase(),
+			name: path.rsplit('\\').next().unwrap_or(path).into(),
+			extension: None,
+			kind: kind.into(),
+			size_bytes: bytes,
+			aggregate_size_bytes: bytes,
+			modified_at_100ns: 0,
+			metadata_signature: "signature".into(),
+			tree_start: Some(start),
+			tree_end: Some(end),
+			unit_count: Some(units),
+			membership_state: "included".into(),
+			external_state: "present".into(),
+			decision_kind: decision_kind.map(str::to_string),
+			move_destination: move_destination.map(str::to_string),
+			operation_state: if decision_kind.is_some() {
+				"pending".into()
+			} else {
+				"none".into()
+			},
+			last_error: None,
+			applied_at: None,
+			created_at: now,
+			updated_at: now,
+		}
+	}
+
+	#[test]
+	fn compacts_nested_discard_roots_and_excludes_keep_from_physical_work() {
+		let task_id = Uuid::new_v4();
+		let task = task(task_id);
+		let root = item(task_id, 1, "", "directory", 0, 4, 2, 10, None, None);
+		let discard = item(
+			task_id,
+			2,
+			"discard",
+			"directory",
+			1,
+			3,
+			1,
+			7,
+			Some("discard"),
+			None,
+		);
+		let nested_discard = item(
+			task_id,
+			3,
+			"discard\\nested.jpg",
+			"file",
+			2,
+			3,
+			1,
+			7,
+			Some("discard"),
+			None,
+		);
+		let keep = item(
+			task_id,
+			4,
+			"keep.jpg",
+			"file",
+			3,
+			4,
+			1,
+			3,
+			Some("keep"),
+			None,
+		);
+		let plan = build_commit_plan(&task, &[root, discard, nested_discard, keep]).unwrap();
+
+		assert_eq!(plan.discard_roots.len(), 1);
+		assert_eq!(
+			plan.discard_roots[0].source,
+			SdPath::physical("device", r"C:\Photos\discard")
+		);
+		assert!(plan.move_groups.is_empty());
+		assert_eq!(plan.keep_units, 1);
+		assert!(plan.can_commit);
+	}
+
+	#[test]
+	fn groups_equivalent_move_destinations_without_scheduling_keep() {
+		let task_id = Uuid::new_v4();
+		let task = task(task_id);
+		let root = item(task_id, 1, "", "directory", 0, 3, 2, 10, None, None);
+		let move_a = item(
+			task_id,
+			2,
+			"a.jpg",
+			"file",
+			1,
+			2,
+			1,
+			4,
+			Some("move"),
+			Some(r"C:/Archive/2026"),
+		);
+		let move_b = item(
+			task_id,
+			3,
+			"b.jpg",
+			"file",
+			2,
+			3,
+			1,
+			6,
+			Some("move"),
+			Some(r"c:\archive\.\2026"),
+		);
+		let plan = build_commit_plan(&task, &[root, move_a, move_b]).unwrap();
+
+		assert_eq!(plan.move_groups.len(), 1);
+		assert_eq!(plan.move_groups[0].roots.len(), 2);
+		assert_eq!(plan.move_groups[0].units, 2);
+		assert!(plan.discard_roots.is_empty());
+	}
+}

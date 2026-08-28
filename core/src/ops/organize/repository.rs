@@ -1260,6 +1260,63 @@ impl<'db> OrganizeRepository<'db> {
 			.await?)
 	}
 
+	/// Reserves the task for one change scan without changing its revision.
+	pub async fn begin_change_scan(
+		&self,
+		task_id: Uuid,
+		expected_revision: i64,
+		job_id: JobId,
+	) -> Result<()> {
+		let txn = self.db.begin().await?;
+		let task = task_in_state(&txn, task_id, &[OrganizeTaskStatus::Active]).await?;
+		if task.revision != expected_revision {
+			txn.rollback().await?;
+			return Err(OrganizeError::StaleRevision(task.revision).into());
+		}
+		if task.scan_job_id.is_some() {
+			txn.rollback().await?;
+			return Err(OrganizeError::InvalidTaskState(
+				"organize task already has a scan in progress".into(),
+			)
+			.into());
+		}
+		let mut active: organize_task::ActiveModel = task.into();
+		active.scan_job_id = Set(Some(job_id.into()));
+		active.updated_at = Set(Utc::now());
+		active.update(&txn).await?;
+		txn.commit().await?;
+		Ok(())
+	}
+
+	/// Replaces the provisional scan job id when dispatch returns its real receipt.
+	pub async fn attach_change_scan_job(
+		&self,
+		task_id: Uuid,
+		expected_revision: i64,
+		job_id: JobId,
+	) -> Result<bool> {
+		let txn = self.db.begin().await?;
+		let task = organize_task::Entity::find_by_id(task_id)
+			.one(&txn)
+			.await?
+			.ok_or_else(|| {
+				OrganizeError::InvalidTaskState("organize task does not exist".into())
+			})?;
+		if task.status != task_status(OrganizeTaskStatus::Active)
+			|| task.revision != expected_revision
+			|| task.scan_job_id.is_none()
+		{
+			txn.rollback().await?;
+			return Ok(false);
+		}
+		let mut active: organize_task::ActiveModel = task.into();
+		active.scan_job_id = Set(Some(job_id.into()));
+		active.updated_at = Set(Utc::now());
+		active.update(&txn).await?;
+		txn.commit().await?;
+		Ok(true)
+	}
+
 	pub async fn store_change_scan(&self, task_id: Uuid, result: ChangeScanResult) -> Result<i64> {
 		let txn = self.db.begin().await?;
 		let task = task_in_state(&txn, task_id, &[OrganizeTaskStatus::Active]).await?;
@@ -1300,11 +1357,144 @@ impl<'db> OrganizeRepository<'db> {
 		let revision = task.revision + 1;
 		let mut active: organize_task::ActiveModel = task.into();
 		active.pending_addition_count = Set(pending_addition_count);
+		active.scan_job_id = Set(None);
+		active.last_error = Set(None);
 		active.revision = Set(revision);
 		active.updated_at = Set(Utc::now());
 		active.update(&txn).await?;
 		txn.commit().await?;
 		Ok(revision)
+	}
+
+	/// Compares a fresh Windows snapshot with the fixed task manifest and settles it atomically.
+	pub async fn store_snapshot_change_scan(
+		&self,
+		task_id: Uuid,
+		expected_revision: i64,
+		scan: crate::ops::organize::snapshot::SnapshotScanResult,
+	) -> Result<i64> {
+		let txn = self.db.begin().await?;
+		let task = task_in_state(&txn, task_id, &[OrganizeTaskStatus::Active]).await?;
+		if task.revision != expected_revision {
+			txn.rollback().await?;
+			return Err(OrganizeError::StaleRevision(task.revision).into());
+		}
+		let existing = organize_task_item::Entity::find()
+			.filter(organize_task_item::Column::TaskId.eq(task_id))
+			.all(&txn)
+			.await?;
+		let by_key = existing
+			.iter()
+			.map(|item| (item.relative_path_key.clone(), item))
+			.collect::<HashMap<_, _>>();
+		let mut seen = HashSet::new();
+		let mut inserted_by_key = HashMap::new();
+		let mut changed_ids = Vec::new();
+		let mut now = Utc::now();
+		for item in scan.items {
+			seen.insert(item.relative_path_key.clone());
+			if let Some(old) = by_key.get(&item.relative_path_key) {
+				if old.membership_state == "included"
+					&& old.metadata_signature != item.metadata_signature
+				{
+					changed_ids.push(old.uuid);
+				}
+				inserted_by_key.insert(item.relative_path_key, old.id);
+				continue;
+			}
+			let parent_id = item.parent_index.and_then(|_| {
+				let parent_key = item
+					.relative_path
+					.rsplit_once('\\')
+					.map(|(parent, _)| parent.replace('/', "\\").to_lowercase())
+					.unwrap_or_default();
+				inserted_by_key
+					.get(&parent_key)
+					.or_else(|| by_key.get(&parent_key).map(|item| &item.id))
+					.copied()
+			});
+			let inserted = item_active_model(SnapshotItemDraft {
+				id: None,
+				uuid: item.uuid,
+				task_id,
+				parent_id,
+				entry_uuid: None,
+				relative_path: item.relative_path,
+				relative_path_key: item.relative_path_key.clone(),
+				name: item.name,
+				extension: item.extension,
+				kind: item.kind,
+				size_bytes: item.size_bytes,
+				aggregate_size_bytes: item.size_bytes,
+				modified_at_100ns: item.modified_at_100ns,
+				metadata_signature: item.metadata_signature,
+				tree_start: None,
+				tree_end: None,
+				unit_count: None,
+				membership_state: "pending_addition".into(),
+				external_state: "present".into(),
+				decision_kind: None,
+				move_destination: None,
+				operation_state: OrganizeOperationState::None,
+				last_error: None,
+				applied_at: None,
+				created_at: now,
+				updated_at: now,
+			})
+			.insert(&txn)
+			.await?;
+			inserted_by_key.insert(item.relative_path_key, inserted.id);
+			now = Utc::now();
+		}
+		let missing_ids = existing
+			.iter()
+			.filter(|item| {
+				item.membership_state == "included"
+					&& !seen.contains(&item.relative_path_key)
+					&& !is_covered_by_applied_destructive_root(&existing, item)
+			})
+			.map(|item| item.uuid)
+			.collect::<Vec<_>>();
+		mark_external_state(&txn, task_id, &changed_ids, "changed").await?;
+		mark_external_state(&txn, task_id, &missing_ids, "missing").await?;
+		let pending_addition_count = organize_task_item::Entity::find()
+			.filter(organize_task_item::Column::TaskId.eq(task_id))
+			.filter(organize_task_item::Column::MembershipState.eq("pending_addition"))
+			.count(&txn)
+			.await? as i64;
+		let revision = task.revision + 1;
+		let mut active: organize_task::ActiveModel = task.into();
+		active.pending_addition_count = Set(pending_addition_count);
+		active.scan_job_id = Set(None);
+		active.last_error = Set(None);
+		active.revision = Set(revision);
+		active.updated_at = Set(Utc::now());
+		active.update(&txn).await?;
+		txn.commit().await?;
+		Ok(revision)
+	}
+
+	/// Clears a failed change-scan reservation and records the failure for retry.
+	pub async fn fail_change_scan(
+		&self,
+		task_id: Uuid,
+		expected_revision: i64,
+		message: String,
+	) -> Result<()> {
+		let txn = self.db.begin().await?;
+		let task = task_in_state(&txn, task_id, &[OrganizeTaskStatus::Active]).await?;
+		if task.revision != expected_revision || task.scan_job_id.is_none() {
+			txn.rollback().await?;
+			return Ok(());
+		}
+		let mut active: organize_task::ActiveModel = task.into();
+		active.scan_job_id = Set(None);
+		active.last_error = Set(Some(message));
+		active.revision = Set(expected_revision + 1);
+		active.updated_at = Set(Utc::now());
+		active.update(&txn).await?;
+		txn.commit().await?;
+		Ok(())
 	}
 
 	pub async fn accept_changes(
@@ -1478,6 +1668,68 @@ impl<'db> OrganizeRepository<'db> {
 		active.update(&txn).await?;
 		txn.commit().await?;
 		Ok(revision)
+	}
+
+	/// Replaces the provisional commit job id after dispatch returns its receipt.
+	pub async fn attach_commit_job(
+		&self,
+		task_id: Uuid,
+		locked_revision: i64,
+		placeholder: JobId,
+		job_id: JobId,
+	) -> Result<bool> {
+		let txn = self.db.begin().await?;
+		let task = organize_task::Entity::find_by_id(task_id)
+			.one(&txn)
+			.await?
+			.ok_or_else(|| {
+				OrganizeError::InvalidTaskState("organize task does not exist".into())
+			})?;
+		if task.status != task_status(OrganizeTaskStatus::Committing)
+			|| task.revision != locked_revision
+			|| task.commit_job_id != Some(placeholder.into())
+		{
+			txn.rollback().await?;
+			return Ok(false);
+		}
+		let mut active: organize_task::ActiveModel = task.into();
+		active.commit_job_id = Set(Some(job_id.into()));
+		active.updated_at = Set(Utc::now());
+		active.update(&txn).await?;
+		txn.commit().await?;
+		Ok(true)
+	}
+
+	/// Releases a commit reservation after dispatch or startup fails.
+	pub async fn fail_commit(
+		&self,
+		task_id: Uuid,
+		locked_revision: i64,
+		message: String,
+	) -> Result<()> {
+		let txn = self.db.begin().await?;
+		let task = organize_task::Entity::find_by_id(task_id)
+			.one(&txn)
+			.await?
+			.ok_or_else(|| {
+				OrganizeError::InvalidTaskState("organize task does not exist".into())
+			})?;
+		if task.status != task_status(OrganizeTaskStatus::Committing)
+			|| task.revision != locked_revision
+		{
+			txn.rollback().await?;
+			return Ok(());
+		}
+		let revision = task.revision + 1;
+		let mut active: organize_task::ActiveModel = task.into();
+		active.status = Set(task_status(OrganizeTaskStatus::Active));
+		active.commit_job_id = Set(None);
+		active.last_error = Set(Some(message));
+		active.revision = Set(revision);
+		active.updated_at = Set(Utc::now());
+		active.update(&txn).await?;
+		txn.commit().await?;
+		Ok(())
 	}
 
 	pub async fn settle_operation_roots(
@@ -1681,6 +1933,42 @@ impl<'db> OrganizeRepository<'db> {
 		active.updated_at = Set(Utc::now());
 		active.update(self.db).await?;
 		Ok(())
+	}
+
+	/// Moves a failed snapshot back to scanning and removes its obsolete manifest.
+	pub async fn reset_snapshot_for_retry(
+		&self,
+		task_id: Uuid,
+		expected_revision: i64,
+		job_id: JobId,
+	) -> Result<i64> {
+		let txn = self.db.begin().await?;
+		let task = task_in_state(&txn, task_id, &[OrganizeTaskStatus::Failed]).await?;
+		if task.revision != expected_revision {
+			txn.rollback().await?;
+			return Err(OrganizeError::StaleRevision(task.revision).into());
+		}
+		organize_task_item::Entity::delete_many()
+			.filter(organize_task_item::Column::TaskId.eq(task_id))
+			.exec(&txn)
+			.await?;
+		let revision = task.revision + 1;
+		let mut active: organize_task::ActiveModel = task.into();
+		active.status = Set(task_status(OrganizeTaskStatus::Scanning));
+		active.snapshot_version = Set(0);
+		active.total_entries = Set(0);
+		active.total_units = Set(0);
+		active.total_bytes = Set(0);
+		active.scan_issue_count = Set(0);
+		active.pending_addition_count = Set(0);
+		active.scan_job_id = Set(Some(job_id.into()));
+		active.last_error = Set(None);
+		active.completed_at = Set(None);
+		active.revision = Set(revision);
+		active.updated_at = Set(Utc::now());
+		active.update(&txn).await?;
+		txn.commit().await?;
+		Ok(revision)
 	}
 
 	pub async fn finish(&self, input: OrganizeFinishInput) -> Result<OrganizeFinishOutcome> {

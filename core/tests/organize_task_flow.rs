@@ -9,10 +9,18 @@ use uuid::Uuid;
 #[test]
 fn organize_wire_operations_are_registered() {
 	assert!(LIBRARY_ACTIONS.contains_key("action:organize.create.input"));
+	assert!(LIBRARY_ACTIONS.contains_key("action:organize.scan_changes.input"));
+	assert!(LIBRARY_ACTIONS.contains_key("action:organize.accept_changes.input"));
+	assert!(LIBRARY_ACTIONS.contains_key("action:organize.commit.input"));
+	assert!(LIBRARY_ACTIONS.contains_key("action:organize.finish.input"));
+	assert!(LIBRARY_ACTIONS.contains_key("action:organize.reopen.input"));
+	assert!(LIBRARY_ACTIONS.contains_key("action:organize.delete_task.input"));
+	assert!(LIBRARY_ACTIONS.contains_key("action:organize.retry_snapshot.input"));
 	assert!(LIBRARY_QUERIES.contains_key("query:organize.list"));
 	assert!(LIBRARY_QUERIES.contains_key("query:organize.get"));
 	assert!(LIBRARY_QUERIES.contains_key("query:organize.children"));
 	assert!(LIBRARY_QUERIES.contains_key("query:organize.resolve_root"));
+	assert!(LIBRARY_QUERIES.contains_key("query:organize.commit_plan"));
 }
 
 #[test]

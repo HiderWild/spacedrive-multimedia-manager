@@ -1,11 +1,10 @@
-use super::commit::build_commit_plan;
-pub use super::commit::{OrganizeCommitPlanInput, OrganizeCommitPlanOutput};
 use crate::{
 	context::CoreContext,
 	infra::{
 		db::entities::{organize_task, organize_task_item},
 		query::{LibraryQuery, QueryError, QueryResult},
 	},
+	ops::organize::commit::{build_commit_plan, OrganizeCommitPlanInput, OrganizeCommitPlanOutput},
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use std::sync::Arc;

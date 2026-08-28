@@ -314,7 +314,7 @@ fn is_reparse_point(metadata: &Metadata) -> bool {
 	}
 }
 
-fn modified_at_100ns(metadata: &Metadata) -> i64 {
+pub fn modified_at_100ns(metadata: &Metadata) -> i64 {
 	metadata
 		.modified()
 		.ok()
