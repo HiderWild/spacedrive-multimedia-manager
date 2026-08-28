@@ -38,11 +38,12 @@ The approved design is the behavior contract. The implementation plan translates
 
 | ID | Responsibility | Depends on | Write scope | Status | Owner | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| ORG-PLAN | Map current code and write the executable plan | Approved design | This task file and the implementation plan | In Flight | coordinator + planning agents | Pending |
-| ORG-BE-01 | SQLite migration, entities, task repository, and persistence tests | ORG-PLAN | Core migration and organize persistence files only | Blocked | Unassigned | Waiting for ORG-PLAN |
-| ORG-BE-02 | Windows path identity, snapshot tree, sparse-decision, progress, and conflict pure logic | ORG-PLAN | Core organize domain files and colocated tests only | Blocked | Unassigned | Waiting for ORG-PLAN |
-| ORG-FE-01 | Selection reducer, Ctrl semantics, lasso geometry, and reducer tests | ORG-PLAN | Organize selection module and tests only | Blocked | Unassigned | Waiting for ORG-PLAN |
-| ORG-PREV-01 | Deterministic directory preview-sequence algorithm and backend tests | ORG-PLAN | Preview-sequence query module and tests only | Blocked | Unassigned | Waiting for ORG-PLAN |
+| ORG-PLAN | Map current code and write the executable plan | Approved design | This task file and the implementation plan | Merged | coordinator + planning agents | Plan committed as `2d6e38024`; mapper facts incorporated; placeholder and diff checks passed |
+| ORG-BUILD-00 | Enforce one shared Rust artifact tree and destructive pre-build cleanup across registered worktrees | User-approved cleanup design | `AGENTS.md` and focused PowerShell build tooling | In Flight | build-policy agent | Existing targets cleared, 30,618 files and 22.5 GiB removed; implementation lane dispatched |
+| ORG-BE-01 | SQLite migration, entities, task repository, and persistence tests | ORG-PLAN, ORG-BUILD-00 | Core migration and organize persistence files only | Blocked | Unassigned | Waiting for dependencies |
+| ORG-BE-02 | Windows path identity, snapshot tree, sparse-decision, progress, and conflict pure logic | ORG-PLAN, ORG-BUILD-00 | Core organize domain files and colocated tests only | Blocked | Unassigned | Waiting for dependencies |
+| ORG-FE-01 | Selection reducer, Ctrl semantics, lasso geometry, and reducer tests | ORG-PLAN, ORG-BUILD-00 | Organize selection module and tests only | Blocked | Unassigned | Waiting for dependencies |
+| ORG-PREV-01 | Deterministic directory preview-sequence algorithm and backend tests | ORG-PLAN, ORG-BUILD-00 | Preview-sequence query module and tests only | Blocked | Unassigned | Waiting for dependencies |
 | ORG-BE-03 | Task create, list, get, snapshot scan, and change-scan operations | ORG-BE-01, ORG-BE-02 | Core organize operation and scanner files | Blocked | Unassigned | Waiting for dependencies |
 | ORG-TS-01 | Regenerate and validate Rust-to-TypeScript contracts | ORG-BE-03 | Generated TypeScript types only | Blocked | Unassigned | Waiting for ORG-BE-03 |
 | ORG-FE-02 | Sidebar entry, task creation flow, task list, and task-scoped route shell | ORG-TS-01 | Interface navigation and organize route shell | Blocked | Unassigned | Waiting for ORG-TS-01 |
@@ -61,9 +62,18 @@ The approved design is the behavior contract. The implementation plan translates
 
 | ID | Output | Status | Owner | Evidence |
 | --- | --- | --- | --- | --- |
-| ORG-MAP-BE | Exact backend files, patterns, tests, and commands for the implementation plan | In Flight | backend mapper | Pending agent report |
-| ORG-MAP-FE | Exact frontend files, patterns, tests, and commands for the implementation plan | In Flight | frontend mapper | Pending agent report |
-| ORG-PLAN-DRAFT | Full test-first plan draft derived from the approved design and repository facts | In Flight | plan writer | Pending commit |
+| ORG-MAP-BE | Exact backend files, patterns, tests, and commands for the implementation plan | Candidate | backend mapper | Report received: Core modules, migrations, jobs, Windows paths, type generation, and risks mapped; incorporated into plan |
+| ORG-MAP-FE | Exact frontend files, patterns, tests, and commands for the implementation plan | Candidate | Copernicus | Report received: route, selection, virtualization, preview, generated-type, and test boundaries mapped; awaiting plan incorporation |
+| ORG-PLAN-DRAFT | Full test-first plan draft derived from the approved design and repository facts | Merged | Jason | Commit `aaa54b8b4` cherry-picked as `2d6e38024`; 2,198 lines; placeholder scan clean |
+| ORG-BUILD-MAP | Existing build scripts, exact artifact roots, and safe shared-target integration points | Candidate | build mapper | Report received: root and Tauri target paths, bypassing entry points, safety risks, fixture tests, and root-target recommendation mapped |
+
+## Build Discipline Substeps
+
+| ID | Responsibility | Depends on | Status | Owner | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-MAP | In Flight | build-policy agent | Pending candidate commit |
+| ORG-BUILD-00B | Wire every project build entry point to the shared wrapper and resolver | ORG-BUILD-00A | Blocked | Unassigned | Waiting for ORG-BUILD-00A |
+| ORG-BUILD-00C | Independent policy review and fixture verification | ORG-BUILD-00A, ORG-BUILD-00B | Blocked | Unassigned | Waiting for implementation |
 
 ## Acceptance Criteria
 
