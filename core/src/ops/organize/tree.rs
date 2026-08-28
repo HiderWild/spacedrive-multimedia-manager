@@ -172,6 +172,7 @@ pub fn resolve_set_decision(
 
 	let mut delete_roots = Vec::new();
 	let mut upsert_roots = Vec::new();
+	let mut descendant_conflicts = Vec::new();
 	let mut inherited_ancestor = None;
 	for item_id in selected {
 		let (start, end) = intervals[&item_id];
@@ -215,10 +216,12 @@ pub fn resolve_set_decision(
 			.as_ref()
 			.is_some_and(|request| descendants.iter().any(|root| root.decision != *request));
 		if (has_mixed_descendants || has_conflicting_descendants) && !confirm_descendant_override {
-			return Ok(conflict(
-				OrganizeDecisionConflictKind::DescendantOverride,
-				&descendants,
-			));
+			descendant_conflicts.extend(
+				descendants
+					.iter()
+					.filter(|root| requested.as_ref() != Some(&root.decision)),
+			);
+			continue;
 		}
 		delete_roots.extend(descendants.iter().map(|root| root.item_id));
 
@@ -238,6 +241,12 @@ pub fn resolve_set_decision(
 				operation_state: OrganizeOperationState::None,
 			});
 		}
+	}
+	if !descendant_conflicts.is_empty() {
+		return Ok(conflict(
+			OrganizeDecisionConflictKind::DescendantOverride,
+			&descendant_conflicts,
+		));
 	}
 	if delete_roots.is_empty() && upsert_roots.is_empty() {
 		if let Some(ancestor_item_id) = inherited_ancestor {
@@ -489,6 +498,89 @@ mod tests {
 			DecisionResolution::Apply(ref patch)
 				if patch.upsert_roots.len() == 1 && patch.upsert_roots[0].item_id == sibling
 		));
+	}
+
+	#[test]
+	fn descendant_conflicts_aggregate_across_all_selected_subtrees() {
+		let left = Uuid::from_u128(1);
+		let left_conflict = Uuid::from_u128(2);
+		let right = Uuid::from_u128(3);
+		let right_conflict = Uuid::from_u128(4);
+		let state = DecisionTreeState {
+			nodes: vec![
+				TreeItemComputed {
+					item_id: left,
+					tree_start: 0,
+					tree_end: 2,
+					unit_count: 2,
+					aggregate_size_bytes: 20,
+				},
+				TreeItemComputed {
+					item_id: left_conflict,
+					tree_start: 1,
+					tree_end: 2,
+					unit_count: 1,
+					aggregate_size_bytes: 10,
+				},
+				TreeItemComputed {
+					item_id: right,
+					tree_start: 2,
+					tree_end: 4,
+					unit_count: 2,
+					aggregate_size_bytes: 30,
+				},
+				TreeItemComputed {
+					item_id: right_conflict,
+					tree_start: 3,
+					tree_end: 4,
+					unit_count: 2,
+					aggregate_size_bytes: 25,
+				},
+			],
+			decisions: vec![
+				ExplicitDecisionRoot {
+					item_id: left_conflict,
+					tree_start: 1,
+					tree_end: 2,
+					unit_count: 1,
+					aggregate_size_bytes: 10,
+					decision: DecisionValue::keep(),
+					operation_state: OrganizeOperationState::None,
+				},
+				ExplicitDecisionRoot {
+					item_id: right_conflict,
+					tree_start: 3,
+					tree_end: 4,
+					unit_count: 2,
+					aggregate_size_bytes: 25,
+					decision: DecisionValue::move_to(r"c:\archive"),
+					operation_state: OrganizeOperationState::None,
+				},
+			],
+		};
+		let before = state.decisions.clone();
+
+		let result = resolve_set_decision(
+			&state,
+			&[left, right],
+			Some(DecisionValue::discard()),
+			false,
+			false,
+		)
+		.unwrap();
+
+		assert!(matches!(
+			result,
+			DecisionResolution::ConfirmationRequired {
+				conflict_kind: OrganizeDecisionConflictKind::DescendantOverride,
+				keep_units: 1,
+				move_units: 2,
+				affected_bytes: 35,
+				conflicting_roots,
+				..
+			} if conflicting_roots == vec![left_conflict, right_conflict]
+		));
+		assert_eq!(state.decisions, before);
 	}
 
 	#[test]
