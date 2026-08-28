@@ -1120,10 +1120,24 @@ impl<'db> OrganizeRepository<'db> {
 			return Err(OrganizeError::AppliedDecisionImmutable(applied_id).into());
 		}
 
+		let mut temporary_tree_start = all_items
+			.iter()
+			.filter(|item| item.membership_state == "included")
+			.filter_map(|item| item.tree_end)
+			.max()
+			.unwrap_or(0);
 		for item in additions {
+			// Pending additions cannot be made included with NULL tree fields because
+			// the membership CHECK is immediate. Temporary disjoint intervals keep the
+			// row valid until the complete tree is rebuilt below.
+			let placeholder_start = temporary_tree_start;
+			temporary_tree_start += 1;
 			let mut active: organize_task_item::ActiveModel = item.into();
 			active.membership_state = Set("included".to_string());
 			active.external_state = Set("present".to_string());
+			active.tree_start = Set(Some(placeholder_start));
+			active.tree_end = Set(Some(placeholder_start + 1));
+			active.unit_count = Set(Some(1));
 			active.updated_at = Set(Utc::now());
 			active.update(&txn).await?;
 		}
