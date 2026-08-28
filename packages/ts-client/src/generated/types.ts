@@ -8,6 +8,25 @@ export type Empty = Record<string, never>;
 
 export type ActionContextInfo = { action_type: string; initiated_at: string; initiated_by: string | null; action_input: JsonValue; context: JsonValue };
 
+/**
+ * A reference to an existing registered operation plus an opaque parameter
+ * payload.
+ * 
+ * `action` mirrors the strings passed to the `register_*_action!` macros, for
+ * example `"media.transcode"` or `"media.rotate"`. `params` is kept opaque
+ * ([`serde_json::Value`]) because E-01 does not interpret action inputs; the
+ * executor in E-02 will deserialize them into the concrete action input type.
+ */
+export type ActionRef = { 
+/**
+ * The registered action identifier (e.g. `"media.transcode"`).
+ */
+action: string; 
+/**
+ * Opaque parameters forwarded to the action at execution time.
+ */
+params?: JsonValue };
+
 export type ActiveJobItem = { id: string; name: string; status: JobStatus; progress: number; action_type: string | null; action_context: ActionContextInfo | null };
 
 export type ActiveJobsInput = Record<string, never>;
@@ -236,6 +255,31 @@ export type CloudStorageConfig = { type: "S3"; bucket: string; region: string; a
 { type: "Dropbox"; root: string | null; refresh_token: string; client_id: string; client_secret: string } | { type: "AzureBlob"; container: string; endpoint: string | null; account_name: string; account_key: string } | { type: "GoogleCloudStorage"; bucket: string; root: string | null; endpoint: string | null; credential: string };
 
 /**
+ * Comparison operators for numeric conditions (size, width, height, duration).
+ */
+export type ComparisonOp = 
+/**
+ * `<`
+ */
+"lt" | 
+/**
+ * `<=`
+ */
+"lte" | 
+/**
+ * `>`
+ */
+"gt" | 
+/**
+ * `>=`
+ */
+"gte" | 
+/**
+ * `==`
+ */
+"eq";
+
+/**
  * Operators for combining tag attributes
  */
 export type CompositionOperator = 
@@ -260,6 +304,65 @@ export type CompositionOperator =
  * Rules for composing attributes from multiple tags
  */
 export type CompositionRule = { operator: CompositionOperator; operands: string[]; result_attribute: string };
+
+/**
+ * A condition node in the rule tree.
+ * 
+ * Serialized with an internal `type` tag so rules read naturally in both JSON
+ * and TOML. Leaf conditions reference real [`File`](crate::domain::file::File)
+ * fields; boolean nodes (`all`, `any`, `not`) compose other conditions.
+ */
+export type Condition = 
+/**
+ * Logical AND: matches when every nested condition matches.
+ */
+{ type: "all"; conditions: Condition[] } | 
+/**
+ * Logical OR: matches when any nested condition matches.
+ */
+{ type: "any"; conditions: Condition[] } | 
+/**
+ * Logical NOT: matches when the nested condition does not match.
+ */
+{ type: "not"; condition: Condition } | 
+/**
+ * Match against the entry's path string (glob or substring).
+ */
+{ type: "path"; match: PathMatch; value: string } | 
+/**
+ * Match the entry's file extension (case-insensitive, without the dot).
+ */
+{ type: "extension"; value: string } | 
+/**
+ * Compare the entry's size in bytes.
+ */
+{ type: "size"; op: ComparisonOp; value: number } | 
+/**
+ * Match the entry's content kind (image, video, audio, ...).
+ */
+{ type: "kind"; value: ContentKind } | 
+/**
+ * Compare media pixel width. Only entries with image/video media data match.
+ */
+{ type: "width"; op: ComparisonOp; value: number } | 
+/**
+ * Compare media pixel height. Only entries with image/video media data match.
+ */
+{ type: "height"; op: ComparisonOp; value: number } | 
+/**
+ * Compare media duration in seconds. Only entries with a duration match.
+ */
+{ type: "duration"; op: ComparisonOp; value: number } | 
+/**
+ * Match entries carrying a tag by canonical name, display name, or alias.
+ * 
+ * Against a plain target this matches **directly-attached** tags only.
+ * To match the full effective set (direct + inherited from ancestor folders
+ * + implied via parent/sibling relations), evaluate a target built with
+ * [`resolve_rule_target`](crate::ops::rules::resolve_rule_target), which
+ * pre-resolves the entry's effective tags via tasks A-02 and A-04.
+ */
+{ type: "tag"; name: string };
 
 /**
  * Network connection method for a device
@@ -638,6 +741,62 @@ export type DeleteTagOutput = { deleted: boolean };
 export type DeleteWhisperModelInput = { model: string };
 
 export type DeleteWhisperModelOutput = { deleted: boolean };
+
+/**
+ * High-level readiness of one derivative kind for a content UUID.
+ */
+export type DerivativeKindStatus = 
+/**
+ * No work is expected (e.g. non-image for face vectors).
+ */
+"not_applicable" | 
+/**
+ * No sidecar row yet (never enqueued).
+ */
+"missing" | 
+/**
+ * Enqueued / in progress.
+ */
+"pending" | 
+/**
+ * Artifact exists and is ready to serve.
+ */
+"ready" | 
+/**
+ * Last attempt failed (may be re-enqueued).
+ */
+"failed";
+
+export type DerivativeStatusInput = { targets: DerivativeStatusTarget[] };
+
+export type DerivativeStatusItem = { 
+/**
+ * Content UUID when resolved.
+ */
+content_uuid: string | null; 
+/**
+ * Entry UUID if the request used `EntryUuid`.
+ */
+entry_uuid: string | null; thumbnail: DerivativeKindStatus; face_embedding: DerivativeKindStatus; scene_embedding: DerivativeKindStatus; 
+/**
+ * True when the target could not be resolved (missing entry/content).
+ */
+not_found: boolean };
+
+export type DerivativeStatusOutput = { items: DerivativeStatusItem[] };
+
+/**
+ * Lookup key for one content-scoped status request.
+ */
+export type DerivativeStatusTarget = 
+/**
+ * Resolve via content identity UUID.
+ */
+{ content_uuid: string } | 
+/**
+ * Resolve content via an entry UUID, then load derivative status.
+ */
+{ entry_uuid: string };
 
 /**
  * A device running Spacedrive
@@ -2285,7 +2444,11 @@ export type JobOutput =
 /**
  * Gaussian splat generation output
  */
-{ type: "GaussianSplat"; data: { total_processed: number; success_count: number; error_count: number } };
+{ type: "GaussianSplat"; data: { total_processed: number; success_count: number; error_count: number } } | 
+/**
+ * Scene embedding generation output (CLIP/DINO for clustering)
+ */
+{ type: "SceneEmbedding"; data: { total_processed: number; success_count: number; error_count: number; skipped_count: number; device: string } };
 
 export type JobPauseInput = { job_id: string };
 
@@ -3043,6 +3206,74 @@ export type LocationsListQueryInput = null;
 export type LoggingConfigOutput = { main_filter: string };
 
 /**
+ * Input for [`MacroExecuteAction`].
+ */
+export type MacroExecuteInput = { 
+/**
+ * Rules to evaluate; matching files receive the rules' actions.
+ */
+rules: Rule[]; 
+/**
+ * When true, report planned actions without performing them.
+ */
+dry_run: boolean };
+
+/**
+ * Outcome of executing a macro over a library.
+ * 
+ * In dry-run mode `planned` lists every action that *would* run and the
+ * success/failure counts stay zero. In a real run `planned` is empty and the
+ * counts plus `failures` describe what happened. Per-item failures are recorded
+ * here, never propagated, so one bad file never aborts the batch.
+ */
+export type MacroExecutionResult = { 
+/**
+ * Whether this was a dry run (no mutations performed).
+ */
+dry_run: boolean; 
+/**
+ * Number of files matched by at least one rule.
+ */
+matched_files: number; 
+/**
+ * Planned actions, populated only in dry-run mode.
+ */
+planned: MacroPlanItem[]; 
+/**
+ * Count of actions that ran successfully (real runs only).
+ */
+succeeded: number; 
+/**
+ * Count of actions that failed and were skipped (real runs only).
+ */
+failed: number; 
+/**
+ * Human-readable log line for each failed action.
+ */
+failures: string[] };
+
+/**
+ * A single planned (file, action) pair surfaced in a dry-run report.
+ */
+export type MacroPlanItem = { 
+/**
+ * UUID of the entry the action targets.
+ */
+entry_uuid: string; 
+/**
+ * Best-effort display path of the entry.
+ */
+path: string; 
+/**
+ * Wire name of the action (e.g. `tags.apply`).
+ */
+action: string; 
+/**
+ * Opaque action parameters, mirroring the rule's [`ActionRef::params`].
+ */
+params: JsonValue };
+
+/**
  * Input for media listing
  */
 export type MediaListingInput = { 
@@ -3114,6 +3345,8 @@ export type MediaSortBy =
  */
 export type MemoryBreakdownStats = { arena: number; cache: number; registry: number; path_index_overhead: number; path_index_entries: number; entry_uuids_overhead: number; entry_uuids_entries: number; content_kinds_overhead: number; content_kinds_entries: number };
 
+export type Model = { id: number; uuid: string; task_id: string; parent_id: number | null; entry_uuid: string | null; relative_path: string; relative_path_key: string; name: string; extension: string | null; kind: string; size_bytes: number; aggregate_size_bytes: number; modified_at_100ns: number; metadata_signature: string; tree_start: number | null; tree_end: number | null; unit_count: number | null; membership_state: string; external_state: string; decision_kind: string | null; move_destination: string | null; operation_state: string; last_error: string | null; applied_at: string | null; created_at: string; updated_at: string };
+
 /**
  * Information about a model
  */
@@ -3179,7 +3412,11 @@ export type ModelType =
 /**
  * Tesseract OCR language data
  */
-"Tesseract";
+"Tesseract" | 
+/**
+ * Whole-image embedding (OpenCLIP / DINOv2 ONNX)
+ */
+"ImageEmbedding";
 
 /**
  * Mount type classification
@@ -3265,6 +3502,96 @@ export type OperatingSystem = "MacOS" | "Windows" | "Linux" | "IOs" | "Android" 
  * Operation metrics snapshot
  */
 export type OperationSnapshot = { broadcasts_sent: number; state_changes_broadcast: number; shared_changes_broadcast: number; broadcast_batches_sent: number; failed_broadcasts: number; changes_received: number; changes_applied: number; changes_rejected: number; buffer_queue_depth: number; active_backfill_sessions: number; backfill_sessions_completed: number; backfill_pagination_rounds: number; retry_queue_depth: number; retry_attempts: number; retry_successes: number };
+
+export type OrganizeAcceptChangesInput = { task_id: string; expected_revision: number; include_addition_ids: string[]; remove_missing_ids: string[]; refresh_changed_ids: string[]; preserve_changed_decisions: boolean; confirm_inherited_destructive: boolean };
+
+export type OrganizeAcceptChangesOutcome = { Applied: { revision: number } } | { ConfirmationRequired: { discard_units: number; move_units: number; affected_bytes: number; conflicting_roots: string[] } } | { StaleRevision: { current_revision: number } };
+
+export type OrganizeChildrenInput = { task_id: string; parent_item_id: string; cursor: string | null; limit: number; sort: OrganizeItemSort; direction: OrganizeSortDirection; filter: OrganizeItemFilter };
+
+export type OrganizeChildrenOutput = { revision: number; items: Model[]; decision_projections: OrganizeItemDecisionProjection[]; next_cursor: string | null; matching_child_count: number };
+
+export type OrganizeCommitBlockReason = { TaskNotActive: { status: OrganizeTaskStatus } } | { PendingAdditions: { count: number } } | { ChangedOrMissing: { item_ids: string[] } } | { UnsafeTopology: { conflicts: OrganizeTopologyConflict[] } } | "NoPhysicalOperations";
+
+export type OrganizeCommitInput = { task_id: string; expected_revision: number; permanent_delete_confirmed: boolean; move_conflict_policy: FileConflictResolution; allow_current_subtree_drift?: boolean };
+
+export type OrganizeCommitOutcome = { Started: { job: JobReceipt } } | { StaleRevision: { current_revision: number } } | { RejectedState: { status: OrganizeTaskStatus } } | "RejectedPermanentConfirmation" | { RejectedBlockedPlan: { reasons: OrganizeCommitBlockReason[] } };
+
+export type OrganizeCommitPlanInput = { task_id: string; expected_revision: number };
+
+export type OrganizeCommitPlanOutput = { revision: number; move_groups: OrganizeMoveGroup[]; discard_roots: OrganizePlanRoot[]; keep_units: number; unmarked_units: number; pending_addition_count: number; changed_or_missing_roots: string[]; failed_operation_roots: string[]; unsafe_conflicts: OrganizeTopologyConflict[]; can_commit: boolean; blocking_reasons: OrganizeCommitBlockReason[] };
+
+export type OrganizeCreateInput = { root: SdPath; name: string | null };
+
+export type OrganizeCreateOutcome = { Created: { task_id: string; status: OrganizeTaskStatus; snapshot_job: JobReceipt } } | { Overlap: { existing_task_id: string } } | { Rejected: { reason: OrganizeCreateRejection } };
+
+export type OrganizeCreateRejection = "UnsupportedPlatform" | "UnsupportedPathKind" | { RootMissing: { path: string } } | { RootNotDirectory: { path: string } } | { PermissionDenied: { path: string } };
+
+export type OrganizeDecisionConflictKind = "descendant_override" | "ancestor_split";
+
+export type OrganizeDecisionInput = "Keep" | "Discard" | { Move: { destination: SdPath } };
+
+export type OrganizeDecisionKind = "keep" | "discard" | "move";
+
+export type OrganizeDecisionOutcome = { Applied: { revision: number; task_summary: OrganizeTaskSummary; affected_roots: string[] } } | { ConfirmationRequired: { conflict_kind: OrganizeDecisionConflictKind; keep_units: number; discard_units: number; move_units: number; unmarked_units: number; affected_bytes: number; conflicting_roots: string[] } } | { StaleRevision: { current_revision: number } } | { InheritedNoOp: { revision: number; ancestor_item_id: string } } | { RejectedImmutable: { applied_root_item_id: string } } | { RejectedState: { status: OrganizeTaskStatus } };
+
+export type OrganizeDecisionSource = "Explicit" | { Inherited: { ancestor_item_id: string } };
+
+export type OrganizeDeleteTaskInput = { task_id: string; expected_revision: number };
+
+export type OrganizeDeleteTaskOutcome = { Applied: { revision: number } } | { StaleRevision: { current_revision: number } };
+
+export type OrganizeFinishInput = { task_id: string; expected_revision: number; confirm_unmarked: boolean };
+
+export type OrganizeFinishOutcome = { Completed: { revision: number } } | { ConfirmationRequired: { unmarked_units: number } } | { StaleRevision: { current_revision: number } } | { RejectedPendingOperations: { pending: number; running: number; failed: number } };
+
+export type OrganizeGetInput = { task_id: string };
+
+export type OrganizeGetOutput = { task: OrganizeTaskSummary; root_item_id: string };
+
+export type OrganizeItemDecisionProjection = { item_id: string; explicit_decision: OrganizeDecisionKind | null; effective_decision: OrganizeDecisionKind | null; decision_source: OrganizeDecisionSource | null; progress: OrganizeProgressSummary; move_destination: SdPath | null; operation_state: OrganizeOperationState };
+
+export type OrganizeItemFilter = "All" | "Unmarked" | "Keep" | "Discard" | "Move" | "Failed" | "Changed" | "Missing";
+
+export type OrganizeItemSort = "Name" | "Modified" | "Size" | "Progress";
+
+export type OrganizeListInput = { statuses: OrganizeTaskStatus[] | null; cursor: string | null; limit: number };
+
+export type OrganizeListOutput = { tasks: OrganizeTaskSummary[]; next_cursor: string | null };
+
+export type OrganizeMoveGroup = { destination: SdPath; roots: OrganizePlanRoot[]; units: number; bytes: number };
+
+export type OrganizeOperationState = "none" | "pending" | "running" | "applied" | "failed";
+
+export type OrganizePlanRoot = { item_id: string; source: SdPath; units: number; bytes: number };
+
+export type OrganizeProgressSummary = { total_units: number; processed_units: number; keep_units: number; discard_units: number; move_units: number; unmarked_units: number };
+
+export type OrganizeReopenInput = { task_id: string; expected_revision: number };
+
+export type OrganizeReopenOutcome = { Applied: { revision: number } } | { StaleRevision: { current_revision: number } };
+
+export type OrganizeResolveRootInput = { root: SdPath };
+
+export type OrganizeRetrySnapshotInput = { task_id: string; expected_revision: number };
+
+export type OrganizeRetrySnapshotOutcome = { Started: { revision: number; snapshot_job: JobReceipt } } | { StaleRevision: { current_revision: number } };
+
+export type OrganizeRootAvailability = "Creatable" | { OpenExisting: { task_id: string } } | { Unavailable: { reason: OrganizeCreateRejection } };
+
+export type OrganizeScanChangesInput = { task_id: string; expected_revision: number };
+
+export type OrganizeSelectionInput = { Items: { item_ids: string[] } } | { DirectChildren: { parent_item_id: string; filter: OrganizeItemFilter; excluded_item_ids: string[] } };
+
+export type OrganizeSetDecisionInput = { task_id: string; selection: OrganizeSelectionInput; decision: OrganizeDecisionInput | null; expected_revision: number; confirm_descendant_override: boolean; confirm_ancestor_split: boolean };
+
+export type OrganizeSortDirection = "Asc" | "Desc";
+
+export type OrganizeTaskStatus = "scanning" | "active" | "committing" | "completed" | "failed";
+
+export type OrganizeTaskSummary = { id: string; name: string; root_path: string; root_sd_path: SdPath; status: OrganizeTaskStatus; revision: number; snapshot_version: number; total_entries: number; total_bytes: number; progress: OrganizeProgressSummary; scan_issue_count: number; pending_addition_count: number; failed_operation_count: number; changed_count: number; missing_count: number; scan_job_id: JobId | null; commit_job_id: JobId | null; last_error: string | null; completed_at: string | null };
+
+export type OrganizeTopologyConflict = { item_id: string; source: SdPath; destination: SdPath; reason: string };
 
 /**
  * Mark a tag as overridden (suppressed) on a specific entry so that the entry
@@ -3386,6 +3713,19 @@ export type PairingSessionSummary = { id: string; state: SerializablePairingStat
 export type PathMapping = { virtual_path: string; actual_path: string };
 
 /**
+ * How a path/string condition matches its target.
+ */
+export type PathMatch = 
+/**
+ * Match the value as a glob pattern (e.g. `**/Photos/*.jpg`).
+ */
+"glob" | 
+/**
+ * Match entries whose path contains the value as a substring.
+ */
+"substring";
+
+/**
  * Per-peer activity information
  */
 export type PeerActivity = { deviceId: string; deviceName: string; isOnline: boolean; lastSeen: string; entriesReceived: number; bytesReceived: number; bytesSent: number; watermarkLagMs: number | null };
@@ -3428,6 +3768,12 @@ export type PingOutput = { echo: string; count: number; extension_works: boolean
  * User preferences output
  */
 export type PreferencesOutput = { theme: string; language: string };
+
+export type PreviewSequenceContext = { task_id: string; item_id: string };
+
+export type PreviewSequenceInput = { directory: SdPath; organize: PreviewSequenceContext | null; limit: number };
+
+export type PreviewSequenceOutput = { files: File[]; candidate_budget_exhausted: boolean };
 
 /**
  * Privacy levels for tag visibility control
@@ -3791,6 +4137,24 @@ icc_preserved: boolean;
  * Whether the EXIF orientation was normalized to Top-Left.
  */
 orientation_normalized: boolean };
+
+/**
+ * A named rule: a condition tree plus the actions that apply when it matches.
+ */
+export type Rule = { 
+/**
+ * Human-readable identifier for the rule.
+ */
+name: string; 
+/**
+ * The condition tree evaluated against each entry.
+ */
+condition: Condition; 
+/**
+ * Actions that apply to matching entries. E-01 stores and validates these
+ * references but never executes them.
+ */
+actions?: ActionRef[] };
 
 /**
  * Current scanning state of a location
@@ -5563,6 +5927,16 @@ export type LibraryAction =
   |  { type: 'media.thumbnail.regenerate'; input: RegenerateThumbnailInput; output: RegenerateThumbnailOutput }
   |  { type: 'media.thumbstrip.generate'; input: GenerateThumbstripInput; output: GenerateThumbstripOutput }
   |  { type: 'media.transcode'; input: TranscodeInput; output: TranscodeOutput }
+  |  { type: 'organize.accept_changes'; input: OrganizeAcceptChangesInput; output: OrganizeAcceptChangesOutcome }
+  |  { type: 'organize.commit'; input: OrganizeCommitInput; output: OrganizeCommitOutcome }
+  |  { type: 'organize.create'; input: OrganizeCreateInput; output: OrganizeCreateOutcome }
+  |  { type: 'organize.delete_task'; input: OrganizeDeleteTaskInput; output: OrganizeDeleteTaskOutcome }
+  |  { type: 'organize.finish'; input: OrganizeFinishInput; output: OrganizeFinishOutcome }
+  |  { type: 'organize.reopen'; input: OrganizeReopenInput; output: OrganizeReopenOutcome }
+  |  { type: 'organize.retry_snapshot'; input: OrganizeRetrySnapshotInput; output: OrganizeRetrySnapshotOutcome }
+  |  { type: 'organize.scan_changes'; input: OrganizeScanChangesInput; output: JobReceipt }
+  |  { type: 'organize.set_decision'; input: OrganizeSetDecisionInput; output: OrganizeDecisionOutcome }
+  |  { type: 'rules.execute'; input: MacroExecuteInput; output: MacroExecutionResult }
   |  { type: 'sources.create'; input: CreateSourceInput; output: CreateSourceOutput }
   |  { type: 'sources.delete'; input: DeleteSourceInput; output: DeleteSourceOutput }
   |  { type: 'sources.sync'; input: SyncSourceInput; output: JobReceipt }
@@ -5624,6 +5998,7 @@ export type LibraryQuery =
   |  { type: 'files.content_kind_stats'; input: ContentKindStatsInput; output: ContentKindStatsOutput }
   |  { type: 'files.directory_listing'; input: DirectoryListingInput; output: DirectoryListingOutput }
   |  { type: 'files.media_listing'; input: MediaListingInput; output: MediaListingOutput }
+  |  { type: 'files.preview_sequence'; input: PreviewSequenceInput; output: PreviewSequenceOutput }
   |  { type: 'files.unique_to_location'; input: UniqueToLocationInput; output: UniqueToLocationOutput }
   |  { type: 'jobs.active'; input: ActiveJobsInput; output: ActiveJobsOutput }
   |  { type: 'jobs.get_copy_metadata'; input: CopyMetadataQueryInput; output: CopyMetadataOutput }
@@ -5633,6 +6008,12 @@ export type LibraryQuery =
   |  { type: 'locations.list'; input: LocationsListQueryInput; output: LocationsListOutput }
   |  { type: 'locations.suggested'; input: SuggestedLocationsQueryInput; output: SuggestedLocationsOutput }
   |  { type: 'locations.validate_path'; input: ValidateLocationPathInput; output: ValidateLocationPathOutput }
+  |  { type: 'media.derivativeStatus'; input: DerivativeStatusInput; output: DerivativeStatusOutput }
+  |  { type: 'organize.children'; input: OrganizeChildrenInput; output: OrganizeChildrenOutput }
+  |  { type: 'organize.commit_plan'; input: OrganizeCommitPlanInput; output: OrganizeCommitPlanOutput }
+  |  { type: 'organize.get'; input: OrganizeGetInput; output: OrganizeGetOutput }
+  |  { type: 'organize.list'; input: OrganizeListInput; output: OrganizeListOutput }
+  |  { type: 'organize.resolve_root'; input: OrganizeResolveRootInput; output: OrganizeRootAvailability }
   |  { type: 'redundancy.summary'; input: RedundancySummaryInput; output: RedundancySummaryOutput }
   |  { type: 'search.files'; input: FileSearchInput; output: FileSearchOutput }
   |  { type: 'sources.get'; input: GetSourceInput; output: SourceInfo }
@@ -5712,6 +6093,16 @@ export const WIRE_METHODS = {
     'media.thumbnail.regenerate': 'action:media.thumbnail.regenerate.input',
     'media.thumbstrip.generate': 'action:media.thumbstrip.generate.input',
     'media.transcode': 'action:media.transcode.input',
+    'organize.accept_changes': 'action:organize.accept_changes.input',
+    'organize.commit': 'action:organize.commit.input',
+    'organize.create': 'action:organize.create.input',
+    'organize.delete_task': 'action:organize.delete_task.input',
+    'organize.finish': 'action:organize.finish.input',
+    'organize.reopen': 'action:organize.reopen.input',
+    'organize.retry_snapshot': 'action:organize.retry_snapshot.input',
+    'organize.scan_changes': 'action:organize.scan_changes.input',
+    'organize.set_decision': 'action:organize.set_decision.input',
+    'rules.execute': 'action:rules.execute.input',
     'sources.create': 'action:sources.create.input',
     'sources.delete': 'action:sources.delete.input',
     'sources.sync': 'action:sources.sync.input',
@@ -5773,6 +6164,7 @@ export const WIRE_METHODS = {
     'files.content_kind_stats': 'query:files.content_kind_stats',
     'files.directory_listing': 'query:files.directory_listing',
     'files.media_listing': 'query:files.media_listing',
+    'files.preview_sequence': 'query:files.preview_sequence',
     'files.unique_to_location': 'query:files.unique_to_location',
     'jobs.active': 'query:jobs.active',
     'jobs.get_copy_metadata': 'query:jobs.get_copy_metadata',
@@ -5782,6 +6174,12 @@ export const WIRE_METHODS = {
     'locations.list': 'query:locations.list',
     'locations.suggested': 'query:locations.suggested',
     'locations.validate_path': 'query:locations.validate_path',
+    'media.derivativeStatus': 'query:media.derivativeStatus',
+    'organize.children': 'query:organize.children',
+    'organize.commit_plan': 'query:organize.commit_plan',
+    'organize.get': 'query:organize.get',
+    'organize.list': 'query:organize.list',
+    'organize.resolve_root': 'query:organize.resolve_root',
     'redundancy.summary': 'query:redundancy.summary',
     'search.files': 'query:search.files',
     'sources.get': 'query:sources.get',

@@ -597,7 +597,7 @@ mod tests {
 		assert_eq!(plan.discard_roots.len(), 1);
 		assert_eq!(
 			plan.discard_roots[0].source,
-			SdPath::physical("device", r"C:\Photos\discard")
+			SdPath::physical("device".into(), r"C:\Photos\discard")
 		);
 		assert!(plan.move_groups.is_empty());
 		assert_eq!(plan.keep_units, 1);

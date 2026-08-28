@@ -55,7 +55,12 @@ impl LibraryAction for OrganizeRetrySnapshotAction {
 			.dispatch(OrganizeSnapshotJob {
 				task_id: self.input.task_id,
 				root_path: task.task.root_path.into(),
-				device_slug: task.task.device_slug.clone(),
+				device_slug: task
+					.task
+					.root_sd_path
+					.device_slug()
+					.unwrap_or("local")
+					.to_string(),
 			})
 			.await
 		{
