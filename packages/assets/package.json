@@ -12,6 +12,7 @@
 		"./icons/*": "./icons/*",
 		"./images": "./images/index.ts",
 		"./images/*": "./images/*",
+		"./svgs/ext/Extras/urls": "./svgs/ext/Extras/urls.ts",
 		"./svgs/*": "./svgs/*",
 		"./sounds": "./sounds/index.ts",
 		"./sounds/*": "./sounds/*",
