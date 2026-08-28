@@ -43,7 +43,7 @@ fn candidate(branch: &str, name: &str, kind: PreviewMediaKind, modified: i64) ->
 
 #[test]
 fn sampler_round_robins_branches_deterministically() {
-	let input = vec![
+	let input: Vec<PreviewCandidate> = vec![
 		("a", PreviewMediaKind::Image),
 		("b", PreviewMediaKind::Image),
 		("c", PreviewMediaKind::Video),
