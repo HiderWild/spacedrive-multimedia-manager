@@ -71,8 +71,8 @@ The approved design is the behavior contract. The implementation plan translates
 
 | ID | Responsibility | Depends on | Status | Owner | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-00A-FIX | Candidate | Archimedes | Fix `ca2612f2fba7b1880bb606267a600378d6b05074`; alias RED/GREEN plus full 11-case fixture reported; coordinator rerun pending |
-| ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | Candidate | Archimedes | Recovery/fix completed in `ca2612f2fba7b1880bb606267a600378d6b05074`; no separate residual remains |
+| ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-00A-FIX | Review | Zeno | Fix `ca2612f2fba7b1880bb606267a600378d6b05074`; coordinator reran full fixture: 11/11 passed; alias regression included |
+| ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | Review | Archimedes | Recovery/fix completed in `ca2612f2fba7b1880bb606267a600378d6b05074`; no separate residual remains |
 | ORG-BUILD-00B | Wire every project build entry point to the shared wrapper and resolver | ORG-BUILD-00A | Blocked | Unassigned | Waiting for ORG-BUILD-00A |
 | ORG-BUILD-00C | Independent policy review and fixture verification | ORG-BUILD-00A, ORG-BUILD-00B | Blocked | Unassigned | Waiting for implementation |
 
