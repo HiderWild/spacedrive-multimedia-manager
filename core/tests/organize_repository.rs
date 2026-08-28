@@ -10,8 +10,8 @@ use sd_core::ops::organize::repository::{
 	OrganizeRepository, OrganizeSelectionInput, SelectionFilter, SnapshotItemDraft, SnapshotTotals,
 };
 use sea_orm::{
-	ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryOrder,
-	Statement,
+	ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+	QueryOrder, Statement,
 };
 use sea_orm_migration::MigratorTrait;
 use tempfile::TempDir;
