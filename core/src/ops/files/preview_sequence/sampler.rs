@@ -109,13 +109,13 @@ pub fn select_representatives(
 		let mut video_count = 0;
 		let selected_paths = selected
 			.iter()
-			.map(|candidate| candidate.normalized_path.as_str())
+			.map(|candidate| candidate.normalized_path.clone())
 			.collect::<std::collections::HashSet<_>>();
 		let mut image_replacements = branches
 			.values()
 			.flatten()
 			.filter(|candidate| candidate.media_kind == PreviewMediaKind::Image)
-			.filter(|candidate| !selected_paths.contains(candidate.normalized_path.as_str()))
+			.filter(|candidate| !selected_paths.contains(&candidate.normalized_path))
 			.cloned();
 		for item in &mut selected {
 			if item.media_kind == PreviewMediaKind::Video {
