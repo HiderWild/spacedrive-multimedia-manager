@@ -401,6 +401,8 @@ impl Syncable for Model {
 					audio_media_data_id: Set(None),
 					first_seen_at: Set(chrono::Utc::now().into()),
 					last_verified_at: Set(chrono::Utc::now().into()),
+					exclude_face: Set(false),
+					exclude_scene: Set(false),
 				};
 
 				Entity::insert(active)

@@ -473,14 +473,30 @@ mod tests {
 	/// Helper to create a minimal PluginManager pointing at a temporary directory.
 	fn temp_manager() -> (PluginManager, tempfile::TempDir) {
 		let tmp = tempfile::tempdir().expect("Failed to create temp dir");
+		let events = Arc::new(crate::infra::event::EventBus::default());
+		let key_manager = Arc::new(
+			crate::crypto::key_manager::KeyManager::new(tmp.path().to_path_buf())
+				.expect("Failed to create key manager"),
+		);
+		let device_manager = Arc::new(
+			crate::device::DeviceManager::init(
+				&tmp.path().to_path_buf(),
+				key_manager.clone(),
+				None,
+			)
+			.expect("Failed to create device manager"),
+		);
+		let volume_manager = Arc::new(crate::volume::VolumeManager::new(
+			uuid::Uuid::new_v4(),
+			crate::volume::VolumeDetectionConfig::default(),
+			events.clone(),
+		));
 		let context = Arc::new(crate::context::CoreContext::new(
-			Arc::new(crate::infra::event::EventBus::new()),
-			Arc::new(crate::device::DeviceManager::new(tmp.path().join("device"))),
+			events,
+			device_manager,
 			None,
-			Arc::new(crate::volume::VolumeManager::new()),
-			Arc::new(crate::crypto::key_manager::KeyManager::new(
-				tmp.path().join("keys"),
-			)),
+			volume_manager,
+			key_manager,
 			tmp.path().to_path_buf(),
 		));
 		let api = Arc::new(crate::infra::api::ApiDispatcher::new(context.clone()));

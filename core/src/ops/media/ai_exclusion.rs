@@ -15,7 +15,9 @@
 
 use crate::infra::db::entities::{ai_album_exclusion, ai_album_members, content_identity};
 use anyhow::Result;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
+use sea_orm::{
+	ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+};
 use uuid::Uuid;
 
 /// Effective exclusion status for a single content.

@@ -52,7 +52,7 @@ impl MigrationTrait for Migration {
 						ColumnDef::new(AiAlbumExclusion::Uuid)
 							.uuid()
 							.not_null()
-							.unique(),
+							.unique_key(),
 					)
 					.col(
 						ColumnDef::new(AiAlbumExclusion::AlbumId)
