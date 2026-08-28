@@ -71,8 +71,8 @@ The approved design is the behavior contract. The implementation plan translates
 
 | ID | Responsibility | Depends on | Status | Owner | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-00A-FIX2 | In Flight | Archimedes | Quality review found P1 stdout/exit-code corruption and reparse TOCTOU; both require RED/GREEN fixes |
-| ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | In Flight | Archimedes | Same implementer is applying the two P1 corrections; candidate remains unaccepted |
+| ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-00A-FIX3 | In Flight | Archimedes + safety decision agent | Coordinator reran 12/12 fixture cases; quality review still reports P1 final reparse/delete TOCTOU and requires scope decision or native fix |
+| ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | In Flight | Archimedes | Candidate `44ee62cc0a4e9d27d9d2607d8865f4c7c0db1d42` is not accepted until the P1 is resolved |
 | ORG-BUILD-00B | Wire every project build entry point to the shared wrapper and resolver | ORG-BUILD-00A | Blocked | Unassigned | Waiting for ORG-BUILD-00A |
 | ORG-BUILD-00C | Independent policy review and fixture verification | ORG-BUILD-00A, ORG-BUILD-00B | Blocked | Unassigned | Waiting for implementation |
 
