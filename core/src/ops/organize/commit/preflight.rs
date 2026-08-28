@@ -126,7 +126,11 @@ async fn preflight_root(
 				&& item.tree_end.unwrap_or(i64::MIN) <= snapshot.tree_end.unwrap_or(i64::MAX)
 		})
 		.map(|item| {
-			let relative_key = relative_to_root(&root_key, &item.relative_path_key);
+			let relative_key = if item.relative_path_key == root_key {
+				String::new()
+			} else {
+				relative_to_root(&root_key, &item.relative_path_key)
+			};
 			let kind = parse_kind(&item.kind);
 			let signature = metadata_signature_for(
 				&relative_key,

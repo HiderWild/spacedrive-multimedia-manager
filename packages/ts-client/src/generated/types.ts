@@ -3511,7 +3511,7 @@ export type OrganizeChildrenInput = { task_id: string; parent_item_id: string; c
 
 export type OrganizeChildrenOutput = { revision: number; items: Model[]; decision_projections: OrganizeItemDecisionProjection[]; next_cursor: string | null; matching_child_count: number };
 
-export type OrganizeCommitBlockReason = { TaskNotActive: { status: OrganizeTaskStatus } } | { PendingAdditions: { count: number } } | { ChangedOrMissing: { item_ids: string[] } } | { UnsafeTopology: { conflicts: OrganizeTopologyConflict[] } } | "NoPhysicalOperations";
+export type OrganizeCommitBlockReason = { TaskNotActive: { status: OrganizeTaskStatus } } | { PendingAdditions: { count: number } } | { ChangedOrMissing: { item_ids: string[] } } | { CurrentSubtreeDrift: { item_ids: string[] } } | { UnsafeTopology: { conflicts: OrganizeTopologyConflict[] } } | "NoPhysicalOperations";
 
 export type OrganizeCommitInput = { task_id: string; expected_revision: number; permanent_delete_confirmed: boolean; move_conflict_policy: FileConflictResolution; allow_current_subtree_drift?: boolean };
 

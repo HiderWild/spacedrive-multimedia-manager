@@ -3,6 +3,7 @@
 use crate::infra::query::{QueryError, QueryResult};
 use crate::{
 	context::CoreContext,
+	device::get_current_device_slug,
 	domain::{addressing::SdPath, File},
 	infra::db::entities::{
 		audio_media_data, content_identity, entry, image_media_data, sidecar, tag,
@@ -213,6 +214,23 @@ impl LibraryQuery for FileByPathQuery {
 
 				return Ok(Some(file));
 			}
+		}
+
+		#[cfg(windows)]
+		if let Ok(metadata) =
+			crate::ops::indexing::database_storage::DatabaseStorage::extract_metadata(
+				&self.path, None,
+			)
+			.await
+		{
+			let mut file = File::from_ephemeral(
+				Uuid::new_v5(&Uuid::NAMESPACE_URL, self.path.to_string_lossy().as_bytes()),
+				&metadata,
+				SdPath::physical(get_current_device_slug(), self.path.clone()),
+			);
+			file.content_kind =
+				crate::filetype::FileTypeRegistry::default().identify_by_extension(&self.path);
+			return Ok(Some(file));
 		}
 
 		Ok(None)

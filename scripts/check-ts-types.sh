@@ -19,9 +19,22 @@ _generated="${_root}/packages/ts-client/src/generated/types.ts"
 _manifest="${_root}/core/Cargo.toml"
 _wrapper="${_root}/scripts/invoke-spacedrive-cargo.ps1"
 
+to_windows_path() {
+  if command -v wslpath &>/dev/null; then
+    wslpath -w "$1"
+  elif command -v cygpath &>/dev/null; then
+    cygpath -w "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+_manifest_windows="$(to_windows_path "${_manifest}")"
+_wrapper_windows="$(to_windows_path "${_wrapper}")"
+
 if [ ! -f "$_generated" ]; then
   echo "Generated types not found at: ${_generated}" >&2
-  echo "Run the generator first through the policy wrapper: powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${_wrapper}\" run --bin generate_typescript_types --manifest-path \"${_manifest}\"" >&2
+  echo "Run the generator first through the policy wrapper: powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${_wrapper_windows}\" run --bin generate_typescript_types --manifest-path \"${_manifest_windows}\"" >&2
   exit 1
 fi
 
@@ -37,7 +50,7 @@ restore() {
 trap restore EXIT
 
 echo "Regenerating TypeScript types to check for drift..."
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$_wrapper" run --quiet --bin generate_typescript_types --manifest-path "$_manifest" >/dev/null
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$_wrapper_windows" run --quiet --bin generate_typescript_types --manifest-path "$_manifest_windows" >/dev/null
 
 if diff -u "$_backup" "$_generated" >/tmp/ts-types-drift.diff 2>&1; then
   echo "TypeScript types are in sync with Rust."
@@ -49,7 +62,7 @@ echo "TypeScript types are OUT OF SYNC with Rust 'Type'-deriving structs." >&2
 echo "A Rust type changed but the generated TS was not regenerated." >&2
 echo "" >&2
 echo "Fix it by running:" >&2
-echo "  powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${_wrapper}\" run --bin generate_typescript_types --manifest-path \"${_manifest}\"" >&2
+echo "  powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${_wrapper_windows}\" run --bin generate_typescript_types --manifest-path \"${_manifest_windows}\"" >&2
 echo "then commit the updated packages/ts-client/src/generated/types.ts" >&2
 echo "" >&2
 echo "Drift:" >&2

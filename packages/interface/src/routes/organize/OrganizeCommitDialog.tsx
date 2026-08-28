@@ -12,9 +12,25 @@ export interface CommitReview {
 	canCommit: boolean;
 	requiresPermanentDeleteConfirmation: boolean;
 	requiresDriftConfirmation: boolean;
+	driftOnlyBlocked: boolean;
 	blockingReasons: string[];
 	discardRoots: OrganizeCommitPlanOutput['discard_roots'];
 	moveGroups: OrganizeCommitPlanOutput['move_groups'];
+}
+
+type CurrentSubtreeDriftReason = Extract<
+	OrganizeCommitBlockReason,
+	{CurrentSubtreeDrift: {item_ids: string[]}}
+>;
+
+function isCurrentSubtreeDrift(
+	reason: OrganizeCommitBlockReason
+): reason is CurrentSubtreeDriftReason {
+	return (
+		typeof reason === 'object' &&
+		reason !== null &&
+		'CurrentSubtreeDrift' in reason
+	);
 }
 
 export function commitBlockReasonText(
@@ -26,6 +42,8 @@ export function commitBlockReasonText(
 		return `The task is ${reason.TaskNotActive.status} and cannot commit.`;
 	if ('PendingAdditions' in reason)
 		return `${reason.PendingAdditions.count} new items are still pending.`;
+	if (isCurrentSubtreeDrift(reason))
+		return 'The current source subtree contains unreviewed descendants.';
 	if ('ChangedOrMissing' in reason)
 		return 'Changed or missing items must be reviewed.';
 	return `Unsafe topology blocks commit for ${reason.UnsafeTopology.conflicts.length} item(s).`;
@@ -47,7 +65,13 @@ export function buildCommitReview(
 		revision: plan.revision,
 		canCommit: plan.can_commit,
 		requiresPermanentDeleteConfirmation: plan.discard_roots.length > 0,
-		requiresDriftConfirmation: plan.changed_or_missing_roots.length > 0,
+		requiresDriftConfirmation: plan.blocking_reasons.some(
+			isCurrentSubtreeDrift
+		),
+		driftOnlyBlocked:
+			!plan.can_commit &&
+			plan.blocking_reasons.length > 0 &&
+			plan.blocking_reasons.every(isCurrentSubtreeDrift),
 		blockingReasons: plan.blocking_reasons.map(commitBlockReasonText),
 		discardRoots: plan.discard_roots,
 		moveGroups: plan.move_groups
@@ -264,10 +288,7 @@ function CommitReviewPanel({
 						disabled={
 							!canCommit ||
 							(!review.canCommit &&
-								!(
-									review.requiresDriftConfirmation &&
-									driftConfirmed
-								)) ||
+								!(review.driftOnlyBlocked && driftConfirmed)) ||
 							!confirmed
 						}
 						onClick={() =>

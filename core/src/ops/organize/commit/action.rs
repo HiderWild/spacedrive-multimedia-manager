@@ -1,4 +1,8 @@
-use super::{build_commit_plan, OrganizeCommitInput, OrganizeCommitJob, OrganizeCommitOutcome};
+use super::{
+	build_commit_plan, plan::apply_preflight_blockers, preflight::preflight_all_roots,
+	OrganizeCommitBlockReason, OrganizeCommitInput, OrganizeCommitJob, OrganizeCommitOutcome,
+	OrganizeCommitPlanOutput,
+};
 use crate::context::CoreContext;
 use crate::infra::action::{error::ActionError, LibraryAction};
 use crate::infra::db::entities::{organize_task, organize_task_item};
@@ -48,8 +52,14 @@ impl LibraryAction for OrganizeCommitAction {
 			.filter(organize_task_item::Column::TaskId.eq(self.input.task_id))
 			.all(db)
 			.await?;
-		let plan = build_commit_plan(&task, &items).map_err(database_error)?;
-		if !plan.can_commit {
+		let mut plan = build_commit_plan(&task, &items).map_err(database_error)?;
+		if plan.can_commit && cfg!(windows) {
+			let report = preflight_all_roots(db, &task, &items, &plan, false)
+				.await
+				.map_err(database_error)?;
+			plan = apply_preflight_blockers(plan, &report);
+		}
+		if !blocked_plan_can_start(&plan, self.input.allow_current_subtree_drift) {
 			return Ok(OrganizeCommitOutcome::RejectedBlockedPlan {
 				reasons: plan.blocking_reasons,
 			});
@@ -126,4 +136,88 @@ fn database_error(error: impl std::fmt::Display) -> ActionError {
 	ActionError::Database(error.to_string())
 }
 
+fn blocked_plan_can_start(
+	plan: &OrganizeCommitPlanOutput,
+	allow_current_subtree_drift: bool,
+) -> bool {
+	(plan.can_commit && plan.blocking_reasons.is_empty())
+		|| (allow_current_subtree_drift
+			&& !plan.blocking_reasons.is_empty()
+			&& plan.blocking_reasons.iter().all(|reason| {
+				matches!(
+					reason,
+					OrganizeCommitBlockReason::CurrentSubtreeDrift { .. }
+				)
+			}))
+}
+
 crate::register_library_action!(OrganizeCommitAction, "organize.commit");
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn blocked_plan(reasons: Vec<OrganizeCommitBlockReason>) -> OrganizeCommitPlanOutput {
+		OrganizeCommitPlanOutput {
+			revision: 1,
+			move_groups: Vec::new(),
+			discard_roots: Vec::new(),
+			keep_units: 0,
+			unmarked_units: 0,
+			pending_addition_count: 0,
+			changed_or_missing_roots: Vec::new(),
+			failed_operation_roots: Vec::new(),
+			unsafe_conflicts: Vec::new(),
+			can_commit: false,
+			blocking_reasons: reasons,
+		}
+	}
+
+	#[test]
+	fn explicit_confirmation_allows_only_current_subtree_drift() {
+		let plan = blocked_plan(vec![OrganizeCommitBlockReason::CurrentSubtreeDrift {
+			item_ids: vec![Uuid::new_v4()],
+		}]);
+
+		assert!(blocked_plan_can_start(&plan, true));
+		assert!(!blocked_plan_can_start(&plan, false));
+	}
+
+	#[test]
+	fn confirmation_does_not_override_other_blockers_or_mixed_reasons() {
+		for reason in [
+			OrganizeCommitBlockReason::TaskNotActive {
+				status: crate::ops::organize::model::OrganizeTaskStatus::Scanning,
+			},
+			OrganizeCommitBlockReason::PendingAdditions { count: 1 },
+			OrganizeCommitBlockReason::ChangedOrMissing {
+				item_ids: vec![Uuid::new_v4()],
+			},
+			OrganizeCommitBlockReason::UnsafeTopology {
+				conflicts: Vec::new(),
+			},
+			OrganizeCommitBlockReason::NoPhysicalOperations,
+		] {
+			let plan = blocked_plan(vec![reason]);
+			assert!(!blocked_plan_can_start(&plan, true));
+		}
+
+		let mixed = blocked_plan(vec![
+			OrganizeCommitBlockReason::CurrentSubtreeDrift {
+				item_ids: vec![Uuid::new_v4()],
+			},
+			OrganizeCommitBlockReason::PendingAdditions { count: 1 },
+		]);
+		assert!(!blocked_plan_can_start(&mixed, true));
+	}
+
+	#[test]
+	fn inconsistent_can_commit_flag_does_not_bypass_blockers() {
+		let mut plan = blocked_plan(vec![OrganizeCommitBlockReason::PendingAdditions {
+			count: 1,
+		}]);
+		plan.can_commit = true;
+
+		assert!(!blocked_plan_can_start(&plan, true));
+	}
+}

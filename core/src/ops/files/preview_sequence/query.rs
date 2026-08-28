@@ -1,5 +1,6 @@
 use super::{select_representatives, walk_preview_candidates, PreviewBudget, PreviewCandidate};
 use crate::domain::addressing::SdPath;
+use crate::domain::content_identity::ContentKind;
 use crate::infra::db::entities::{organize_task, organize_task_item};
 use crate::infra::query::{QueryError, QueryResult};
 use crate::{context::CoreContext, infra::query::LibraryQuery};
@@ -113,7 +114,7 @@ impl LibraryQuery for PreviewSequenceQuery {
 						&& row.tree_start.unwrap_or(i64::MAX) >= start
 						&& row.tree_end.unwrap_or(i64::MIN) <= end
 				})
-				.filter_map(|row| snapshot_candidate(row))
+				.filter_map(|row| snapshot_candidate(&task.device_slug, &task.root_path, row))
 				.collect();
 			let selected = select_representatives(candidates, self.input.limit as usize);
 			return Ok(PreviewSequenceOutput {
@@ -155,7 +156,11 @@ fn normalize_path(path: &str) -> String {
 		.to_ascii_lowercase()
 }
 
-fn snapshot_candidate(row: organize_task_item::Model) -> Option<PreviewCandidate> {
+fn snapshot_candidate(
+	device_slug: &str,
+	task_root: &str,
+	row: organize_task_item::Model,
+) -> Option<PreviewCandidate> {
 	let kind = match row
 		.extension
 		.as_deref()
@@ -171,7 +176,7 @@ fn snapshot_candidate(row: organize_task_item::Model) -> Option<PreviewCandidate
 	let modified_at =
 		chrono::DateTime::from_timestamp(row.modified_at_100ns / 10_000_000 - 11_644_473_600, 0)
 			.unwrap_or_else(chrono::Utc::now);
-	let path = std::path::PathBuf::from(&row.relative_path);
+	let path = snapshot_path(task_root, &row.relative_path);
 	let metadata = crate::ops::indexing::database_storage::EntryMetadata {
 		path: path.clone(),
 		kind: crate::ops::indexing::state::EntryKind::File,
@@ -183,7 +188,15 @@ fn snapshot_candidate(row: organize_task_item::Model) -> Option<PreviewCandidate
 		permissions: None,
 		is_hidden: false,
 	};
-	let file = crate::domain::file::File::from_ephemeral(row.uuid, &metadata, SdPath::local(path));
+	let mut file = crate::domain::file::File::from_ephemeral(
+		row.uuid,
+		&metadata,
+		SdPath::physical(device_slug.to_string(), path),
+	);
+	file.content_kind = match kind {
+		super::PreviewMediaKind::Image => ContentKind::Image,
+		super::PreviewMediaKind::Video => ContentKind::Video,
+	};
 	Some(PreviewCandidate {
 		file,
 		media_kind: kind,
@@ -199,4 +212,64 @@ fn snapshot_candidate(row: organize_task_item::Model) -> Option<PreviewCandidate
 	})
 }
 
+fn snapshot_path(task_root: &str, relative_path: &str) -> PathBuf {
+	let mut path = PathBuf::from(task_root);
+	for component in relative_path
+		.split(['\\', '/'])
+		.filter(|part| !part.is_empty())
+	{
+		path.push(component);
+	}
+	path
+}
+
 crate::register_library_query!(PreviewSequenceQuery, "files.preview_sequence");
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::domain::content_identity::ContentKind;
+
+	#[test]
+	fn snapshot_candidate_is_a_physical_media_file() {
+		let now = chrono::Utc::now();
+		let row = organize_task_item::Model {
+			id: 1,
+			uuid: Uuid::new_v4(),
+			task_id: Uuid::new_v4(),
+			parent_id: None,
+			entry_uuid: None,
+			relative_path: "album\\photo.jpg".into(),
+			relative_path_key: "album\\photo.jpg".into(),
+			name: "photo.jpg".into(),
+			extension: Some("jpg".into()),
+			kind: "file".into(),
+			size_bytes: 12,
+			aggregate_size_bytes: 12,
+			modified_at_100ns: 13_500_000_000,
+			metadata_signature: "signature".into(),
+			tree_start: Some(1),
+			tree_end: Some(2),
+			unit_count: Some(1),
+			membership_state: "included".into(),
+			external_state: "present".into(),
+			decision_kind: None,
+			move_destination: None,
+			operation_state: "none".into(),
+			last_error: None,
+			applied_at: None,
+			created_at: now,
+			updated_at: now,
+		};
+
+		let candidate = snapshot_candidate("local", r"C:\Photos", row).expect("image candidate");
+		assert_eq!(candidate.file.content_kind, ContentKind::Image);
+		assert_eq!(
+			candidate.file.sd_path,
+			SdPath::Physical {
+				device_slug: "local".into(),
+				path: PathBuf::from(r"C:\Photos\album\photo.jpg")
+			}
+		);
+	}
+}

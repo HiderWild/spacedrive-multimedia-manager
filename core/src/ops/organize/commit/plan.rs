@@ -1,6 +1,6 @@
 use super::{
-	OrganizeCommitBlockReason, OrganizeCommitPlanOutput, OrganizeMoveGroup, OrganizePlanRoot,
-	OrganizeTopologyConflict,
+	preflight::PreflightReport, OrganizeCommitBlockReason, OrganizeCommitPlanOutput,
+	OrganizeMoveGroup, OrganizePlanRoot, OrganizeTopologyConflict,
 };
 use crate::domain::addressing::SdPath;
 use crate::infra::db::entities::{organize_task, organize_task_item};
@@ -203,6 +203,34 @@ pub fn build_commit_plan(
 		can_commit: blocking_reasons.is_empty(),
 		blocking_reasons,
 	})
+}
+
+/// Adds typed blockers discovered by the read-only filesystem preflight.
+///
+/// The database plan cannot observe descendants created after the snapshot. Keep
+/// that runtime distinction separate from `ChangedOrMissing`, which represents
+/// an already recorded snapshot item that must not be overridden.
+pub(crate) fn apply_preflight_blockers(
+	mut plan: OrganizeCommitPlanOutput,
+	report: &PreflightReport,
+) -> OrganizeCommitPlanOutput {
+	for root in report.roots.iter().filter(|root| !root.ok) {
+		let reason = match root.reason.as_deref() {
+			Some("current subtree contains unreviewed descendants") => {
+				OrganizeCommitBlockReason::CurrentSubtreeDrift {
+					item_ids: vec![root.item_id],
+				}
+			}
+			_ => OrganizeCommitBlockReason::ChangedOrMissing {
+				item_ids: vec![root.item_id],
+			},
+		};
+		plan.blocking_reasons.push(reason);
+	}
+	if !report.is_ok() {
+		plan.can_commit = false;
+	}
+	plan
 }
 
 fn compact_same_action(mut roots: Vec<PlannedRoot>) -> Vec<PlannedRoot> {
@@ -639,5 +667,64 @@ mod tests {
 		assert_eq!(plan.move_groups[0].roots.len(), 2);
 		assert_eq!(plan.move_groups[0].units, 2);
 		assert!(plan.discard_roots.is_empty());
+	}
+
+	#[test]
+	fn preflight_classifies_unreviewed_descendants_as_overrideable_drift() {
+		let item_id = Uuid::new_v4();
+		let plan = blocked_plan_for_preflight_tests();
+		let report = PreflightReport {
+			roots: vec![super::super::preflight::PreflightRootResult {
+				item_id,
+				ok: false,
+				reason: Some("current subtree contains unreviewed descendants".into()),
+			}],
+		};
+
+		let plan = apply_preflight_blockers(plan, &report);
+
+		assert!(!plan.can_commit);
+		assert!(matches!(
+			plan.blocking_reasons.as_slice(),
+			[OrganizeCommitBlockReason::CurrentSubtreeDrift { item_ids }]
+			if item_ids == &vec![item_id]
+		));
+	}
+
+	#[test]
+	fn preflight_keeps_changed_or_missing_targets_non_overrideable() {
+		let item_id = Uuid::new_v4();
+		let plan = blocked_plan_for_preflight_tests();
+		let report = PreflightReport {
+			roots: vec![super::super::preflight::PreflightRootResult {
+				item_id,
+				ok: false,
+				reason: Some("source metadata changed".into()),
+			}],
+		};
+
+		let plan = apply_preflight_blockers(plan, &report);
+
+		assert!(matches!(
+			plan.blocking_reasons.as_slice(),
+			[OrganizeCommitBlockReason::ChangedOrMissing { item_ids }]
+			if item_ids == &vec![item_id]
+		));
+	}
+
+	fn blocked_plan_for_preflight_tests() -> OrganizeCommitPlanOutput {
+		OrganizeCommitPlanOutput {
+			revision: 1,
+			move_groups: Vec::new(),
+			discard_roots: Vec::new(),
+			keep_units: 0,
+			unmarked_units: 0,
+			pending_addition_count: 0,
+			changed_or_missing_roots: Vec::new(),
+			failed_operation_roots: Vec::new(),
+			unsafe_conflicts: Vec::new(),
+			can_commit: true,
+			blocking_reasons: Vec::new(),
+		}
 	}
 }

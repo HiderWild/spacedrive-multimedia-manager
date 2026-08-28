@@ -4,7 +4,10 @@ use crate::{
 		db::entities::{organize_task, organize_task_item},
 		query::{LibraryQuery, QueryError, QueryResult},
 	},
-	ops::organize::commit::{build_commit_plan, OrganizeCommitPlanInput, OrganizeCommitPlanOutput},
+	ops::organize::commit::{
+		build_commit_plan, plan::apply_preflight_blockers, preflight::preflight_all_roots,
+		OrganizeCommitPlanInput, OrganizeCommitPlanOutput,
+	},
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use std::sync::Arc;
@@ -50,7 +53,15 @@ impl LibraryQuery for OrganizeCommitPlanQuery {
 			.filter(organize_task_item::Column::TaskId.eq(self.input.task_id))
 			.all(db)
 			.await?;
-		build_commit_plan(&task, &items).map_err(|error| QueryError::Internal(error.to_string()))
+		let mut plan = build_commit_plan(&task, &items)
+			.map_err(|error| QueryError::Internal(error.to_string()))?;
+		if plan.can_commit && cfg!(windows) {
+			let report = preflight_all_roots(db, &task, &items, &plan, false)
+				.await
+				.map_err(|error| QueryError::Internal(error.to_string()))?;
+			plan = apply_preflight_blockers(plan, &report);
+		}
+		Ok(plan)
 	}
 }
 

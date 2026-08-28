@@ -56,6 +56,9 @@ pub enum OrganizeCommitBlockReason {
 	ChangedOrMissing {
 		item_ids: Vec<Uuid>,
 	},
+	CurrentSubtreeDrift {
+		item_ids: Vec<Uuid>,
+	},
 	UnsafeTopology {
 		conflicts: Vec<OrganizeTopologyConflict>,
 	},
