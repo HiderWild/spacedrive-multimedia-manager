@@ -1,4 +1,4 @@
-use super::{OrganizeCommitJob, OrganizeCommitOutput, OrganizeCommitPhase, OrganizeMoveGroup};
+use super::{OrganizeCommitJob, OrganizeCommitOutput, OrganizeCommitPhase, OrganizeMoveGroup, OrganizePlanRoot};
 use crate::domain::addressing::SdPathBatch;
 use crate::infra::job::prelude::*;
 use crate::ops::files::copy::{
@@ -62,6 +62,7 @@ impl JobHandler for OrganizeCommitJob {
 		}
 
 		let mut settlements = Vec::new();
+		self.reconcile_active_child(&ctx, &mut settlements).await?;
 		for index in self.checkpoint.next_move_group..self.plan.move_groups.len() {
 			let group = self.plan.move_groups[index].clone();
 			ctx.check_interrupt().await?;
@@ -90,41 +91,25 @@ impl JobHandler for OrganizeCommitJob {
 			self.checkpoint_with(&ctx).await?;
 		}
 
-		if !self.plan.discard_roots.is_empty() && !self.checkpoint.delete_dispatched {
+		if !self.plan.discard_roots.is_empty() {
 			self.checkpoint.phase = OrganizeCommitPhase::DeleteRoots;
-			self.checkpoint.delete_dispatched = true;
-			self.checkpoint_with(&ctx).await?;
-			let targets = self
+			for root in self
 				.plan
 				.discard_roots
 				.iter()
-				.map(|root| root.source.clone())
-				.collect();
-			let result = ctx
-				.library()
-				.jobs()
-				.dispatch(DeleteJob::permanent(SdPathBatch::new(targets), true))
-				.await
-				.map_err(|error| JobError::execution(error.to_string()))?
-				.wait()
-				.await;
-			match result {
-				Ok(_) => settlements.extend(self.plan.discard_roots.iter().map(|root| {
-					OperationSettlement {
-						item_id: root.item_id,
-						state: OrganizeOperationState::Applied,
-						last_error: None,
-						applied_at: Some(Utc::now()),
-					}
-				})),
-				Err(error) => settlements.extend(self.plan.discard_roots.iter().map(|root| {
-					OperationSettlement {
-						item_id: root.item_id,
-						state: OrganizeOperationState::Failed,
-						last_error: Some(error.to_string()),
-						applied_at: None,
-					}
-				})),
+				.filter(|root| !self.checkpoint.completed_root_ids.contains(&root.item_id))
+			.cloned()
+			{
+				self.checkpoint.delete_dispatched = true;
+				self.checkpoint_with(&ctx).await?;
+				let result = self.run_delete_root(&ctx, &root).await;
+				settlements.push(match result {
+					Ok(()) => OperationSettlement { item_id: root.item_id, state: OrganizeOperationState::Applied, last_error: None, applied_at: Some(Utc::now()) },
+					Err(error) => OperationSettlement { item_id: root.item_id, state: OrganizeOperationState::Failed, last_error: Some(error), applied_at: None },
+				});
+				self.checkpoint.completed_root_ids.push(root.item_id);
+				self.checkpoint.active_child_job_id = None;
+				self.checkpoint_with(&ctx).await?;
 			}
 		}
 
@@ -160,6 +145,48 @@ impl JobHandler for OrganizeCommitJob {
 }
 
 impl OrganizeCommitJob {
+	async fn reconcile_active_child(
+		&mut self,
+		ctx: &JobContext<'_>,
+		settlements: &mut Vec<OperationSettlement>,
+	) -> JobResult<()> {
+		let Some(child_id) = self.checkpoint.active_child_job_id else {
+			return Ok(());
+		};
+		let status = if let Some(handle) = ctx.library().jobs().get_job(child_id).await {
+			handle.wait().await.map(|_| JobStatus::Completed).unwrap_or(JobStatus::Failed)
+		} else {
+			let status = ctx.library().jobs().get_job_info(child_id.0).await.map_err(|error| JobError::execution(error.to_string()))?.ok_or_else(|| JobError::execution(format!("active organize child job {child_id} disappeared")))?.status;
+			if !status.is_terminal() {
+				return Err(JobError::execution(format!("active organize child job {child_id} is not terminal: {status:?}")));
+			}
+			status
+		};
+		let succeeded = child_succeeded(status);
+		let roots: Vec<Uuid> = match self.checkpoint.phase {
+			OrganizeCommitPhase::MoveGroups => self.plan.move_groups.get(self.checkpoint.next_move_group).map(|group| group.roots.iter().map(|root| root.item_id).collect()).unwrap_or_default(),
+			OrganizeCommitPhase::DeleteRoots => self.plan.discard_roots.iter().find(|root| !self.checkpoint.completed_root_ids.contains(&root.item_id)).map(|root| vec![root.item_id]).unwrap_or_default(),
+			_ => Vec::new(),
+		};
+		for item_id in roots {
+			settlements.push(OperationSettlement { item_id, state: if succeeded { OrganizeOperationState::Applied } else { OrganizeOperationState::Failed }, last_error: (!succeeded).then(|| format!("child job {child_id} ended with {status:?}")), applied_at: succeeded.then_some(Utc::now()) });
+			self.checkpoint.completed_root_ids.push(item_id);
+		}
+		if matches!(self.checkpoint.phase, OrganizeCommitPhase::MoveGroups) && !self.plan.move_groups.is_empty() {
+			self.checkpoint.next_move_group += 1;
+		}
+		self.checkpoint.active_child_job_id = None;
+		self.checkpoint.delete_dispatched = false;
+		self.checkpoint_with(ctx).await
+	}
+
+	async fn run_delete_root(&mut self, ctx: &JobContext<'_>, root: &OrganizePlanRoot) -> Result<(), String> {
+		let handle = ctx.library().jobs().dispatch(DeleteJob::permanent(SdPathBatch::new(vec![root.source.clone()]), true)).await.map_err(|error| error.to_string())?;
+		self.checkpoint.active_child_job_id = Some(handle.id());
+		self.checkpoint_with(ctx).await.map_err(|error| error.to_string())?;
+		handle.wait().await.map(|_| ()).map_err(|error| error.to_string())
+	}
+
 	async fn run_move_group(
 		&mut self,
 		ctx: &JobContext<'_>,
@@ -237,6 +264,10 @@ fn unique_settlements(values: Vec<OperationSettlement>) -> Vec<OperationSettleme
 		.collect()
 }
 
+fn child_succeeded(status: JobStatus) -> bool {
+	status == JobStatus::Completed
+}
+
 impl From<OrganizeCommitOutput> for JobOutput {
 	fn from(output: OrganizeCommitOutput) -> Self {
 		JobOutput::custom(serde_json::json!({
@@ -244,5 +275,18 @@ impl From<OrganizeCommitOutput> for JobOutput {
 			"applied_root_ids": output.applied_root_ids,
 			"failed_root_ids": output.failed_root_ids,
 		}))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::child_succeeded;
+	use crate::infra::job::JobStatus;
+
+	#[test]
+	fn only_completed_child_jobs_are_reconciled_as_applied() {
+		assert!(child_succeeded(JobStatus::Completed));
+		assert!(!child_succeeded(JobStatus::Failed));
+		assert!(!child_succeeded(JobStatus::Cancelled));
 	}
 }
