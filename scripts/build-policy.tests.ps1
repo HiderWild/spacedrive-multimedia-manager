@@ -368,6 +368,7 @@ try {
 	$raceExternalSentinel = Join-Path $raceExternal 'target\external-sentinel.txt'
 	New-TextFile -LiteralPath $raceExternalSentinel
 	New-TextFile -LiteralPath (Join-Path $raceCandidate 'before-parent-replacement.txt')
+	# This hook covers a deterministic replacement before the final delete check. It does not prove atomic defense after that check.
 	$replaceParentAfterInitialCheck = {
 		param([string] $candidatePath)
 		if ((Get-NormalizedTestPath -LiteralPath $candidatePath) -ne (Get-NormalizedTestPath -LiteralPath $raceCandidate)) {
@@ -377,7 +378,7 @@ try {
 		New-Item -ItemType Junction -Path $raceParent -Target $raceExternal | Out-Null
 	}
 	try {
-		Assert-Throws -Action { Clear-RegisteredWorktreeArtifacts -RepoRoot $linkedRoot -EventLogPath $cleanupLog -BeforeArtifactDelete $replaceParentAfterInitialCheck } -MessagePattern 'reparse' -Message 'Parent replacement between validation and removal fails closed.'
+		Assert-Throws -Action { Clear-RegisteredWorktreeArtifacts -RepoRoot $linkedRoot -EventLogPath $cleanupLog -BeforeArtifactDelete $replaceParentAfterInitialCheck } -MessagePattern 'reparse' -Message 'Deterministic parent replacement before delete is rejected.'
 		Assert-PathExists -LiteralPath $raceExternalSentinel -Message 'Parent junction replacement does not delete the external sentinel.'
 	} finally {
 		if (Test-Path -LiteralPath $raceParent) {
@@ -390,7 +391,8 @@ try {
 			Move-Item -LiteralPath $raceBackup -Destination $raceParent
 		}
 	}
-	Complete-Test 'parent reparse replacement after initial validation fails closed'
+	Write-Host 'INFO: parent reparse fixture covers the deterministic pre-delete window only; post-validation TOCTOU remains out of scope.'
+	Complete-Test 'parent reparse replacement before delete is rejected (deterministic window only)'
 
 	foreach ($command in @('build', 'test', 'run', 'check', 'clippy', 'bench', 'doc', 'xtask')) {
 		Assert-True -Condition (Test-SpacedriveCargoCompileCommand -CargoArguments @($command, '--locked')) -Message "$command is compile-producing."

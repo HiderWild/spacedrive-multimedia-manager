@@ -39,6 +39,8 @@ Before each compile-producing Cargo command, the wrapper:
 
 Any cleanup failure stops the command. The policy rejects worktree roots, git directories, drive and user roots, external paths, and reparse points. Do not use `-KeepOtherProfile`, `-TargetDir`, a global `CARGO_TARGET_DIR`, or a cache tool to preserve or create another repository artifact tree.
 
+The practical Windows threat model is limited to preventing misconfiguration, rejecting already-present reparse points and junctions, and coordinating concurrent builds that obey this wrapper. PowerShell 5.1 cannot make the final path validation and recursive `Remove-Item` one atomic operation. This policy and its fixture tests do not claim to defend against a hostile or non-cooperating process that replaces a parent directory after the final validation. The named mutex coordinates wrapper processes that take the lock, but it cannot constrain such an external process. Keep the exact candidate-path checks, the second reparse validation, and fail-stop cleanup behavior unchanged.
+
 When you need a manual PowerShell flow, import the documented policy and call its guarded function. Do not reconstruct the cleanup commands yourself:
 
 ```powershell
