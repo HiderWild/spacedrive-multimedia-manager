@@ -8,7 +8,7 @@
  * 4. Starts Vite dev server
  * 5. Cleans up daemon on exit
  */
-import {execSync, spawn} from 'child_process';
+import {execFileSync, execSync, spawn} from 'child_process';
 import {existsSync, unlinkSync} from 'fs';
 import {homedir, platform} from 'os';
 import {dirname, join, resolve} from 'path';
@@ -26,6 +26,29 @@ const IS_WIN = platform() === 'win32';
 // So PROJECT_ROOT is: ../../../
 const PROJECT_ROOT = resolve(__dirname, '../../../');
 const DEFAULT_DAEMON_ADDR = '127.0.0.1:8488';
+const CARGO_WRAPPER = join(PROJECT_ROOT, 'scripts', 'invoke-spacedrive-cargo.ps1');
+
+function getWindowsPolicyArguments(cargoArguments: string[]): string[] {
+	return [
+		'-NoProfile',
+		'-ExecutionPolicy',
+		'Bypass',
+		'-File',
+		CARGO_WRAPPER,
+		'-RepoRoot',
+		PROJECT_ROOT,
+		...cargoArguments
+	];
+}
+
+function parseMetadataOutput(output: string): {target_directory: string} {
+	const jsonStart = output.indexOf('{');
+	const jsonEnd = output.lastIndexOf('}');
+	if (jsonStart < 0 || jsonEnd <= jsonStart) {
+		throw new Error('Cargo metadata did not return a JSON object');
+	}
+	return JSON.parse(output.slice(jsonStart, jsonEnd + 1));
+}
 
 function parseDaemonAddress(): {host: string; port: number; address: string} {
 	const raw = process.env.SD_SOCKET_ADDR ?? DEFAULT_DAEMON_ADDR;
@@ -40,6 +63,19 @@ function parseDaemonAddress(): {host: string; port: number; address: string} {
 // Resolve target directory from Cargo config (supports custom target-dir)
 function getCargoTargetDir(): string {
 	try {
+		if (IS_WIN) {
+			const output = execFileSync(
+				'powershell.exe',
+				getWindowsPolicyArguments(['metadata', '--format-version', '1', '--no-deps']),
+				{
+					cwd: PROJECT_ROOT,
+					encoding: 'utf8',
+					stdio: ['pipe', 'pipe', 'pipe']
+				}
+			);
+			return parseMetadataOutput(output).target_directory;
+		}
+
 		const output = execSync('cargo metadata --format-version 1 --no-deps', {
 			cwd: PROJECT_ROOT,
 			encoding: 'utf8',
@@ -50,6 +86,17 @@ function getCargoTargetDir(): string {
 	} catch {
 		return join(PROJECT_ROOT, 'target');
 	}
+}
+
+function getCargoBuildCommand(cargoArguments: string[]): {command: string; arguments: string[]} {
+	if (IS_WIN) {
+		return {
+			command: 'powershell.exe',
+			arguments: getWindowsPolicyArguments(cargoArguments)
+		};
+	}
+
+	return {command: 'cargo', arguments: cargoArguments};
 }
 
 const BIN_NAME = IS_WIN ? 'sd-daemon.exe' : 'sd-daemon';
@@ -120,10 +167,11 @@ async function main() {
 
 		// Build daemon
 		// On Windows, the binary target name is still just "sd-daemon" (Cargo handles the .exe)
-		const build = spawn('cargo', ['build', '--bin', 'sd-daemon'], {
+		const cargoBuild = getCargoBuildCommand(['build', '--bin', 'sd-daemon']);
+		const build = spawn(cargoBuild.command, cargoBuild.arguments, {
 			cwd: PROJECT_ROOT,
 			stdio: 'inherit',
-			shell: IS_WIN // shell: true is often needed on Windows for spawn to work correctly
+			shell: false
 		});
 
 		await new Promise<void>((resolve, reject) => {

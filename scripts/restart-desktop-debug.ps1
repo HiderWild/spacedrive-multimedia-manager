@@ -483,5 +483,7 @@ $env:HOST = "127.0.0.1"
 $env:SD_SOCKET_ADDR = "127.0.0.1:${DaemonPort}"
 $tauriDir = Join-Path $project "apps\tauri"
 Set-Location $tauriDir
-Write-Host "Running: bun run tauri:dev"
-& $bunCmd run tauri:dev
+Write-Host "Running Tauri development through the shared build policy"
+$tauriDevLauncher = Join-Path $project "scripts\invoke-tauri-dev.ps1"
+& $tauriDevLauncher -RepoRoot $project -BunPath $bunCmd
+exit $LASTEXITCODE

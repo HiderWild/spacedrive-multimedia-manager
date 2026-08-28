@@ -15,9 +15,9 @@
 		"preview": "vite preview",
 		"typecheck": "tsc -b",
 		"tauri": "tauri",
-		"tauri:dev": "tauri dev",
-		"tauri:dev:no-watch": "tauri dev --no-watch",
-		"tauri:build": "tauri build && ./scripts/fix-daemon-entitlements.sh ../../target/release/bundle/macos/Spacedrive.app || true"
+		"tauri:dev": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../../scripts/invoke-tauri-dev.ps1",
+		"tauri:dev:no-watch": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../../scripts/invoke-tauri-dev.ps1 -NoWatch",
+		"tauri:build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../../scripts/invoke-tauri-dev.ps1 -Build"
 	},
 	"dependencies": {
 		"@phosphor-icons/react": "^2.1.0",

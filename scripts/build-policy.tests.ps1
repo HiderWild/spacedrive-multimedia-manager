@@ -394,7 +394,7 @@ try {
 	Write-Host 'INFO: parent reparse fixture covers the deterministic pre-delete window only; post-validation TOCTOU remains out of scope.'
 	Complete-Test 'parent reparse replacement before delete is rejected (deterministic window only)'
 
-	foreach ($command in @('build', 'test', 'run', 'check', 'clippy', 'bench', 'doc', 'xtask')) {
+	foreach ($command in @('build', 'test', 'run', 'check', 'clippy', 'bench', 'doc', 'xtask', 'dev')) {
 		Assert-True -Condition (Test-SpacedriveCargoCompileCommand -CargoArguments @($command, '--locked')) -Message "$command is compile-producing."
 	}
 	foreach ($alias in @('ios', 'daemon', 'cli')) {

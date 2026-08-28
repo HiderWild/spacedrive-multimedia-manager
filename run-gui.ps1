@@ -120,7 +120,10 @@ Write-Host ""
 
 Set-Location (Join-Path $RepoRoot "apps\tauri")
 try {
-	bun run tauri:dev
+	$tauriDevLauncher = Join-Path $RepoRoot "scripts\invoke-tauri-dev.ps1"
+	$bunCommand = (Get-Command bun -ErrorAction Stop).Source
+	& $tauriDevLauncher -RepoRoot $RepoRoot -BunPath $bunCommand
+	exit $LASTEXITCODE
 } finally {
 	Set-Location $RepoRoot
 }

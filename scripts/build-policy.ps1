@@ -363,7 +363,7 @@ function Test-SpacedriveCargoCompileCommand {
 		[string[]] $CargoArguments
 	)
 
-	$compileCommands = @('build', 'test', 'run', 'check', 'clippy', 'bench', 'doc', 'xtask', 'ios', 'daemon', 'cli')
+	$compileCommands = @('build', 'test', 'run', 'check', 'clippy', 'bench', 'doc', 'xtask', 'ios', 'daemon', 'cli', 'dev')
 	foreach ($argument in $CargoArguments) {
 		if ($compileCommands -contains $argument.ToLowerInvariant()) {
 			return $true
@@ -469,13 +469,25 @@ function Invoke-SpacedriveCargo {
 	$compileCommand = Test-SpacedriveCargoCompileCommand -CargoArguments $CargoArguments
 	$lock = $null
 	$oldTarget = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR', 'Process')
+	$policyMarkerName = 'SD_SPACEDRIVE_BUILD_POLICY_ACTIVE'
+	$oldPolicyMarker = [Environment]::GetEnvironmentVariable($policyMarkerName, 'Process')
+	$policyAlreadyActive = $oldPolicyMarker -eq '1'
 	try {
 		if ($compileCommand) {
-			$lock = Enter-SpacedriveBuildLock -RepoRoot $RepoRoot -GitPath $GitPath -EventLogPath $EventLogPath
-			Clear-RegisteredWorktreeArtifacts -RepoRoot $RepoRoot -GitPath $GitPath -EventLogPath $EventLogPath
+			if ($policyAlreadyActive) {
+				# Tauri's beforeDevCommand can invoke the wrapper while the outer Tauri command owns the lock.
+				$activeTarget = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR', 'Process')
+				if (-not $activeTarget -or -not (Test-SpacedrivePathEqual -Left $activeTarget -Right $target)) {
+					throw "Nested build-policy invocation has no matching main-worktree target."
+				}
+			} else {
+				$lock = Enter-SpacedriveBuildLock -RepoRoot $RepoRoot -GitPath $GitPath -EventLogPath $EventLogPath
+				Clear-RegisteredWorktreeArtifacts -RepoRoot $RepoRoot -GitPath $GitPath -EventLogPath $EventLogPath
+			}
 		}
 
 		$env:CARGO_TARGET_DIR = $target
+		Set-Item "Env:$policyMarkerName" '1'
 		Write-SpacedriveBuildPolicyEvent -Event "cargo-target|$target" -EventLogPath $EventLogPath
 		$oldCargoErrorActionPreference = $ErrorActionPreference
 		try {
@@ -487,6 +499,11 @@ function Invoke-SpacedriveCargo {
 		}
 		return [int]$exitCode
 	} finally {
+		if ($null -eq $oldPolicyMarker) {
+			Remove-Item "Env:$policyMarkerName" -ErrorAction SilentlyContinue
+		} else {
+			Set-Item "Env:$policyMarkerName" $oldPolicyMarker
+		}
 		if ($null -eq $oldTarget) {
 			Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
 		} else {

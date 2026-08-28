@@ -11,7 +11,7 @@ dev-daemon *ARGS:
 
 # Run the desktop app in dev mode
 dev-desktop:
-    cd apps/tauri && bun run tauri:dev
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{justfile_directory()}}/scripts/invoke-tauri-dev.ps1"
 
 # Run the mobile app in dev mode
 dev-mobile:

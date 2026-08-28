@@ -433,17 +433,12 @@ function Start-DevMode {
 	# Prefer package-local script, then filter from monorepo root
 	$tauriDir = Join-Path $RepoRoot "apps\tauri"
 	if (Test-Path (Join-Path $tauriDir "package.json")) {
-		Push-Location $tauriDir
-		try {
-			if (Get-Command bun -ErrorAction SilentlyContinue) {
-				Write-Info "bun run tauri:dev"
-				bun run tauri:dev
-			} else {
-				throw "bun is not installed or not on PATH"
-			}
-		} finally {
-			Pop-Location
-		}
+		$bunCommand = (Get-Command bun -ErrorAction SilentlyContinue).Source
+		if (-not $bunCommand) { throw "bun is not installed or not on PATH" }
+		$tauriDevLauncher = Join-Path $RepoRoot "scripts\invoke-tauri-dev.ps1"
+		Write-Info "Tauri development runs through the shared build policy"
+		& $tauriDevLauncher -RepoRoot $RepoRoot -BunPath $bunCommand
+		if ($LASTEXITCODE -ne 0) { throw "Tauri development failed with exit code $LASTEXITCODE" }
 		return
 	}
 
