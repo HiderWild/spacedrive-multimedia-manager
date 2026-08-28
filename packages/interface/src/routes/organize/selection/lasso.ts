@@ -3,11 +3,7 @@ export function computeLassoSelection(pointerDownSelection: Set<string>, current
 
 	const result = new Set(pointerDownSelection);
 	for (const itemId of currentIntersections) {
-		if (result.has(itemId)) {
-			result.delete(itemId);
-		} else {
-			result.add(itemId);
-		}
+		result.add(itemId);
 	}
 	return result;
 }

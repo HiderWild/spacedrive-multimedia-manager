@@ -8,8 +8,10 @@ import {computeLassoSelection, edgeScrollVelocity, isLassoDrag, lassoRect} from 
 		expect(computeLassoSelection(new Set(['fixed']), new Set(['b']), false)).toEqual(new Set(['b']));
 	});
 
-	test('uses the pointer-down selection as the baseline for Ctrl toggling', () => {
-		expect(computeLassoSelection(new Set(['fixed', 'remove']), new Set(['remove', 'add']), true)).toEqual(new Set(['fixed', 'add']));
+	test('Ctrl lasso unions current intersections with the pointer-down selection', () => {
+		const pointerDownSelection = new Set(['fixed', 'remove']);
+		expect(computeLassoSelection(pointerDownSelection, new Set(['remove', 'add']), true)).toEqual(new Set(['fixed', 'remove', 'add']));
+		expect(computeLassoSelection(pointerDownSelection, new Set(['add']), true)).toEqual(new Set(['fixed', 'remove', 'add']));
 	});
 
 	test('edge scrolling is directional and bounded', () => {
