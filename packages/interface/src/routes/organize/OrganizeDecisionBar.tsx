@@ -1,11 +1,15 @@
-import {useState} from 'react';
 import type {
 	OrganizeDecisionInput,
 	OrganizeProgressSummary,
-	OrganizeTaskSummary,
+	OrganizeTaskSummary
 } from '@sd/ts-client';
+import {useState} from 'react';
 import {useLibraryMutation} from '../../contexts/SpacedriveContext';
-import {buildSetDecisionInput, conflictDialogModel, type OrganizeSelectionState} from './decision/contracts';
+import {
+	buildSetDecisionInput,
+	conflictDialogModel,
+	type OrganizeSelectionState
+} from './decision/contracts';
 import {OrganizeProgress} from './OrganizeProgress';
 
 export function OrganizeDecisionBar(props: {
@@ -16,15 +20,30 @@ export function OrganizeDecisionBar(props: {
 	onApplied: () => void;
 	onChooseMove: () => void;
 }) {
-	const [confirmation, setConfirmation] = useState<ReturnType<typeof conflictDialogModel> | null>(null);
-	const [pendingDecision, setPendingDecision] = useState<OrganizeDecisionInput | null>(null);
+	const [confirmation, setConfirmation] = useState<ReturnType<
+		typeof conflictDialogModel
+	> | null>(null);
+	const [pendingDecision, setPendingDecision] =
+		useState<OrganizeDecisionInput | null>(null);
 	const setDecision = useLibraryMutation('organize.set_decision');
-	const readOnly = props.task.status === 'completed' || props.task.status === 'committing';
+	// The backend accepts decisions only while the snapshot is active. Keep the
+	// controls visible during scans and failures so the user can understand why
+	// they cannot act, but prevent requests that the lifecycle will reject.
+	const readOnly = props.task.status !== 'active';
 
-	const submitDecision = async (decision: OrganizeDecisionInput | null, override?: ReturnType<typeof conflictDialogModel>) => {
-		const input = buildSetDecisionInput(props.task.id, props.task.revision, props.selection, decision);
+	const submitDecision = async (
+		decision: OrganizeDecisionInput | null,
+		override?: ReturnType<typeof conflictDialogModel>
+	) => {
+		const input = buildSetDecisionInput(
+			props.task.id,
+			props.task.revision,
+			props.selection,
+			decision
+		);
 		if (override) {
-			input.confirm_descendant_override = override.kind === 'descendant_override';
+			input.confirm_descendant_override =
+				override.kind === 'descendant_override';
 			input.confirm_ancestor_split = override.kind === 'ancestor_split';
 		}
 		const result = await setDecision.mutateAsync(input);
@@ -38,18 +57,75 @@ export function OrganizeDecisionBar(props: {
 	};
 
 	return (
-		<section className="space-y-3 border-b border-app-line p-3" aria-label="Organize decisions">
+		<section
+			className="border-app-line space-y-3 border-b p-3"
+			aria-label="Organize decisions"
+		>
 			<OrganizeProgress progress={props.progress} />
 			<div className="flex flex-wrap gap-2">
-				<button disabled={readOnly || props.selection.kind === 'items' && props.selection.itemIds.size === 0} onClick={() => void submitDecision('Keep')}>Keep</button>
-				<button disabled={readOnly || props.selection.kind === 'items' && props.selection.itemIds.size === 0} onClick={() => void submitDecision('Discard')}>Discard</button>
-				<button disabled={readOnly || props.selection.kind === 'items' && props.selection.itemIds.size === 0} onClick={props.onChooseMove}>Move…</button>
+				<button
+					type="button"
+					disabled={
+						readOnly ||
+						(props.selection.kind === 'items' &&
+							props.selection.itemIds.size === 0)
+					}
+					onClick={() => void submitDecision('Keep')}
+				>
+					Keep
+				</button>
+				<button
+					type="button"
+					disabled={
+						readOnly ||
+						(props.selection.kind === 'items' &&
+							props.selection.itemIds.size === 0)
+					}
+					onClick={() => void submitDecision('Discard')}
+				>
+					Discard
+				</button>
+				<button
+					type="button"
+					disabled={
+						readOnly ||
+						(props.selection.kind === 'items' &&
+							props.selection.itemIds.size === 0)
+					}
+					onClick={props.onChooseMove}
+				>
+					Move…
+				</button>
 			</div>
 			{confirmation && (
-				<div role="alertdialog" className="space-y-2 rounded-md border border-amber-500/40 p-3">
-					<p>This decision affects {confirmation.keepUnits + confirmation.discardUnits + confirmation.moveUnits} already reviewed units.</p>
-					<button disabled={pendingDecision === null} onClick={() => pendingDecision !== null && void submitDecision(pendingDecision, confirmation)}>Confirm override</button>
-					<button onClick={() => { setConfirmation(null); setPendingDecision(null); }}>Cancel</button>
+				<div
+					role="alertdialog"
+					className="space-y-2 rounded-md border border-amber-500/40 p-3"
+				>
+					<p>
+						This decision affects{' '}
+						{confirmation.keepUnits +
+							confirmation.discardUnits +
+							confirmation.moveUnits}{' '}
+						already reviewed units.
+					</p>
+					<button
+						disabled={pendingDecision === null}
+						onClick={() =>
+							pendingDecision !== null &&
+							void submitDecision(pendingDecision, confirmation)
+						}
+					>
+						Confirm override
+					</button>
+					<button
+						onClick={() => {
+							setConfirmation(null);
+							setPendingDecision(null);
+						}}
+					>
+						Cancel
+					</button>
 				</div>
 			)}
 		</section>

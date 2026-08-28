@@ -1,8 +1,10 @@
 import {ArrowLeft, CaretRight, FolderOpen} from '@phosphor-icons/react';
 import {useSidebarStore} from '@sd/ts-client';
 import type {
+	File,
 	LocationsListOutput,
 	LocationsListQueryInput,
+	Model,
 	OrganizeItemFilter,
 	OrganizeItemSort,
 	OrganizeSortDirection,
@@ -19,12 +21,14 @@ import {
 	useLibraryQuery,
 	useNormalizedQuery
 } from '../../contexts/SpacedriveContext';
+import {File as FileComponent} from '../explorer/File';
 import type {OrganizeSelectionState} from './decision/contracts';
 import {buildSetDecisionInput} from './decision/contracts';
 import {
 	mapLocationsToMoveDestinations,
 	physicalDestination
 } from './decision/moveDestinations';
+import type {RecentMoveDestination} from './decision/moveDestinations';
 import {OrganizeChangesPanel} from './OrganizeChangesPanel';
 import {OrganizeCommitDialog} from './OrganizeCommitDialog';
 import {OrganizeDecisionBar} from './OrganizeDecisionBar';
@@ -91,12 +95,20 @@ export function OrganizeTaskPage() {
 	const [organizeViewMode, setOrganizeViewMode] = useState<'grid' | 'list'>(
 		restoredOrganizeState.viewMode
 	);
-	const {task, taskSummary, children, isLoading, error, refetch} =
-		useOrganizeTask(taskId, parentItemId, {
-			filter: organizeFilter,
-			sort: organizeSort,
-			direction: organizeDirection
-		});
+	const {
+		task,
+		taskSummary,
+		children,
+		hasNextPage,
+		fetchNextPage,
+		isLoading,
+		error,
+		refetch
+	} = useOrganizeTask(taskId, parentItemId, {
+		filter: organizeFilter,
+		sort: organizeSort,
+		direction: organizeDirection
+	});
 	const [selection, setSelection] = useState<OrganizeSelectionState>(
 		createSelectionState()
 	);
@@ -274,6 +286,27 @@ export function OrganizeTaskPage() {
 		locationsQuery.data?.locations ?? []
 	);
 	const changeItems = changeItemsQuery.data?.items ?? [];
+	const changeProjections = useMemo(
+		() =>
+			new Map(
+				(changeItemsQuery.data?.decision_projections ?? []).map(
+					(projection) => [projection.item_id, projection]
+				)
+			),
+		[changeItemsQuery.data]
+	);
+	const recentDestinations = useMemo<RecentMoveDestination[]>(
+		() =>
+			changeItems.flatMap((item) => {
+				const destination = changeProjections.get(
+					item.uuid
+				)?.move_destination;
+				return destination
+					? [{destination, updated_at: item.updated_at}]
+					: [];
+			}),
+		[changeItems, changeProjections]
+	);
 	const applyMove = async (destination: SdPath) => {
 		const result = await setDecision.mutateAsync(
 			buildSetDecisionInput(taskId, taskSummary.revision, selection, {
@@ -496,7 +529,9 @@ export function OrganizeTaskPage() {
 				/>
 				<button
 					type="button"
-					disabled={!commitPlan.data}
+					disabled={
+						!commitPlan.data || taskSummary.status !== 'active'
+					}
 					onClick={() => setCommitDialogOpen(true)}
 					className="bg-accent rounded px-3 py-1.5 text-xs text-white disabled:opacity-50"
 				>
@@ -538,6 +573,7 @@ export function OrganizeTaskPage() {
 					</div>
 					<OrganizeMovePicker
 						locations={locationDestinations}
+						recent={recentDestinations}
 						pinned={pinnedDestinations}
 						task={taskSummary}
 						selection={selection}
@@ -604,7 +640,7 @@ export function OrganizeTaskPage() {
 							select({
 								type: 'selectAll',
 								parentItemId: parentItemId ?? task.root_item_id,
-								filter: 'All'
+								filter: organizeFilter
 							});
 						}
 					}}
@@ -646,14 +682,14 @@ export function OrganizeTaskPage() {
 						rowHeight={organizeViewMode === 'list' ? 96 : 220}
 						selectedItemIds={selectedItemIds}
 						onLassoSelectionChange={selectLasso}
+						onEndReached={() => {
+							if (hasNextPage) fetchNextPage();
+						}}
 						scrollContainerRef={scrollRef}
 						renderItem={({item, projection}) => (
 							<button
 								type="button"
-								data-selected={
-									selection.kind === 'items' &&
-									selection.itemIds.has(item.uuid)
-								}
+								data-selected={selectedItemIds.has(item.uuid)}
 								onClick={(event) =>
 									select({
 										type: event.shiftKey
@@ -675,6 +711,10 @@ export function OrganizeTaskPage() {
 								}}
 								className={`border-app-line bg-app-box/30 hover:border-accent/60 data-[selected=true]:border-accent flex w-full gap-3 rounded-lg border p-3 text-left ${organizeViewMode === 'list' ? 'flex-row items-center' : 'flex-col items-start'}`}
 							>
+								<OrganizeItemThumbnail
+									item={item}
+									list={organizeViewMode === 'list'}
+								/>
 								<span className="truncate text-sm font-medium">
 									{item.name || taskSummary.name}
 								</span>
@@ -693,11 +733,38 @@ export function OrganizeTaskPage() {
 				<aside className="border-app-line hidden w-[min(34vw,26rem)] shrink-0 border-l lg:block">
 					<OrganizePreviewPane
 						taskId={taskId}
+						selectedItemId={focusedItem?.uuid ?? null}
 						selectedFile={selectedFile}
 						siblingFiles={[]}
 					/>
 				</aside>
 			</div>
 		</main>
+	);
+}
+
+function OrganizeItemThumbnail({item, list}: {item: Model; list: boolean}) {
+	const entryUuid = item.entry_uuid ?? '';
+	const fileQuery = useLibraryQuery(
+		{type: 'files.by_id', input: {file_id: entryUuid}},
+		{enabled: entryUuid.length > 0, staleTime: 60_000}
+	);
+	const file = fileQuery.data as File | undefined;
+	if (!file) {
+		return (
+			<div
+				className={`${list ? 'h-12 w-12' : 'h-32 w-full'} bg-app-hover text-ink-faint flex shrink-0 items-center justify-center rounded-md text-xs`}
+			>
+				{item.kind}
+			</div>
+		);
+	}
+	return (
+		<FileComponent.Thumb
+			file={file}
+			size={list ? 48 : 128}
+			squareMode={!list}
+			frameClassName="rounded-md border border-app-line/50 bg-app-box/30"
+		/>
 	);
 }

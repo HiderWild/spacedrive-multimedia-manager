@@ -2,22 +2,23 @@ import {
 	ArrowLeft,
 	ArrowRight,
 	FolderOpen,
-	WarningCircle,
-} from "@phosphor-icons/react";
+	WarningCircle
+} from '@phosphor-icons/react';
 import type {
 	File,
 	PreviewSequenceInput,
 	PreviewSequenceOutput,
-	SdPath,
-} from "@sd/ts-client";
-import { useLibraryQuery } from "@sd/ts-client/hooks";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ContentRenderer } from "../../components/QuickPreview/ContentRenderer";
-import { DirectoryPreview } from "../../components/QuickPreview/DirectoryPreview";
-import { File as FileComponent } from "../explorer/File";
+	SdPath
+} from '@sd/ts-client';
+import {useLibraryQuery} from '@sd/ts-client/hooks';
+import {useCallback, useEffect, useMemo, useState} from 'react';
+import {ContentRenderer} from '../../components/QuickPreview/ContentRenderer';
+import {DirectoryPreview} from '../../components/QuickPreview/DirectoryPreview';
+import {File as FileComponent} from '../explorer/File';
 
 export interface OrganizePreviewPaneProps {
 	taskId: string;
+	selectedItemId: string | null;
 	selectedFile: File | null;
 	siblingFiles?: readonly File[];
 	onSelectFile?: (file: File) => void;
@@ -32,7 +33,7 @@ export interface PreviewSequenceProps {
 export function findAdjacentPreviewFile(
 	files: readonly File[],
 	currentFileId: string,
-	offset: -1 | 1,
+	offset: -1 | 1
 ): File | null {
 	const index = files.findIndex((file) => file.id === currentFileId);
 	if (index < 0) return null;
@@ -42,49 +43,52 @@ export function findAdjacentPreviewFile(
 export function previewSequenceInput(
 	directory: SdPath,
 	taskId: string,
-	itemId: string,
+	itemId: string
 ): PreviewSequenceInput {
 	return {
 		directory,
-		organize: { task_id: taskId, item_id: itemId },
-		limit: 12,
+		organize: {task_id: taskId, item_id: itemId},
+		limit: 12
 	};
 }
 
 export function previewSequenceLabel(
 	files: readonly File[],
 	selectedFileId: string | null,
-	candidateBudgetExhausted: boolean,
+	candidateBudgetExhausted: boolean
 ): string {
 	const position = files.findIndex((file) => file.id === selectedFileId);
 	const count =
 		files.length > 0 && position >= 0
 			? `${position + 1} / ${files.length}`
-			: "No media";
+			: 'No media';
 	return candidateBudgetExhausted ? `${count} · sampled` : count;
 }
 
 export function PreviewSequence({
 	directory,
 	taskId,
-	itemId,
+	itemId
 }: PreviewSequenceProps) {
 	const query = useLibraryQuery(
 		{
-			type: "files.preview_sequence",
-			input: previewSequenceInput(directory.sd_path, taskId, itemId),
+			type: 'files.preview_sequence',
+			input: previewSequenceInput(directory.sd_path, taskId, itemId)
 		},
 		{
 			staleTime: 30_000,
-			refetchOnWindowFocus: false,
-		},
+			refetchOnWindowFocus: false
+		}
 	);
 	const output: PreviewSequenceOutput | undefined = query.data;
 	const files = output?.files ?? [];
 	const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (!selectedFileId || !files.some((file) => file.id === selectedFileId)) {
+		if (
+			!selectedFileId ||
+			!files.some((file) => file.id === selectedFileId)
+		) {
 			setSelectedFileId(files[0]?.id ?? null);
 		}
 	}, [files, selectedFileId]);
@@ -94,18 +98,22 @@ export function PreviewSequence({
 	const moveSelection = useCallback(
 		(offset: -1 | 1) => {
 			if (!selectedFile) return;
-			const next = findAdjacentPreviewFile(files, selectedFile.id, offset);
+			const next = findAdjacentPreviewFile(
+				files,
+				selectedFile.id,
+				offset
+			);
 			if (next) setSelectedFileId(next.id);
 		},
-		[files, selectedFile],
+		[files, selectedFile]
 	);
 
 	if (query.isLoading) {
 		return (
 			<div className="flex h-full min-h-0 flex-col">
 				<div className="flex min-h-0 flex-1 items-center justify-center bg-black/20">
-					<div className="space-y-3 text-center text-sm text-ink-dull">
-						<div className="mx-auto h-8 w-8 animate-pulse rounded-full bg-app-hover" />
+					<div className="text-ink-dull space-y-3 text-center text-sm">
+						<div className="bg-app-hover mx-auto h-8 w-8 animate-pulse rounded-full" />
 						<div>Preparing a bounded preview…</div>
 					</div>
 				</div>
@@ -117,7 +125,9 @@ export function PreviewSequence({
 		return (
 			<div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
 				<WarningCircle size={28} className="text-ink-dull" />
-				<div className="text-sm text-ink-dull">Preview unavailable for this folder.</div>
+				<div className="text-ink-dull text-sm">
+					Preview unavailable for this folder.
+				</div>
 			</div>
 		);
 	}
@@ -133,7 +143,7 @@ export function PreviewSequence({
 						videoWheelZoomEnabled={false}
 					/>
 				) : (
-					<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-ink-dull">
+					<div className="text-ink-dull flex h-full flex-col items-center justify-center gap-3 text-sm">
 						<FolderOpen size={32} />
 						<span>No image or video samples in this folder.</span>
 					</div>
@@ -144,7 +154,13 @@ export function PreviewSequence({
 							type="button"
 							className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white transition hover:bg-black/80 disabled:opacity-30"
 							onClick={() => moveSelection(-1)}
-							disabled={!findAdjacentPreviewFile(files, selectedFile.id, -1)}
+							disabled={
+								!findAdjacentPreviewFile(
+									files,
+									selectedFile.id,
+									-1
+								)
+							}
 							aria-label="Previous preview sample"
 						>
 							<ArrowLeft size={18} />
@@ -153,7 +169,13 @@ export function PreviewSequence({
 							type="button"
 							className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white transition hover:bg-black/80 disabled:opacity-30"
 							onClick={() => moveSelection(1)}
-							disabled={!findAdjacentPreviewFile(files, selectedFile.id, 1)}
+							disabled={
+								!findAdjacentPreviewFile(
+									files,
+									selectedFile.id,
+									1
+								)
+							}
 							aria-label="Next preview sample"
 						>
 							<ArrowRight size={18} />
@@ -169,7 +191,7 @@ export function PreviewSequence({
 				previewLabel={previewSequenceLabel(
 					files,
 					selectedFile?.id ?? null,
-					output?.candidate_budget_exhausted ?? false,
+					output?.candidate_budget_exhausted ?? false
 				)}
 			/>
 		</div>
@@ -178,35 +200,36 @@ export function PreviewSequence({
 
 export function OrganizePreviewPane({
 	taskId,
+	selectedItemId,
 	selectedFile,
 	siblingFiles = [],
-	onSelectFile,
+	onSelectFile
 }: OrganizePreviewPaneProps) {
 	const previousFile = useMemo(
 		() =>
 			selectedFile
 				? findAdjacentPreviewFile(siblingFiles, selectedFile.id, -1)
 				: null,
-		[selectedFile, siblingFiles],
+		[selectedFile, siblingFiles]
 	);
 	const nextFile = useMemo(
 		() =>
 			selectedFile
 				? findAdjacentPreviewFile(siblingFiles, selectedFile.id, 1)
 				: null,
-		[selectedFile, siblingFiles],
+		[selectedFile, siblingFiles]
 	);
 
 	const moveItem = useCallback(
 		(file: File | null) => {
 			if (file) onSelectFile?.(file);
 		},
-		[onSelectFile],
+		[onSelectFile]
 	);
 
 	if (!selectedFile) {
 		return (
-			<div className="flex h-full items-center justify-center p-6 text-center text-sm text-ink-dull">
+			<div className="text-ink-dull flex h-full items-center justify-center p-6 text-center text-sm">
 				Select an item to preview it.
 			</div>
 		);
@@ -214,23 +237,23 @@ export function OrganizePreviewPane({
 
 	return (
 		<div
-			className="flex h-full min-h-0 flex-col bg-app-box/30 outline-none"
+			className="bg-app-box/30 flex h-full min-h-0 flex-col outline-none"
 			tabIndex={0}
 			onKeyDown={(event) => {
-				if (event.key === "ArrowLeft") {
+				if (event.key === 'ArrowLeft') {
 					event.preventDefault();
 					moveItem(previousFile);
-				} else if (event.key === "ArrowRight") {
+				} else if (event.key === 'ArrowRight') {
 					event.preventDefault();
 					moveItem(nextFile);
 				}
 			}}
 			aria-label="Organize preview"
 		>
-			<div className="flex shrink-0 items-center gap-2 border-b border-app-line px-3 py-2">
+			<div className="border-app-line flex shrink-0 items-center gap-2 border-b px-3 py-2">
 				<button
 					type="button"
-					className="rounded-md p-1.5 text-ink-dull transition hover:bg-app-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+					className="text-ink-dull hover:bg-app-hover hover:text-ink rounded-md p-1.5 transition disabled:cursor-not-allowed disabled:opacity-30"
 					onClick={() => moveItem(previousFile)}
 					disabled={!previousFile || !onSelectFile}
 					aria-label="Previous item"
@@ -238,23 +261,27 @@ export function OrganizePreviewPane({
 					<ArrowLeft size={16} />
 				</button>
 				<div className="min-w-0 flex-1 text-center">
-					<div className="truncate text-sm text-ink" title={selectedFile.name}>
+					<div
+						className="text-ink truncate text-sm"
+						title={selectedFile.name}
+					>
 						{selectedFile.name}
 					</div>
 					{siblingFiles.length > 0 && (
-						<div className="text-[11px] text-ink-faint">
+						<div className="text-ink-faint text-[11px]">
 							{Math.max(
 								0,
 								siblingFiles.findIndex(
-									(file) => file.id === selectedFile.id,
-								) + 1,
-							)} / {siblingFiles.length}
+									(file) => file.id === selectedFile.id
+								) + 1
+							)}{' '}
+							/ {siblingFiles.length}
 						</div>
 					)}
 				</div>
 				<button
 					type="button"
-					className="rounded-md p-1.5 text-ink-dull transition hover:bg-app-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+					className="text-ink-dull hover:bg-app-hover hover:text-ink rounded-md p-1.5 transition disabled:cursor-not-allowed disabled:opacity-30"
 					onClick={() => moveItem(nextFile)}
 					disabled={!nextFile || !onSelectFile}
 					aria-label="Next item"
@@ -263,11 +290,11 @@ export function OrganizePreviewPane({
 				</button>
 			</div>
 			<div className="min-h-0 flex-1">
-				{selectedFile.kind === "Directory" ? (
+				{selectedFile.kind === 'Directory' ? (
 					<PreviewSequence
 						directory={selectedFile}
 						taskId={taskId}
-						itemId={selectedFile.id}
+						itemId={selectedItemId ?? selectedFile.id}
 					/>
 				) : (
 					<div className="h-full bg-black">
@@ -280,9 +307,11 @@ export function OrganizePreviewPane({
 					</div>
 				)}
 			</div>
-			<div className="flex shrink-0 items-center gap-2 border-t border-app-line px-3 py-2 text-xs text-ink-faint">
+			<div className="border-app-line text-ink-faint flex shrink-0 items-center gap-2 border-t px-3 py-2 text-xs">
 				<FileComponent.Thumb file={selectedFile} size={28} />
-				<span className="truncate">Preview is read-only and does not change the task decision.</span>
+				<span className="truncate">
+					Preview is read-only and does not change the task decision.
+				</span>
 			</div>
 		</div>
 	);
