@@ -147,9 +147,9 @@ pub fn validate_move_destination(
 ) -> Result<(), OrganizeError> {
 	let source = normalize_topology_key(source_key)?;
 	let destination = normalize_topology_key(destination_key)?;
-	if is_volume_root_key(&source) || is_volume_root_key(&destination) {
+	if is_volume_root_key(&source) {
 		return Err(OrganizeError::UnsafeTopology(
-			"a volume root cannot be moved or used as a move destination".into(),
+			"a volume root cannot be moved".into(),
 		));
 	}
 	if source == destination {
@@ -287,6 +287,13 @@ mod tests {
 			validate_move_destination(r"c:\a", r"c:\a\child", &[]),
 			Err(OrganizeError::UnsafeTopology(_))
 		));
+	}
+
+	#[test]
+	#[cfg(windows)]
+	fn allows_actionable_items_to_move_to_volume_roots() {
+		assert!(validate_move_destination(r"c:\photos", r"C:\", &[]).is_ok());
+		assert!(validate_move_destination(r"c:\photos", r"\\nas\share", &[]).is_ok());
 	}
 
 	#[test]

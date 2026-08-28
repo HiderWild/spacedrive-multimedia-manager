@@ -185,6 +185,13 @@ pub fn resolve_set_decision(
 			.iter()
 			.filter(|root| root.tree_start < start && end <= root.tree_end)
 			.collect();
+		delete_roots.extend(
+			state
+				.decisions
+				.iter()
+				.filter(|root| root.item_id == item_id)
+				.map(|root| root.item_id),
+		);
 
 		if let Some(ancestor) = ancestors.iter().max_by_key(|root| root.tree_start) {
 			if requested.as_ref() == Some(&ancestor.decision) {
@@ -487,8 +494,8 @@ mod tests {
 	#[test]
 	fn move_decisions_compare_normalized_windows_destinations() {
 		assert_eq!(
-			DecisionValue::move_to(r"C:\Archive\"),
-			DecisionValue::move_to(r"c:/archive")
+			DecisionValue::move_to(r"C:\Archive\\.\2026\..\Trip\\"),
+			DecisionValue::move_to(r"c:/archive/trip")
 		);
 	}
 

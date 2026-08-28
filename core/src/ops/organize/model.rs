@@ -61,11 +61,32 @@ fn normalize_windows_destination(destination: &str) -> String {
 			key = drive.to_string();
 		}
 	}
-	let is_drive_root = key.len() == 2 && key.as_bytes().get(1) == Some(&b':');
-	if !is_drive_root {
-		key = key.trim_end_matches('\\').to_string();
+
+	let is_unc = key.starts_with(r"\\");
+	let root_components = if is_unc { 2 } else { 1 };
+	let mut components = Vec::new();
+	for component in key.split('\\') {
+		if component.is_empty() || component == "." {
+			continue;
+		}
+		if component == ".." {
+			if components.len() > root_components {
+				components.pop();
+			}
+			continue;
+		}
+		components.push(component);
 	}
-	key
+
+	if is_unc {
+		format!(r"\\{}", components.join("\\"))
+	} else if components.len() == 1 && components[0].ends_with(':') {
+		components[0].to_string()
+	} else if let Some((drive, rest)) = components.split_first() {
+		format!("{}\\{}", drive, rest.join("\\"))
+	} else {
+		String::new()
+	}
 }
 
 impl DecisionValue {
