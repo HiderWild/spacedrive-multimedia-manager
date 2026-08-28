@@ -1,6 +1,5 @@
 import {
 	ArrowsClockwise,
-	ArrowSquareOut,
 	Calendar,
 	ClockCounterClockwise,
 	Cube,
@@ -44,13 +43,6 @@ import {
 import {useContextMenu} from '../../../hooks/useContextMenu';
 import {useRefetchTagQueries} from '../../../hooks/useRefetchTagQueries';
 import {File as FileComponent} from '../../../routes/explorer/File';
-import {
-	deriveDirectoryPreviewAvailability,
-	deriveOrganizeInspectorPreview,
-	toMediaSortBy,
-	type OrganizeInspectorPreviewContext
-} from '../../../routes/explorer/organize/organizePreview';
-import {OrganizePreviewContent} from '../../../routes/explorer/organize/OrganizePreviewContent';
 import {formatBytes} from '../../../routes/explorer/utils';
 import {Divider, InfoRow, Section, TabContent, Tabs} from '../Inspector';
 import {LocationMap} from '../LocationMap';
@@ -61,64 +53,13 @@ import {
 
 interface FileInspectorProps {
 	file: File;
-	organizePreview?: OrganizeInspectorPreviewContext | null;
 }
 
-function previewTabLabel(
-	tabId: 'video' | 'image' | 'list',
-	t: (key: string) => string
-): string {
-	switch (tabId) {
-		case 'video':
-			return t('organize.previewVideo');
-		case 'image':
-			return t('organize.previewImage');
-		case 'list':
-			return t('organize.previewList');
-	}
-}
-
-function previewTabTooltip(
-	tab: {
-		id: 'video' | 'image' | 'list';
-		disabledReason: 'missing-video' | 'missing-image' | null;
-	},
-	t: (key: string) => string
-): string {
-	if (tab.disabledReason === 'missing-video') {
-		return t('organize.previewMissingVideo');
-	}
-
-	if (tab.disabledReason === 'missing-image') {
-		return t('organize.previewMissingImage');
-	}
-
-	return previewTabLabel(tab.id, t);
-}
-
-function previewTabIcon(tabId: 'video' | 'image' | 'list') {
-	switch (tabId) {
-		case 'video':
-			return FilmStrip;
-		case 'image':
-			return Image;
-		case 'list':
-			return HardDrive;
-	}
-}
-
-export function FileInspector({
-	file,
-	organizePreview = null
-}: FileInspectorProps) {
+export function FileInspector({file}: FileInspectorProps) {
 	const {t} = useTranslation('explorer');
 	const platform = usePlatform();
 	const [activeTab, setActiveTab] = useState('overview');
 	const isDev = import.meta.env.DEV === 'true';
-	const organizePreviewContext = organizePreview ?? {
-		sortBy: 'name' as const,
-		foldersFirst: true
-	};
 
 	// Extract parent directory for pathScope to enable reactive sidecar updates
 	const getParentPath = (): SdPath | undefined => {
@@ -164,68 +105,14 @@ export function FileInspector({
 	});
 
 	const fileData = fileQuery.data || file;
-	const selectedDirectory =
-		organizePreview && fileData.kind === 'Directory' ? fileData : null;
-	const directoryMediaQuery = useNormalizedQuery({
-		query: 'files.media_listing',
-		input: selectedDirectory?.sd_path
-			? {
-					path: selectedDirectory.sd_path,
-					include_descendants: true,
-					media_types: null,
-					limit: 10000,
-					sort_by: toMediaSortBy(organizePreviewContext.sortBy)
-				}
-			: null!,
-		resourceType: 'file',
-		pathScope: selectedDirectory?.sd_path ?? undefined,
-		includeDescendants: true,
-		enabled: !!selectedDirectory
-	});
-	const directoryMediaFiles =
-		(directoryMediaQuery.data as {files: File[]} | undefined)?.files ?? [];
-	const directoryAvailability = useMemo(
-		() =>
-			selectedDirectory
-				? deriveDirectoryPreviewAvailability(directoryMediaFiles)
-				: null,
-		[selectedDirectory, directoryMediaFiles]
-	);
-	const organizePreviewState = useMemo(
-		() =>
-			organizePreview
-				? deriveOrganizeInspectorPreview({
-						selectedFile: fileData,
-						directoryAvailability
-					})
-				: {tabs: [], defaultTabId: null},
-		[organizePreview, fileData, directoryAvailability]
-	);
-	const previewTabs = useMemo(
-		() =>
-			organizePreviewState.tabs.map((tab) => ({
-				id: tab.id,
-				label: previewTabLabel(tab.id, t),
-				icon: previewTabIcon(tab.id),
-				disabled: tab.disabled,
-				tooltip: previewTabTooltip(tab, t)
-			})),
-		[organizePreviewState, t]
-	);
 	const tabs = useMemo(
-		() => buildFileInspectorTabs({isDev, previewTabs}),
-		[isDev, previewTabs]
+		() => buildFileInspectorTabs({isDev, previewTabs: []}),
+		[isDev]
 	);
 
 	useEffect(() => {
-		setActiveTab(organizePreviewState.defaultTabId ?? 'overview');
-	}, [fileData.id, organizePreviewState.defaultTabId]);
-
-	const openQuickPreview = useCallback(() => {
-		if (platform.showWindow) {
-			platform.showWindow('QuickPreview', {file: fileData});
-		}
-	}, [platform, fileData]);
+		setActiveTab('overview');
+	}, [fileData.id]);
 
 	return (
 		<>
@@ -234,70 +121,37 @@ export function FileInspector({
 				tabs={tabs}
 				activeTab={activeTab}
 				onChange={setActiveTab}
-				rightContent={
-					organizePreview && (
-						<button
-							type="button"
-							onClick={openQuickPreview}
-							className="hover:bg-sidebar-selected rounded-md p-2 text-sidebar-inkDull transition-colors hover:text-sidebar-ink"
-							title="Open Quick Preview"
-						>
-							<ArrowSquareOut className="size-4" weight="bold" />
-						</button>
-					)
-				}
 			/>
 
 			{/* Tab Content */}
 			<div className="mt-2.5 flex flex-1 flex-col overflow-hidden">
-				{/* New Preview Tabs - Enhanced with video controls and relative path */}
-				{organizePreview &&
-					organizePreviewState.tabs.map((tab) => (
-						<TabContent
-							key={tab.id}
-							id={tab.id}
-							activeTab={activeTab}
-						>
-							<OrganizePreviewContent
-								selectedFile={fileData}
-								activeTab={tab.id}
-								context={organizePreview}
-							/>
-						</TabContent>
-					))}
+				<TabContent id="overview" activeTab={activeTab}>
+					<OverviewTab file={fileData} />
+				</TabContent>
 
-				{/* Original Tabs - Temporarily commented out to avoid duplication */}
-				{!organizePreview && (
-					<>
-						<TabContent id="overview" activeTab={activeTab}>
-							<OverviewTab file={fileData} />
-						</TabContent>
+				<TabContent id="sidecars" activeTab={activeTab}>
+					<SidecarsTab file={fileData} />
+				</TabContent>
 
-						<TabContent id="sidecars" activeTab={activeTab}>
-							<SidecarsTab file={fileData} />
-						</TabContent>
+				<TabContent id="instances" activeTab={activeTab}>
+					<InstancesTab file={fileData} />
+				</TabContent>
 
-						<TabContent id="instances" activeTab={activeTab}>
-							<InstancesTab file={fileData} />
-						</TabContent>
-
-						{isDev && (
-							<TabContent id="chat" activeTab={activeTab}>
-								<ChatTab />
-							</TabContent>
-						)}
-
-						{isDev && (
-							<TabContent id="activity" activeTab={activeTab}>
-								<ActivityTab />
-							</TabContent>
-						)}
-
-						<TabContent id="details" activeTab={activeTab}>
-							<DetailsTab file={fileData} />
-						</TabContent>
-					</>
+				{isDev && (
+					<TabContent id="chat" activeTab={activeTab}>
+						<ChatTab />
+					</TabContent>
 				)}
+
+				{isDev && (
+					<TabContent id="activity" activeTab={activeTab}>
+						<ActivityTab />
+					</TabContent>
+				)}
+
+				<TabContent id="details" activeTab={activeTab}>
+					<DetailsTab file={fileData} />
+				</TabContent>
 			</div>
 		</>
 	);

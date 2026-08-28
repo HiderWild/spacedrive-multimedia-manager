@@ -14,14 +14,12 @@ import {getContentKind} from '@sd/ts-client';
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {TopBarItem, TopBarPortal} from '../../TopBar';
-import {usePlatform} from '../../contexts/PlatformContext';
 import {ExpandableSearchButton} from './components/ExpandableSearchButton';
 import {PathBar} from './components/PathBar';
 import {VirtualPathBar} from './components/VirtualPathBar';
 import {useExplorer, type ViewMode} from './context';
 import {useExplorerFiles} from './hooks/useExplorerFiles';
 import {useVirtualListing} from './hooks/useVirtualListing';
-import {canUseOrganizeView} from './organize/organizeAvailability';
 import {ExplorerPaneBody, PaneLayout, usePanes} from './panes';
 import {useSelection} from './SelectionContext';
 import {SortMenu, SortMenuPanel} from './SortMenu';
@@ -63,15 +61,8 @@ export function ExplorerView() {
 		currentFiles,
 		columnStack
 	} = useExplorer();
-	const platform = usePlatform();
-
 	const {isVirtualView} = useVirtualListing();
 	const isPreviewActive = !!quickPreviewFileId;
-
-	const organizeAvailable = useMemo(
-		() => canUseOrganizeView({ mode, currentPath, platform }),
-		[mode, currentPath, platform]
-	);
 
 	// Multi-pane layout state. Defaults to a single pane, in which case
 	// PaneLayout renders the primary content unchanged.
@@ -171,10 +162,9 @@ export function ExplorerView() {
 			<ViewModeMenuPanel
 				viewMode={viewMode}
 				onViewModeChange={handleViewModeChange}
-				organizeAvailable={organizeAvailable}
 			/>
 		),
-		[viewMode, handleViewModeChange, organizeAvailable]
+		[viewMode, handleViewModeChange]
 	);
 
 	const viewSettingsSubmenu = useMemo(
@@ -336,7 +326,6 @@ export function ExplorerView() {
 								<ViewModeMenu
 									viewMode={viewMode}
 									onViewModeChange={handleViewModeChange}
-									organizeAvailable={organizeAvailable}
 								/>
 							</TopBarItem>
 							<TopBarItem

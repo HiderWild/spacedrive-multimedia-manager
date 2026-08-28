@@ -182,17 +182,6 @@ export type Platform = {
 	/** Unregister a keybind handler (Tauri only) */
 	unregisterKeybind?(id: string): Promise<void>;
 
-	// Organize persistence API (Tauri only)
-
-	/** Load organize state JSON for a directory key */
-	loadOrganizeState?(directoryKey: string): Promise<string | null>;
-
-	/** Save organize state JSON for a directory key */
-	saveOrganizeState?(directoryKey: string, json: string): Promise<void>;
-
-	/** Delete organize state JSON for a directory key */
-	deleteOrganizeState?(directoryKey: string): Promise<void>;
-
 	/** List active legacy organize JSON records for migration (Tauri only) */
 	listLegacyOrganizeStates?(): Promise<LegacyOrganizeStateSummary[]>;
 

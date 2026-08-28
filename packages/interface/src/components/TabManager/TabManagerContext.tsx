@@ -66,7 +66,7 @@ function deriveTitleFromPath(pathname: string, search: string): string {
 // Types
 // ============================================================================
 
-export type ViewMode = "grid" | "list" | "column" | "media" | "masonry" | "size" | "organize";
+export type ViewMode = "grid" | "list" | "column" | "media" | "masonry" | "size";
 export type SortBy =
 	| "name"
 	| "size"
@@ -146,6 +146,12 @@ function loadPersistedState(): PersistedState | null {
 			typeof parsed.explorerStates !== "object"
 		) {
 			return null;
+		}
+
+		for (const state of Object.values(parsed.explorerStates)) {
+			if ((state.viewMode as string) === "organize") {
+				state.viewMode = "grid";
+			}
 		}
 
 		return parsed;

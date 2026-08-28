@@ -27,7 +27,7 @@ export function RecentsView() {
 
 	// Route to the appropriate view based on viewMode
 	// The views will automatically use recents results via useExplorerFiles
-	// Fall back to GridView when organize is not valid in recents context
+	// Fall back to the default view when the saved mode is not valid in recents context.
 	switch (viewMode) {
 		case 'grid':
 			return <GridView />;
@@ -43,8 +43,6 @@ export function RecentsView() {
 			return <SizeView />;
 		case 'knowledge':
 			return <KnowledgeView />;
-		case 'organize':
-			return <GridView />;
 		default:
 			return <GridView />;
 	}

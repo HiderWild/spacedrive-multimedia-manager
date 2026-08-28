@@ -93,5 +93,20 @@ fn main() {
 		}
 	}
 
-	tauri_build::build()
+	let daemon_available = [profile.as_str(), "release"].iter().any(|source_profile| {
+		let daemon_source = format!(
+			"{}/target/{}/sd-daemon{}",
+			workspace_dir, source_profile, exe_ext
+		);
+		std::path::Path::new(&daemon_source).exists()
+	});
+	let invoked_by_tauri = std::env::var_os("TAURI_CONFIG").is_some();
+
+	if daemon_available || invoked_by_tauri {
+		tauri_build::build();
+	} else {
+		println!(
+			"cargo:warning=Skipping Tauri resource processing because sd-daemon is not built"
+		);
+	}
 }

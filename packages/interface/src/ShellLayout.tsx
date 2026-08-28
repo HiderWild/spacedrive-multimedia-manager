@@ -30,7 +30,6 @@ import {
 	INSPECTOR_RESIZER_WIDTH,
 	INSPECTOR_SHELL_PADDING
 } from './shellLayoutSizing';
-import {clampOrganizePreviewWidth} from './organizeLayoutSizing';
 import {TopBar, TopBarProvider} from './TopBar';
 
 function ShellLayoutContent() {
@@ -46,8 +45,6 @@ function ShellLayoutContent() {
 		tagModeActive,
 		setTagModeActive,
 		viewMode,
-		sortBy,
-		viewSettings,
 		currentPath
 	} = useExplorer();
 	const [inspectorWidth, setInspectorWidth] = useState(280);
@@ -150,13 +147,6 @@ function ShellLayoutContent() {
 
 	const isPreviewActive = !!quickPreviewFileId;
 	const isSizeViewActive = viewMode === 'size';
-	const isOrganizeMode = viewMode === 'organize';
-	const organizePreview = isOrganizeMode
-		? {
-				sortBy,
-				foldersFirst: viewSettings.foldersFirst
-			}
-		: null;
 	const resizeInspectorTo = useCallback(
 		(requestedWidth: number) => {
 			const containerWidth =
@@ -165,27 +155,15 @@ function ShellLayoutContent() {
 				return;
 			}
 
-			// Use organize-specific clamping when in organize mode
-			if (isOrganizeMode) {
-				setInspectorWidth(
-					clampOrganizePreviewWidth({
-						containerWidth,
-						sidebarWidth,
-						organizePaneWidth: 280, // Left pane width from OrganizeLayout
-						requestedWidth
-					})
-				);
-			} else {
-				setInspectorWidth(
-					clampInspectorWidth({
-						containerWidth,
-						sidebarWidth,
-						requestedWidth
-					})
-				);
-			}
+			setInspectorWidth(
+				clampInspectorWidth({
+					containerWidth,
+					sidebarWidth,
+					requestedWidth
+				})
+			);
 		},
-		[sidebarWidth, isOrganizeMode]
+		[sidebarWidth]
 	);
 
 	const handleInspectorResize = useCallback(
@@ -331,9 +309,8 @@ function ShellLayoutContent() {
 									currentLocation={currentLocation}
 									onPopOut={handlePopOutInspector}
 									isPreviewActive={
-										isPreviewActive || isSizeViewActive
+									isPreviewActive || isSizeViewActive
 									}
-									organizePreview={organizePreview}
 								/>
 							</div>
 						</motion.div>

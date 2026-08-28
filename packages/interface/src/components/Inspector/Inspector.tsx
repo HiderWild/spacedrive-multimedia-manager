@@ -5,7 +5,6 @@ import clsx from 'clsx';
 import {useEffect, useMemo, useState} from 'react';
 import {usePlatform} from '../../contexts/PlatformContext';
 import {useLibraryQuery} from '../../contexts/SpacedriveContext';
-import type {OrganizeInspectorPreviewContext} from '../../routes/explorer/organize/organizePreview';
 import {useSelection} from '../../routes/explorer/SelectionContext';
 import {FileInspector} from './variants/FileInspector';
 import {LocationInspector} from './variants/LocationInspector';
@@ -26,15 +25,13 @@ interface InspectorProps {
 	showPopOutButton?: boolean;
 	currentLocation?: Location | null;
 	isPreviewActive?: boolean;
-	organizePreview?: OrganizeInspectorPreviewContext | null;
 }
 
 export function Inspector({
 	onPopOut,
 	showPopOutButton = true,
 	currentLocation,
-	isPreviewActive = false,
-	organizePreview = null
+	isPreviewActive = false
 }: InspectorProps) {
 	const {selectedFiles} = useSelection();
 
@@ -72,7 +69,6 @@ export function Inspector({
 			onPopOut={onPopOut}
 			showPopOutButton={showPopOutButton}
 			isPreviewActive={isPreviewActive}
-			organizePreview={organizePreview}
 		/>
 	);
 }
@@ -83,7 +79,6 @@ interface InspectorViewProps {
 	showPopOutButton?: boolean;
 	isPreviewActive?: boolean;
 	hideDragRegion?: boolean;
-	organizePreview?: OrganizeInspectorPreviewContext | null;
 }
 
 function InspectorView({
@@ -91,8 +86,7 @@ function InspectorView({
 	onPopOut,
 	showPopOutButton = true,
 	isPreviewActive = false,
-	hideDragRegion = false,
-	organizePreview = null
+	hideDragRegion = false
 }: InspectorViewProps) {
 	return (
 		<div
@@ -116,10 +110,7 @@ function InspectorView({
 				{!variant || variant.type === 'empty' ? (
 					<EmptyState />
 				) : variant.type === 'file' ? (
-					<FileInspector
-						file={variant.file}
-						organizePreview={organizePreview}
-					/>
+					<FileInspector file={variant.file} />
 				) : variant.type === 'multi-file' ? (
 					<MultiFileInspector files={variant.files} />
 				) : variant.type === 'location' ? (
@@ -127,7 +118,7 @@ function InspectorView({
 				) : null}
 
 				{/* Footer with pop-out button */}
-				{showPopOutButton && onPopOut && !organizePreview && (
+				{showPopOutButton && onPopOut && (
 					<div className="border-sidebar-line mt-2.5 flex justify-center border-t pt-2">
 						<button
 							onClick={onPopOut}

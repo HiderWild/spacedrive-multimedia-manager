@@ -45,7 +45,7 @@ export function SearchView() {
 
 	// Route to the appropriate view based on viewMode
 	// The views will automatically use search results via useExplorerFiles
-	// Fall back to GridView when organize is not valid in search context
+	// Fall back to the default view when the saved mode is not valid in search context.
 	switch (viewMode) {
 		case 'grid':
 			return <GridView />;
@@ -61,8 +61,6 @@ export function SearchView() {
 			return <SizeView />;
 		case 'knowledge':
 			return <KnowledgeView />;
-		case 'organize':
-			return <GridView />;
 		default:
 			return (
 				<div className="flex h-full flex-col items-center justify-center p-8 text-center">
