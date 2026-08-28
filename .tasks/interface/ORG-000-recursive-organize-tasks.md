@@ -75,7 +75,7 @@ The approved design is the behavior contract. The implementation plan translates
 | ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | Merged | Archimedes | Recovery and P1 fixes accepted; no residual worktree remains |
 | ORG-BUILD-00B | Wire every project build entry point to the shared wrapper and resolver | ORG-BUILD-00A | Ready | coordinator + entrypoint agents | Split into disjoint 00B-PW and 00B-SH lanes; prior dispatch hit agent-limit and was not started |
 | ORG-BUILD-00B-PW | Wire PowerShell start/run/restart/cache entry points | ORG-BUILD-00A | In Flight | Turing | Spec review returned P1: reachable Tauri dev chain still bypasses wrapper via `bun run tauri:dev` -> `dev-with-daemon.ts` direct `cargo metadata/build`; fix transitive path and extend fixture before re-review |
-| ORG-BUILD-00B-SH | Wire justfile, Tauri package, and shell Cargo entry points | ORG-BUILD-00A | Review | Feynman | Candidate `176d3881b0e5d64d5126d33d4a06663429b40d4e`; coordinator reran 5/5 shell tests; review pending |
+| ORG-BUILD-00B-SH | Wire justfile, Tauri package, and shell Cargo entry points | ORG-BUILD-00A | Quality Review | Feynman | Spec review approved by Pascal; candidate `176d3881b0e5d64d5126d33d4a06663429b40d4e`; coordinator reran 5/5 shell tests; independent quality review pending |
 | ORG-BUILD-00C | Independent policy review and fixture verification | ORG-BUILD-00B-PW, ORG-BUILD-00B-SH | Blocked | Unassigned | Waiting for PowerShell P1 fix and both wiring lanes |
 
 ## Acceptance Criteria
