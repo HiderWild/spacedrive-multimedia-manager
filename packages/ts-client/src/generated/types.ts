@@ -3717,7 +3717,7 @@ export type PathMapping = { virtual_path: string; actual_path: string };
  */
 export type PathMatch = 
 /**
- * Match the value as a glob pattern (e.g. `**/Photos/*.jpg`).
+ * Match the value as a glob pattern, for example a Photos directory pattern.
  */
 "glob" | 
 /**

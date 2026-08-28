@@ -22,6 +22,7 @@ import { MemoriesRoute } from "./Spacebot/routes/MemoriesRoute";
 import { AutonomyRoute } from "./Spacebot/routes/AutonomyRoute";
 import { ScheduleRoute } from "./Spacebot/routes/ScheduleRoute";
 import { i18n } from './i18n';
+import { OrganizeTasksPage, OrganizeTaskPage } from './routes/organize';
 
 /**
  * Spacebot wrapper component that provides the Spacebot context
@@ -49,6 +50,13 @@ export const explorerRoutes = [
 			{
 				path: "explorer",
 				element: <ExplorerView />,
+			},
+			{
+				path: "organize",
+				children: [
+					{ index: true, element: <OrganizeTasksPage /> },
+					{ path: ":taskId", element: <OrganizeTaskPage /> },
+				],
 			},
 			{
 				path: "favorites",

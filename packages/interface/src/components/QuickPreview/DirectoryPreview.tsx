@@ -34,7 +34,9 @@ export function DirectoryPreview({
 		query: "files.directory_listing",
 		input: {
 			path: file.sd_path,
-			limit: null,
+			// Preview is a sample, not a second full directory listing. Keep the
+			// fallback bounded when no fixed organize sequence is available.
+			limit: 200,
 			include_hidden: false,
 			sort_by: "modified",
 			folders_first: true,

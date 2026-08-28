@@ -99,7 +99,7 @@ impl ComparisonOp {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PathMatch {
-	/// Match the value as a glob pattern (e.g. `**/Photos/*.jpg`).
+	/// Match the value as a glob pattern, for example a Photos directory pattern.
 	Glob,
 	/// Match entries whose path contains the value as a substring.
 	Substring,

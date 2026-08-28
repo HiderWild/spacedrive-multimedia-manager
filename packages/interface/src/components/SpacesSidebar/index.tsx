@@ -42,6 +42,7 @@ import {SpaceCustomizationPanel} from './SpaceCustomizationPanel';
 import {SpaceGroup} from './SpaceGroup';
 import {SpaceItem} from './SpaceItem';
 import {SpaceSwitcher} from './SpaceSwitcher';
+import {OrganizeTasksGroup} from './OrganizeTasksGroup';
 
 // Wrapper that adds a space-level drop zone before each group and makes it sortable
 function SpaceGroupWithDropZone({
@@ -487,6 +488,7 @@ export function SpacesSidebar({isPreviewActive = false}: SpacesSidebarProps) {
 						currentSpace={currentSpace}
 						onSwitch={setCurrentSpace}
 					/>
+					<OrganizeTasksGroup />
 
 					{/* Scrollable Content */}
 					<div className="no-scrollbar mask-fade-out mt-3 flex grow flex-col space-y-5 overflow-x-hidden overflow-y-scroll pb-10">
