@@ -123,15 +123,11 @@ export function useFileContextMenu({
 			: false;
 
 	const organizePath = () => {
-		const target = selected && selectedFiles.length > 0 ? selectedFiles[0] : file;
-		if (!target || !('Physical' in target.sd_path)) return;
-		const physicalPath = target.sd_path.Physical.path;
-		const parentPath = target.kind === 'Directory'
-			? physicalPath
-			: physicalPath.slice(0, physicalPath.lastIndexOf('/')) || '/';
+		if (!file || file.kind !== 'Directory' || !('Physical' in file.sd_path))
+			return;
 		const params = new URLSearchParams({
-			device: target.sd_path.Physical.device_slug,
-			path: parentPath
+			device: file.sd_path.Physical.device_slug,
+			path: file.sd_path.Physical.path
 		});
 		navigate(`/organize?${params.toString()}`);
 	};
@@ -143,7 +139,10 @@ export function useFileContextMenu({
 				label: 'Organize',
 				onClick: organizePath,
 				condition: () =>
-					!!file && 'Physical' in file.sd_path && !hasVirtualFiles
+					!!file &&
+					file.kind === 'Directory' &&
+					'Physical' in file.sd_path &&
+					!hasVirtualFiles
 			},
 			{
 				icon: Eye,
