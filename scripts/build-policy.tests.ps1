@@ -362,6 +362,9 @@ try {
 	foreach ($command in @('build', 'test', 'run', 'check', 'clippy', 'bench', 'doc', 'xtask')) {
 		Assert-True -Condition (Test-SpacedriveCargoCompileCommand -CargoArguments @($command, '--locked')) -Message "$command is compile-producing."
 	}
+	foreach ($alias in @('ios', 'daemon', 'cli')) {
+		Assert-True -Condition (Test-SpacedriveCargoCompileCommand -CargoArguments @($alias)) -Message "Cargo alias $alias is compile-producing."
+	}
 	Assert-True -Condition (Test-SpacedriveCargoCompileCommand -CargoArguments @('+stable', '--locked', 'test', '-p', 'sd-core')) -Message 'Toolchain and global argument variants are recognized.'
 	Assert-True -Condition (-not (Test-SpacedriveCargoCompileCommand -CargoArguments @('fmt', '--check'))) -Message 'cargo fmt is not treated as compile-producing.'
 	Complete-Test 'compile-producing Cargo commands and variants are detected'

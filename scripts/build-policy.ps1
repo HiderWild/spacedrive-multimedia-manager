@@ -357,7 +357,7 @@ function Test-SpacedriveCargoCompileCommand {
 		[string[]] $CargoArguments
 	)
 
-	$compileCommands = @('build', 'test', 'run', 'check', 'clippy', 'bench', 'doc', 'xtask')
+	$compileCommands = @('build', 'test', 'run', 'check', 'clippy', 'bench', 'doc', 'xtask', 'ios', 'daemon', 'cli')
 	foreach ($argument in $CargoArguments) {
 		if ($compileCommands -contains $argument.ToLowerInvariant()) {
 			return $true
