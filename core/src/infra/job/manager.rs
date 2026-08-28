@@ -1399,17 +1399,17 @@ impl JobManager {
 		info!("Checking for interrupted jobs to resume");
 
 		use sea_orm::{ColumnTrait, QueryFilter};
-		let mut interrupted = database::jobs::Entity::find()
+		let interrupted = database::jobs::Entity::find()
 			.filter(database::jobs::Column::Status.is_in([
 				JobStatus::Running.to_string(),
 				JobStatus::Paused.to_string(),
 			]))
 			.all(self.db.conn())
 			.await?;
-		// Reconcile parents before their children. A parent may safely converge a
-		// persisted child to Failed when its in-memory handle was lost; handling a
-		// child first could otherwise rerun a destructive operation after restart.
-		sort_interrupted_jobs_for_recovery(&mut interrupted);
+		let interrupted = interrupted
+			.into_iter()
+			.filter(should_auto_resume_interrupted_job)
+			.collect::<Vec<_>>();
 
 		warn!(
 			"DEBUG: Found {} interrupted jobs to resume",
@@ -1417,8 +1417,7 @@ impl JobManager {
 		);
 		for listed_record in interrupted {
 			if let Ok(job_id) = listed_record.id.parse::<Uuid>().map(JobId) {
-				// Earlier parent reconciliation can make a listed child terminal. Reload
-				// rather than resuming the stale snapshot captured before that change.
+				// Reload in case another recovery path made the listed root terminal.
 				let Some(job_record) = self.db.get_job(job_id).await? else {
 					continue;
 				};
@@ -1940,6 +1939,16 @@ impl JobManager {
 
 	/// Resume a paused job
 	pub async fn resume_job(&self, job_id: JobId) -> JobResult<()> {
+		// A child job's lifecycle is owned by its persistent parent. Rejecting this
+		// before inspecting the in-memory handle ensures manual resume cannot bypass
+		// restart reconciliation and redispatch destructive child work.
+		let persisted_job = database::jobs::Entity::find_by_id(job_id.to_string())
+			.one(self.db.conn())
+			.await?;
+		if let Some(job_record) = persisted_job.as_ref() {
+			ensure_job_can_resume_independently(job_record)?;
+		}
+
 		// First check if job exists in running jobs
 		let job_info = {
 			let running_jobs = self.running_jobs.read().await;
@@ -1958,9 +1967,7 @@ impl JobManager {
 				drop(running_jobs);
 
 				// Load job from database
-				let job_record = database::jobs::Entity::find_by_id(job_id.to_string())
-					.one(self.db.conn())
-					.await?
+				let job_record = persisted_job
 					.ok_or_else(|| JobError::NotFound(format!("Job {} not found", job_id)))?;
 
 				// Check if job is paused
@@ -2451,8 +2458,20 @@ async fn resume_state_for_interrupted_job(
 		.unwrap_or_else(|| job_record.state.clone()))
 }
 
-fn sort_interrupted_jobs_for_recovery(records: &mut [database::jobs::Model]) {
-	records.sort_by_key(|record| record.parent_job_id.is_some());
+/// Linked children are reconciled by their persisted parent during restart.
+/// They must not be independently recreated because they can perform destructive work.
+fn should_auto_resume_interrupted_job(record: &database::jobs::Model) -> bool {
+	record.parent_job_id.is_none()
+}
+
+fn ensure_job_can_resume_independently(record: &database::jobs::Model) -> JobResult<()> {
+	if record.parent_job_id.is_some() {
+		return Err(JobError::invalid_state(
+			"Cannot resume a child job independently; resume its parent job instead",
+		));
+	}
+
+	Ok(())
 }
 
 /// Checkpoint handler that uses the job database
@@ -2505,7 +2524,10 @@ use uuid::Uuid;
 
 #[cfg(test)]
 mod tests {
-	use super::{resume_state_for_interrupted_job, DbCheckpointHandler};
+	use super::{
+		ensure_job_can_resume_independently, resume_state_for_interrupted_job,
+		should_auto_resume_interrupted_job, DbCheckpointHandler,
+	};
 	use crate::infra::job::{
 		context::CheckpointHandler,
 		database::{self, JobDb},
@@ -2563,6 +2585,67 @@ mod tests {
 			resume_state_for_interrupted_job(&db, &record).await.unwrap(),
 			checkpoint_state,
 			"the state sent to the resumed executor must be the checkpoint, not the dispatch-time state"
+		);
+	}
+
+	#[test]
+	fn interrupted_child_with_parent_link_is_not_automatically_resumed() {
+		let parent_id = JobId(Uuid::from_u128(10));
+		let child = database::jobs::Model {
+			id: JobId(Uuid::from_u128(11)).to_string(),
+			name: "file_copy".to_string(),
+			state: vec![1],
+			status: JobStatus::Running.to_string(),
+			priority: 0,
+			progress_type: None,
+			progress_data: None,
+			parent_job_id: Some(parent_id.to_string()),
+			created_at: Utc::now(),
+			started_at: None,
+			completed_at: None,
+			paused_at: None,
+			error_message: None,
+			warnings: None,
+			non_critical_errors: None,
+			metrics: None,
+			action_context: None,
+			action_type: None,
+		};
+
+		assert!(
+			!should_auto_resume_interrupted_job(&child),
+			"a linked child must be reconciled by its parent, never independently redispatched"
+		);
+	}
+
+	#[test]
+	fn manual_resume_rejects_linked_child_before_dispatch() {
+		let parent_id = JobId(Uuid::from_u128(12));
+		let child = database::jobs::Model {
+			id: JobId(Uuid::from_u128(13)).to_string(),
+			name: "file_copy".to_string(),
+			state: vec![1],
+			status: JobStatus::Paused.to_string(),
+			priority: 0,
+			progress_type: None,
+			progress_data: None,
+			parent_job_id: Some(parent_id.to_string()),
+			created_at: Utc::now(),
+			started_at: None,
+			completed_at: None,
+			paused_at: None,
+			error_message: None,
+			warnings: None,
+			non_critical_errors: None,
+			metrics: None,
+			action_context: None,
+			action_type: None,
+		};
+
+		let err = ensure_job_can_resume_independently(&child).unwrap_err();
+		assert!(
+			matches!(err, crate::infra::job::error::JobError::InvalidState(_)),
+			"the independent-resume guard must fail before deserialization or dispatch"
 		);
 	}
 }
