@@ -1,4 +1,4 @@
-import type {SdPath} from '@sd/ts-client';
+import type {Location, SdPath} from '@sd/ts-client';
 
 export interface RecentMoveDestination {
 	destination: SdPath;
@@ -15,6 +15,12 @@ export interface PinnedMoveDestination {
 	id: string;
 	name: string;
 	sdPath: SdPath;
+}
+
+export function mapLocationsToMoveDestinations(
+	locations: readonly Pick<Location, 'id' | 'name' | 'sd_path'>[],
+): LocationMoveDestination[] {
+	return locations.map(({id, name, sd_path}) => ({id, name, sd_path}));
 }
 
 export type MoveDestinationRow =

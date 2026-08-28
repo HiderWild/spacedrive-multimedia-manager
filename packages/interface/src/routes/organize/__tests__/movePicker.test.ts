@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'bun:test';
-import {buildMoveDestinationRows, physicalDestination} from '../decision';
+import {buildMoveDestinationRows, mapLocationsToMoveDestinations, physicalDestination} from '../decision';
 
 describe('organize move destinations', () => {
 	test('orders recent, locations, physical pinned paths, then browse', () => {
@@ -18,5 +18,13 @@ describe('organize move destinations', () => {
 			pinned: [],
 		});
 		expect(rows.filter((row) => row.kind === 'recent')).toHaveLength(5);
+	});
+
+	test('maps current-library location records without inventing destinations', () => {
+		expect(mapLocationsToMoveDestinations([
+			{id: 'loc', name: 'Photos', sd_path: physicalDestination('dev', 'C:/Photos')},
+		])).toEqual([
+			{id: 'loc', name: 'Photos', sd_path: physicalDestination('dev', 'C:/Photos')},
+		]);
 	});
 });
