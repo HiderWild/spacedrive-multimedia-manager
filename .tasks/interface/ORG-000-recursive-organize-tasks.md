@@ -71,8 +71,8 @@ The approved design is the behavior contract. The implementation plan translates
 
 | ID | Responsibility | Depends on | Status | Owner | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-MAP | Blocked | Archimedes | No candidate/report after repeated bounded waits; recovery agent required |
-| ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | In Flight | Recovery agent | Pending residual inspection |
+| ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-MAP | Candidate | Archimedes | Candidate `e461e23f0f7ca5304392e801300dbeb3ae0000d9`; reported 11 fixture tests, AST parse, exit-code and mutex checks |
+| ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | Candidate | Archimedes | Recovery completed in candidate `e461e23f0f7ca5304392e801300dbeb3ae0000d9`; no separate residual remains |
 | ORG-BUILD-00B | Wire every project build entry point to the shared wrapper and resolver | ORG-BUILD-00A | Blocked | Unassigned | Waiting for ORG-BUILD-00A |
 | ORG-BUILD-00C | Independent policy review and fixture verification | ORG-BUILD-00A, ORG-BUILD-00B | Blocked | Unassigned | Waiting for implementation |
 
