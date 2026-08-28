@@ -192,7 +192,40 @@ export type Platform = {
 
 	/** Delete organize state JSON for a directory key */
 	deleteOrganizeState?(directoryKey: string): Promise<void>;
+
+	/** List active legacy organize JSON records for migration (Tauri only) */
+	listLegacyOrganizeStates?(): Promise<LegacyOrganizeStateSummary[]>;
+
+	/** Read one legacy organize JSON record without changing it (Tauri only) */
+	readLegacyOrganizeState?(key: string): Promise<LegacyOrganizeState>;
+
+	/** Archive a successfully migrated legacy record as .json.migrated (Tauri only) */
+	archiveLegacyOrganizeState?(key: string): Promise<void>;
 };
+
+export interface LegacyOrganizeItem {
+	itemId: string | null;
+	path: string;
+	name: string;
+	kind: string;
+	decision: string | null;
+	updatedAt: string;
+}
+
+export interface LegacyOrganizeState {
+	version: number;
+	directoryPath: string;
+	updatedAt: string;
+	items: Record<string, LegacyOrganizeItem>;
+}
+
+export interface LegacyOrganizeStateSummary {
+	key: string;
+	version: number;
+	directoryPath: string;
+	updatedAt: string;
+	itemCount: number;
+}
 
 /** Application that can open a file */
 export interface OpenWithApp {

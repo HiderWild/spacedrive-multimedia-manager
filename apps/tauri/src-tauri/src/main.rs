@@ -5,6 +5,7 @@ mod drag;
 mod file_opening;
 mod files;
 mod keybinds;
+mod legacy_organize;
 mod organize;
 mod server;
 mod windows;
@@ -2216,7 +2217,10 @@ fn main() {
 			keybinds::get_registered_keybinds,
 			organize::load_organize_state,
 			organize::save_organize_state,
-			organize::delete_organize_state
+			organize::delete_organize_state,
+			legacy_organize::list_legacy_organize_states,
+			legacy_organize::read_legacy_organize_state,
+			legacy_organize::archive_legacy_organize_state
 		])
 		.setup(|app| {
 			// Setup native menu

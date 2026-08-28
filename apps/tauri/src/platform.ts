@@ -357,5 +357,17 @@ export const platform: Platform = {
 
 	async deleteOrganizeState(directoryKey: string) {
 		await invoke('delete_organize_state', { directoryKey });
+	},
+
+	async listLegacyOrganizeStates() {
+		return await invoke('list_legacy_organize_states');
+	},
+
+	async readLegacyOrganizeState(key: string) {
+		return await invoke('read_legacy_organize_state', {key});
+	},
+
+	async archiveLegacyOrganizeState(key: string) {
+		await invoke('archive_legacy_organize_state', {key});
 	}
 };
