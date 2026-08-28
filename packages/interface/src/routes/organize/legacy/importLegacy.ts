@@ -64,12 +64,16 @@ function isSameOrDescendant(path: string, root: string): boolean {
 }
 
 /** Selects the shortest deterministic set of roots so one physical path is not imported twice. */
-export function selectNonOverlappingLegacyStates(records: LegacyOrganizeStateSummary[] | LegacyOrganizeState[]): (LegacyOrganizeStateSummary | LegacyOrganizeState)[] {
-	const selected: (LegacyOrganizeStateSummary | LegacyOrganizeState)[] = [];
+function legacyRecordKey(record: LegacyOrganizeStateSummary | LegacyOrganizeState): string {
+	return 'key' in record ? record.key : record.directoryPath;
+}
+
+export function selectNonOverlappingLegacyStates<T extends LegacyOrganizeStateSummary | LegacyOrganizeState>(records: T[]): T[] {
+	const selected: T[] = [];
 	const ordered = [...records].sort((left, right) => {
 		const leftPath = normalizeLegacyPath(left.directoryPath);
 		const rightPath = normalizeLegacyPath(right.directoryPath);
-		return leftPath.length - rightPath.length || leftPath.localeCompare(rightPath) || left.key.localeCompare(right.key);
+		return leftPath.length - rightPath.length || leftPath.localeCompare(rightPath) || legacyRecordKey(left).localeCompare(legacyRecordKey(right));
 	});
 
 	for (const record of ordered) {
@@ -212,7 +216,7 @@ export async function importLegacyState(record: LegacyOrganizeRecord, api: Legac
 
 /** Imports records in deterministic non-overlapping root order. */
 export async function importLegacyStates(records: LegacyOrganizeRecord[], api: LegacyImportApi): Promise<LegacyImportResult[]> {
-	const selected = selectNonOverlappingLegacyStates(records) as LegacyOrganizeRecord[];
+	const selected = selectNonOverlappingLegacyStates(records);
 	const results: LegacyImportResult[] = [];
 	for (const record of selected) results.push(await importLegacyState(record, api));
 	return results;
