@@ -29,7 +29,12 @@ cleanup() {
 }
 
 if ! has git pnpm; then
-  echo "Missing at on of the required dependencies: git, pnpm" >&2
+  echo "Missing one of the required dependencies: git, pnpm" >&2
+  exit 1
+fi
+
+if ! has powershell.exe; then
+  echo "powershell.exe is required to run backend formatting through the Spacedrive build policy" >&2
   exit 1
 fi
 
@@ -72,7 +77,9 @@ git ls-tree -r HEAD --name-only | grep '.toml$' | xargs pnpm taplo format
 
 if [ "${1:-}" != "only-frontend" ]; then
   # Run clippy and formatter for backend
-  cargo clippy --fix --all --all-targets --all-features --allow-dirty --allow-staged
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
+    "$__dirname/invoke-spacedrive-cargo.ps1" \
+    clippy --fix --all --all-targets --all-features --allow-dirty --allow-staged
   cargo fmt --all
 fi
 

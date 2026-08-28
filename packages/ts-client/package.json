@@ -42,7 +42,7 @@
 		"build": "tsc",
 		"dev": "tsc --watch",
 		"test": "jest",
-		"generate-types": "cargo run --bin generate_typescript_types --manifest-path ../../core/Cargo.toml"
+		"generate-types": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../../scripts/invoke-spacedrive-cargo.ps1 run --bin generate_typescript_types --manifest-path ../../core/Cargo.toml"
 	},
 	"keywords": [
 		"spacedrive",

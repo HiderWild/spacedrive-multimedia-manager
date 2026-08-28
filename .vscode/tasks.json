@@ -2,15 +2,25 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"type": "cargo",
-			"command": "clippy",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/scripts/invoke-spacedrive-cargo.ps1",
+				"clippy",
+				"--all-targets",
+				"--all-features",
+				"--all"
+			],
 			"problemMatcher": ["$rustc"],
 			"group": {
 				"kind": "build",
 				"isDefault": true
 			},
-			"label": "rust: cargo clippy",
-			"args": ["--all-targets", "--all-features", "--all"]
+			"label": "rust: cargo clippy"
 		},
 		{
 			"type": "npm",
@@ -52,9 +62,15 @@
 			"args": ["desktop", "vite", "build"]
 		},
 		{
-			"type": "cargo",
-			"command": "run",
+			"type": "shell",
+			"command": "powershell.exe",
 			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/scripts/invoke-spacedrive-cargo.ps1",
+				"run",
 				"--manifest-path=./apps/desktop/src-tauri/Cargo.toml",
 				"--no-default-features"
 			],
@@ -68,9 +84,18 @@
 			"dependsOn": ["ui:dev"]
 		},
 		{
-			"type": "cargo",
-			"command": "run",
-			"args": ["--manifest-path=./apps/desktop/src-tauri/Cargo.toml", "--release"],
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/scripts/invoke-spacedrive-cargo.ps1",
+				"run",
+				"--manifest-path=./apps/desktop/src-tauri/Cargo.toml",
+				"--release"
+			],
 			"env": {
 				"RUST_BACKTRACE": "short"
 			},
