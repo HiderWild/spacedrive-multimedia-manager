@@ -305,7 +305,9 @@ function Clear-RegisteredWorktreeArtifacts {
 
 		[string] $GitPath = 'git',
 
-		[string] $EventLogPath
+		[string] $EventLogPath,
+
+		[scriptblock] $BeforeArtifactDelete = $null
 	)
 
 	$worktrees = @(Get-RegisteredWorktreeRoots -RepoRoot $RepoRoot -GitPath $GitPath)
@@ -329,6 +331,10 @@ function Clear-RegisteredWorktreeArtifacts {
 				continue
 			}
 
+			Assert-SafeArtifactPath -ArtifactPath $candidate.Path -AllowedArtifactPaths $allowedArtifactPaths -WorktreeRoots $worktreeRoots -GitCommonDir $gitCommonDir | Out-Null
+			if ($null -ne $BeforeArtifactDelete) {
+				& $BeforeArtifactDelete $candidate.Path
+			}
 			Assert-SafeArtifactPath -ArtifactPath $candidate.Path -AllowedArtifactPaths $allowedArtifactPaths -WorktreeRoots $worktreeRoots -GitCommonDir $gitCommonDir | Out-Null
 			Remove-Item -LiteralPath $candidate.Path -Recurse -Force -ErrorAction Stop
 			Write-SpacedriveBuildPolicyEvent -Event "artifact-removed|$($candidate.Path)" -EventLogPath $EventLogPath
@@ -471,8 +477,15 @@ function Invoke-SpacedriveCargo {
 
 		$env:CARGO_TARGET_DIR = $target
 		Write-SpacedriveBuildPolicyEvent -Event "cargo-target|$target" -EventLogPath $EventLogPath
-		& $CargoPath @CargoArguments
-		return $LASTEXITCODE
+		$oldCargoErrorActionPreference = $ErrorActionPreference
+		try {
+			$ErrorActionPreference = 'Continue'
+			& $CargoPath @CargoArguments 2>&1 | ForEach-Object { $_ | Out-Host }
+			$exitCode = $LASTEXITCODE
+		} finally {
+			$ErrorActionPreference = $oldCargoErrorActionPreference
+		}
+		return [int]$exitCode
 	} finally {
 		if ($null -eq $oldTarget) {
 			Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue

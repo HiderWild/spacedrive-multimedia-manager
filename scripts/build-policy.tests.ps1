@@ -196,6 +196,8 @@ $target = $env:CARGO_TARGET_DIR
 [IO.Directory]::CreateDirectory($target) | Out-Null
 Set-Content -LiteralPath (Join-Path $target "$label.in-use") -Value $label -Encoding UTF8
 [IO.File]::AppendAllText($eventLog, "cargo-start|$label|$target|$argumentsJson`r`n")
+Write-Output "fake-stdout|$label"
+[Console]::Error.WriteLine("fake-stderr|$label")
 if ($sleepMilliseconds -gt 0) {
 	Start-Sleep -Milliseconds $sleepMilliseconds
 }
@@ -359,6 +361,37 @@ try {
 	Assert-PathExists -LiteralPath $junctionSentinel -Message 'Removing the fixture junction does not remove its target.'
 	Complete-Test 'reparse artifact candidates fail closed'
 
+	$raceParent = Join-Path $linkedRoot 'apps\tauri\src-tauri'
+	$raceBackup = Join-Path $linkedRoot 'apps\tauri\src-tauri-original'
+	$raceCandidate = Join-Path $raceParent 'target'
+	$raceExternal = Join-Path $externalRoot 'parent-replacement'
+	$raceExternalSentinel = Join-Path $raceExternal 'target\external-sentinel.txt'
+	New-TextFile -LiteralPath $raceExternalSentinel
+	New-TextFile -LiteralPath (Join-Path $raceCandidate 'before-parent-replacement.txt')
+	$replaceParentAfterInitialCheck = {
+		param([string] $candidatePath)
+		if ((Get-NormalizedTestPath -LiteralPath $candidatePath) -ne (Get-NormalizedTestPath -LiteralPath $raceCandidate)) {
+			return
+		}
+		Move-Item -LiteralPath $raceParent -Destination $raceBackup
+		New-Item -ItemType Junction -Path $raceParent -Target $raceExternal | Out-Null
+	}
+	try {
+		Assert-Throws -Action { Clear-RegisteredWorktreeArtifacts -RepoRoot $linkedRoot -EventLogPath $cleanupLog -BeforeArtifactDelete $replaceParentAfterInitialCheck } -MessagePattern 'reparse' -Message 'Parent replacement between validation and removal fails closed.'
+		Assert-PathExists -LiteralPath $raceExternalSentinel -Message 'Parent junction replacement does not delete the external sentinel.'
+	} finally {
+		if (Test-Path -LiteralPath $raceParent) {
+			$raceParentItem = Get-Item -LiteralPath $raceParent -Force
+			if (($raceParentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+				[IO.Directory]::Delete($raceParent)
+			}
+		}
+		if (Test-Path -LiteralPath $raceBackup) {
+			Move-Item -LiteralPath $raceBackup -Destination $raceParent
+		}
+	}
+	Complete-Test 'parent reparse replacement after initial validation fails closed'
+
 	foreach ($command in @('build', 'test', 'run', 'check', 'clippy', 'bench', 'doc', 'xtask')) {
 		Assert-True -Condition (Test-SpacedriveCargoCompileCommand -CargoArguments @($command, '--locked')) -Message "$command is compile-producing."
 	}
@@ -379,15 +412,18 @@ try {
 	New-TextFile -LiteralPath (Join-Path $mainRoot 'apps\tauri\src-tauri\target\before-wrapper.txt')
 	$forwardedArguments = @('test', '-p', 'sd-core', '--features', 'alpha,beta', '--', '--nocapture', '--label', 'forwarded', '--exit-code', '7')
 	$oldAmbientTarget = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR', 'Process')
+	$oldWrapperErrorActionPreference = $ErrorActionPreference
 	try {
+		$ErrorActionPreference = 'Continue'
 		$env:CARGO_TARGET_DIR = $externalRoot
-		& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wrapperPath `
-			-RepoRoot $linkedRoot `
-			-CargoPath $fakeCargo `
-			-PolicyEventLogPath $eventLog `
-			@forwardedArguments
-		$wrapperExitCode = $LASTEXITCODE
+	$wrapperOutput = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wrapperPath `
+		-RepoRoot $linkedRoot `
+		-CargoPath $fakeCargo `
+		-PolicyEventLogPath $eventLog `
+		@forwardedArguments 2>&1 | ForEach-Object { $_.ToString() })
+	$wrapperExitCode = $LASTEXITCODE
 	} finally {
+		$ErrorActionPreference = $oldWrapperErrorActionPreference
 		if ($null -eq $oldAmbientTarget) {
 			Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
 		} else {
@@ -395,6 +431,8 @@ try {
 		}
 	}
 	Assert-Equal -Expected 7 -Actual $wrapperExitCode -Message 'Wrapper returns fake Cargo exit code unchanged.'
+	Assert-True -Condition (($wrapperOutput -join "`n") -match 'fake-stdout\|forwarded') -Message 'Wrapper forwards Cargo stdout in real time.'
+	Assert-True -Condition (($wrapperOutput -join "`n") -match 'fake-stderr\|forwarded') -Message 'Wrapper forwards Cargo stderr in real time.'
 	Assert-PathExists -LiteralPath $externalSentinel -Message 'Ambient CARGO_TARGET_DIR is never used as a cleanup target.'
 	$events = @(Get-Content -LiteralPath $eventLog)
 	$cargoStart = @($events | Where-Object { $_ -like 'cargo-start|forwarded|*' })
@@ -437,8 +475,14 @@ try {
 
 	$completedJobs = @(Wait-Job -Job $firstJob, $secondJob -Timeout 15)
 	Assert-Equal -Expected 2 -Actual $completedJobs.Count -Message 'Both wrapper jobs finish.'
-	$firstResult = @(Receive-Job -Job $firstJob)
-	$secondResult = @(Receive-Job -Job $secondJob)
+	$oldReceiveErrorActionPreference = $ErrorActionPreference
+	try {
+		$ErrorActionPreference = 'Continue'
+		$firstResult = @(Receive-Job -Job $firstJob -ErrorAction SilentlyContinue)
+		$secondResult = @(Receive-Job -Job $secondJob -ErrorAction SilentlyContinue)
+	} finally {
+		$ErrorActionPreference = $oldReceiveErrorActionPreference
+	}
 	Assert-Equal -Expected 0 -Actual ([int]$firstResult[-1]) -Message 'First concurrent wrapper succeeds.'
 	Assert-Equal -Expected 0 -Actual ([int]$secondResult[-1]) -Message 'Second concurrent wrapper succeeds.'
 	$concurrentEvents = @(Get-Content -LiteralPath $eventLog)
