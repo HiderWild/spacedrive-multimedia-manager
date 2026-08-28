@@ -9,12 +9,16 @@
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
+$BuildPolicyPath = Join-Path $RepoRoot "scripts\build-policy.ps1"
+. $BuildPolicyPath
+
 $depsBin = Join-Path $RepoRoot "apps\.deps\bin"
 if (Test-Path $depsBin) {
 	$env:Path = $depsBin + [IO.Path]::PathSeparator + $env:Path
 }
 
-$cli = Join-Path $RepoRoot "target\release\sd-cli.exe"
+$targetRoot = Get-SpacedriveCargoTarget -RepoRoot $RepoRoot
+$cli = Join-Path $targetRoot "release\sd-cli.exe"
 if (-not (Test-Path $cli)) {
 	Write-Error "Missing $cli - build release binaries first."
 	exit 1

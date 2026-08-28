@@ -70,6 +70,7 @@ Reset-Path
 # Get project dir (get grandparent dir from script location: <PROJECT_ROOT>\scripts\setup.ps1)
 $projectRoot = Split-Path -Path $PSScriptRoot -Parent
 $packageJson = Get-Content -Raw -Path "$projectRoot\package.json" | ConvertFrom-Json
+$cargoWrapperPath = Join-Path $projectRoot 'scripts\invoke-spacedrive-cargo.ps1'
 
 # Valid winget exit status
 $wingetValidExit = 0, -1978335189, -1978335153, -1978335135
@@ -261,8 +262,10 @@ if (-not $env:CI) {
     Write-Host
     Write-Host 'Running cargo xtask setup to download native dependencies...' -ForegroundColor Yellow
     Set-Location $projectRoot
-    cargo xtask setup
-    if ($LASTEXITCODE -ne 0) {
+    $cargoArgs = @('xtask', 'setup')
+    & $cargoWrapperPath -RepoRoot $projectRoot @cargoArgs
+    $xtaskExitCode = $LASTEXITCODE
+    if ($xtaskExitCode -ne 0) {
         Exit-WithError 'Failed to run cargo xtask setup'
     }
 }

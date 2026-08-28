@@ -11,10 +11,8 @@
   - cluster count (cosine DBSCAN)
   - nearest-neighbor label accuracy (when labels.csv provided)
 
-  Requires building sd-core with scene-embed feature:
-    cargo build --bin sd-cli --features scene-embed
-  For GPU:
-    cargo build --bin sd-cli --features scene-embed-cuda
+  The benchmark invokes sd-cli through scripts/invoke-spacedrive-cargo.ps1,
+  which selects the main worktree target and serializes compile-producing work.
 
 .PARAMETER Images
   Directory of images to embed (jpg/png/heic).
@@ -45,6 +43,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$cargoWrapperPath = Join-Path $PSScriptRoot 'invoke-spacedrive-cargo.ps1'
 
 Write-Host "=== Scene Embedding Backend Evaluation ===" -ForegroundColor Cyan
 Write-Host "Images:   $Images"
@@ -101,10 +101,18 @@ if ($Labels -and (Test-Path $Labels)) {
 Write-Host "Running: sd-cli $($cliArgs -join ' ')"
 Write-Host ""
 
-# Try to run sd-cli
-$cli = "cargo run --bin sd-cli --features scene-embed --"
+# Try to run sd-cli through the shared build policy wrapper.
+$cargoArgs = @(
+    "run",
+    "--bin", "sd-cli",
+    "--features", "scene-embed",
+    "--"
+) + @($cliArgs)
 try {
-    Invoke-Expression "$cli $($cliArgs | ForEach-Object { if ($_ -match '\s') { "'$_'" } else { $_ } })"
+    & $cargoWrapperPath -RepoRoot $repoRoot @cargoArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "sd-cli scene-embed-eval failed with exit code $LASTEXITCODE"
+    }
 } catch {
     Write-Host ""
     Write-Host "sd-cli scene-embed-eval not available yet." -ForegroundColor Yellow

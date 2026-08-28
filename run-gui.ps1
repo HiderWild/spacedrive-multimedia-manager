@@ -4,7 +4,7 @@
 # Prerequisites:
 #   - bun install (from repo root, under VS Dev Cmd if node-gyp fails)
 #   - LLVM 15 at C:\Program Files\LLVM (for media features rebuilds)
-#   - Release daemon already built: target\release\sd-daemon.exe
+#   - Release daemon already built in the policy-selected release target
 #
 # Usage:
 #   .\run-gui.ps1              # backend (release daemon if present) + Tauri dev GUI
@@ -20,6 +20,9 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
 Set-Location $RepoRoot
+
+$BuildPolicyPath = Join-Path $RepoRoot "scripts\build-policy.ps1"
+. $BuildPolicyPath
 
 function Write-Step($m) { Write-Host $m -ForegroundColor Cyan }
 function Write-Ok($m) { Write-Host "  $m" -ForegroundColor Green }
@@ -44,8 +47,9 @@ if (-not $env:LIBCLANG_PATH) {
 	}
 }
 
-$cli = Join-Path $RepoRoot "target\release\sd-cli.exe"
-$daemon = Join-Path $RepoRoot "target\release\sd-daemon.exe"
+$targetRoot = Get-SpacedriveCargoTarget -RepoRoot $RepoRoot
+$cli = Join-Path $targetRoot "release\sd-cli.exe"
+$daemon = Join-Path $targetRoot "release\sd-daemon.exe"
 
 function Test-RpcOpen {
 	try {
@@ -61,11 +65,11 @@ function Test-RpcOpen {
 
 function Ensure-ReleaseDaemon {
 	if (-not (Test-Path $cli) -or -not (Test-Path $daemon)) {
-		throw "Release binaries missing. Build first:`n  cargo build --release -p sd-core --bin sd-daemon -p sd-cli --bin sd-cli --features sd-core/ffmpeg,sd-core/heif"
+		throw "Release binaries missing. Build first with start.ps1 so the shared build policy selects the main worktree target."
 	}
 
 	# Windows: Tauri externalBin may look for triple-suffixed name
-	$triple = Join-Path $RepoRoot "target\release\sd-daemon-x86_64-pc-windows-msvc.exe"
+	$triple = Join-Path $targetRoot "release\sd-daemon-x86_64-pc-windows-msvc.exe"
 	if (-not (Test-Path $triple)) {
 		Copy-Item $daemon $triple -Force
 	}

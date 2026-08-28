@@ -1,20 +1,18 @@
 # Spacedrive unified startup script
 # Default: release (production-like) instance for feature verification - no installer bundle.
 #
-# Disk policy (recommended defaults):
-#   - Release mode prunes target/debug so debug+release trees do not both balloon to ~10GB
-#   - Dev mode prunes target/release for the same reason
-#   - Use -KeepOtherProfile to keep both trees
-#   - Optional: set CARGO_TARGET_DIR or -TargetDir to a large disk
+# Disk policy:
+#   - All Cargo artifacts use the main worktree target selected by build-policy.ps1.
+#   - Compile calls serialize and clean registered worktree artifacts through the shared wrapper.
 #
 # Usage:
 #   ./start.ps1                      # release build + start daemon (+ Tauri if available)
 #   ./start.ps1 -Dev                 # hot-reload dev mode
 #   ./start.ps1 -DaemonOnly          # release backend only (no desktop shell)
 #   ./start.ps1 -Foreground          # run daemon in foreground (show logs)
-#   ./start.ps1 -Clean               # cargo clean (entire target) before build
-#   ./start.ps1 -KeepOtherProfile    # do not delete the opposite profile dir
-#   ./start.ps1 -TargetDir D:\rust\sd  # put build artifacts on another drive
+#   ./start.ps1 -Clean               # clean the policy-selected target before build
+#   ./start.ps1 -KeepOtherProfile    # deprecated compatibility parameter; fails clearly
+#   ./start.ps1 -TargetDir D:\rust\sd  # deprecated compatibility parameter; fails clearly
 #   ./start.ps1 -NoKill              # do not kill existing processes
 #   ./start.ps1 -Features "ffmpeg,heif"
 #   ./start.ps1 -Jobs 8
@@ -35,6 +33,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($PSBoundParameters.ContainsKey('TargetDir') -or $PSBoundParameters.ContainsKey('KeepOtherProfile')) {
+	throw "Build policy error: -TargetDir and -KeepOtherProfile are deprecated compatibility parameters. The main worktree target is mandatory, and alternate targets/profile retention are no longer supported."
+}
+
 $Root = $PSScriptRoot
 if (-not $Root) { $Root = Get-Location }
 
@@ -73,6 +76,10 @@ function Resolve-RepoRoot {
 $RepoRoot = Resolve-RepoRoot
 Set-Location $RepoRoot
 
+$BuildPolicyPath = Join-Path $RepoRoot "scripts\build-policy.ps1"
+$CargoWrapperPath = Join-Path $RepoRoot "scripts\invoke-spacedrive-cargo.ps1"
+. $BuildPolicyPath
+
 function Get-DirSizeGB {
 	param([string]$Path)
 	if (-not (Test-Path $Path)) { return 0.0 }
@@ -85,28 +92,6 @@ function Get-DirSizeGB {
 	} catch {
 		return 0.0
 	}
-}
-
-function Get-EffectiveTargetDir {
-	if ($TargetDir) { return $TargetDir }
-	if ($env:CARGO_TARGET_DIR) { return $env:CARGO_TARGET_DIR }
-	return (Join-Path $RepoRoot "target")
-}
-
-function Initialize-TargetDir {
-	$effective = Get-EffectiveTargetDir
-	if ($TargetDir) {
-		$env:CARGO_TARGET_DIR = $TargetDir
-		if (-not (Test-Path $TargetDir)) {
-			New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
-		}
-		Write-Info "CARGO_TARGET_DIR=$TargetDir (artifacts off-repo)"
-	} elseif ($env:CARGO_TARGET_DIR) {
-		Write-Info "CARGO_TARGET_DIR=$($env:CARGO_TARGET_DIR) (from environment)"
-	} else {
-		Write-Info "target dir: $effective"
-	}
-	return $effective
 }
 
 function Show-DiskReport {
@@ -141,43 +126,6 @@ function Show-DiskReport {
 	if (Test-Path $registry) {
 		$gb = Get-DirSizeGB $registry
 		Write-Info ("{0,-22} {1,8:N2} GB  {2}" -f "cargo registry", $gb, $registry)
-	}
-	Write-Host ""
-}
-
-function Remove-DirSafe {
-	param([string]$Path, [string]$Label)
-	if (-not (Test-Path $Path)) { return $false }
-	$gb = Get-DirSizeGB $Path
-	Write-Info "Removing $Label (~$gb GB): $Path"
-	try {
-		Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
-		Write-Ok "Removed $Label"
-		return $true
-	} catch {
-		Write-Warn "Could not fully remove ${Label}: $($_.Exception.Message)"
-		return $false
-	}
-}
-
-function Invoke-ProfilePrune {
-	param(
-		[string]$TargetRoot,
-		[switch]$IsDev
-	)
-
-	if ($KeepOtherProfile) {
-		Write-Info "KeepOtherProfile: leaving both debug and release trees."
-		return
-	}
-
-	# Prevent the common 10GB+ case: debug + release deps trees both retained.
-	if ($IsDev) {
-		Write-Step "Pruning opposite profile (release) to limit disk use..." "Yellow"
-		Remove-DirSafe -Path (Join-Path $TargetRoot "release") -Label "target/release" | Out-Null
-	} else {
-		Write-Step "Pruning opposite profile (debug) to limit disk use..." "Yellow"
-		Remove-DirSafe -Path (Join-Path $TargetRoot "debug") -Label "target/debug" | Out-Null
 	}
 	Write-Host ""
 }
@@ -261,7 +209,25 @@ function Invoke-CargoRelease {
 	}
 
 	Write-Info ("cargo " + ($cargoArgs -join " "))
-	& cargo @cargoArgs
+	$wrapperArgs = @("-RepoRoot", $RepoRoot) + @($cargoArgs)
+	& $CargoWrapperPath @wrapperArgs
+	return $LASTEXITCODE
+}
+
+function Invoke-ProjectCargo {
+	param(
+		[Parameter(Mandatory = $true)]
+		[string[]]$CargoArguments,
+
+		[string]$CargoPath = ""
+	)
+
+	$wrapperArgs = @("-RepoRoot", $RepoRoot)
+	if ($CargoPath) {
+		$wrapperArgs += @("-CargoPath", $CargoPath)
+	}
+	$wrapperArgs += @($CargoArguments)
+	& $CargoWrapperPath @wrapperArgs
 	return $LASTEXITCODE
 }
 
@@ -326,8 +292,7 @@ function Invoke-ReleaseBuild {
 	}
 	
 	Write-Info ("cargo " + ($cargoArgs -join " "))
-	& cargo @($cargoArgs.ToArray())
-	$code = $LASTEXITCODE
+	$code = Invoke-ProjectCargo -CargoArguments @($cargoArgs.ToArray())
 	
 	if ($code -ne 0 -and $FeatureArgs.Count -gt 0) {
 		Write-Warn "Build with features failed (exit $code); retrying without optional features..."
@@ -342,8 +307,7 @@ function Invoke-ReleaseBuild {
 			[void]$fallback.Add("$JobCount")
 		}
 		Write-Info ("cargo " + ($fallback -join " "))
-		& cargo @($fallback.ToArray())
-		$code = $LASTEXITCODE
+		$code = Invoke-ProjectCargo -CargoArguments @($fallback.ToArray())
 		if ($code -eq 0) {
 			Write-Warn "Built without $($FeatureArgs -join ',') - media features may be unavailable."
 		}
@@ -360,12 +324,10 @@ function Invoke-ReleaseBuild {
 function Get-ReleaseBinPath {
 	param([string]$Name)
 
-	$targetRoot = Get-EffectiveTargetDir
+	$targetRoot = Get-SpacedriveCargoTarget -RepoRoot $RepoRoot
 	$candidates = @(
 		(Join-Path $targetRoot "release\$Name.exe"),
-		(Join-Path $targetRoot "release\$Name"),
-		(Join-Path $RepoRoot "target\release\$Name.exe"),
-		(Join-Path $RepoRoot "target\release\$Name")
+		(Join-Path $targetRoot "release\$Name")
 	)
 	foreach ($c in $candidates) {
 		if (Test-Path $c) { return $c }
@@ -384,11 +346,11 @@ function Start-ReleaseDaemon {
 	$daemon = Get-ReleaseBinPath "sd-daemon"
 
 	if (-not $cli) {
-		throw "sd-cli not found under target\release. Build failed or incomplete workspace."
+		throw "sd-cli not found under the policy-selected release target. Build failed or incomplete workspace."
 	}
 
 	if (-not $daemon) {
-		Write-Warn "sd-daemon binary not found under target\release."
+		Write-Warn "sd-daemon binary not found under the policy-selected release target."
 		Write-Warn "Workspace may be incomplete (missing core/). Cannot start daemon."
 		Write-Info "CLI is available: $cli"
 		Write-Info "When core is present, re-run: ./start.ps1"
@@ -461,10 +423,10 @@ function Start-DevMode {
 		}
 
 		$feat = (Get-CargoFeaturesArgs -FeatureList $Features) -join ","
-		$args = @("run", "--features", $feat, "--bin", "sd-daemon")
-		if ($Jobs -gt 0) { $args += @("-j", "$Jobs") }
-		Write-Info ("cargo " + ($args -join " "))
-		& cargo @args
+		$cargoArgs = @("run", "--features", $feat, "--bin", "sd-daemon")
+		if ($Jobs -gt 0) { $cargoArgs += @("-j", "$Jobs") }
+		Write-Info ("cargo " + ($cargoArgs -join " "))
+		Invoke-ProjectCargo -CargoArguments $cargoArgs | Out-Host
 		return
 	}
 
@@ -531,7 +493,11 @@ function Start-TauriReleaseNoBundle {
 			bun run tauri:build -- --no-bundle
 		} elseif ($tauriCli) {
 			Write-Info "cargo tauri build --no-bundle"
-			cargo tauri build --no-bundle
+			$tauriArgs = @("tauri", "build", "--no-bundle")
+			$tauriCode = Invoke-ProjectCargo -CargoPath $tauriCli -CargoArguments $tauriArgs
+			if ($tauriCode -ne 0) {
+				$global:LASTEXITCODE = $tauriCode
+			}
 		} else {
 			Write-Warn "No tauri:build script and no cargo-tauri CLI; desktop shell not started."
 			return
@@ -543,10 +509,8 @@ function Start-TauriReleaseNoBundle {
 		}
 
 		# Try to launch built binary (Windows paths vary by target triple)
-		$searchRoots = @(
-			(Join-Path $RepoRoot "target\release"),
-			(Join-Path $RepoRoot "apps\tauri\src-tauri\target\release")
-		)
+		$targetRoot = Get-SpacedriveCargoTarget -RepoRoot $RepoRoot
+		$searchRoots = @(Join-Path $targetRoot "release")
 		$exe = $null
 		foreach ($dir in $searchRoots) {
 			if (-not (Test-Path $dir)) { continue }
@@ -562,7 +526,7 @@ function Start-TauriReleaseNoBundle {
 			Write-Ok "Launching $($exe.FullName)"
 			Start-Process -FilePath $exe.FullName -WorkingDirectory $RepoRoot
 		} else {
-			Write-Warn "Built Tauri binary not found automatically; check target\release."
+			Write-Warn "Built Tauri binary not found automatically under the policy-selected release target."
 		}
 	} finally {
 		Pop-Location
@@ -577,7 +541,8 @@ Write-Step "Spacedrive start.ps1 - mode: $modeLabel" "Cyan"
 Write-Info "Repo: $RepoRoot"
 Write-Host ""
 
-$effectiveTarget = Initialize-TargetDir
+$effectiveTarget = Get-SpacedriveCargoTarget -RepoRoot $RepoRoot
+Write-Info "Policy target: $effectiveTarget"
 Show-DiskReport -TargetRoot $effectiveTarget
 
 if (-not $NoKill) {
@@ -585,18 +550,14 @@ if (-not $NoKill) {
 }
 
 if ($Clean) {
-	Write-Step "cargo clean (entire target dir)..." "Yellow"
-	& cargo clean
-	if ($LASTEXITCODE -ne 0) {
-		Write-Warn "cargo clean failed (exit $LASTEXITCODE); trying manual remove..."
-		Remove-DirSafe -Path $effectiveTarget -Label "target" | Out-Null
+	Write-Step "Cleaning the policy-selected Cargo target..." "Yellow"
+	$cleanCode = Invoke-ProjectCargo -CargoArguments @("clean")
+	if ($cleanCode -ne 0) {
+		throw "Cargo clean failed with exit code $cleanCode"
 	} else {
 		Write-Ok "Clean complete"
 	}
 	Write-Host ""
-} else {
-	# Default recommended policy: only keep the profile you are about to use.
-	Invoke-ProfilePrune -TargetRoot $effectiveTarget -IsDev:$Dev
 }
 
 # Workspace completeness check (this checkout may be sparse)
@@ -613,7 +574,7 @@ Write-Host ""
 try {
 	if ($Dev) {
 		Start-DevMode
-		Show-DiskReport -TargetRoot (Get-EffectiveTargetDir)
+		Show-DiskReport -TargetRoot $effectiveTarget
 		exit 0
 	}
 
@@ -633,14 +594,13 @@ try {
 		Write-Info "DaemonOnly: skipping desktop shell."
 	}
 
-	Show-DiskReport -TargetRoot (Get-EffectiveTargetDir)
+	Show-DiskReport -TargetRoot $effectiveTarget
 
 	Write-Host ""
 	Write-Step "Done. Default mode is release (not debug)." "Green"
 	Write-Info "Dev hot-reload:     ./start.ps1 -Dev"
 	Write-Info "Backend only:       ./start.ps1 -DaemonOnly"
-	Write-Info "Keep both profiles: ./start.ps1 -KeepOtherProfile"
-	Write-Info "Offload target:     ./start.ps1 -TargetDir D:\rust\spacedrive"
+	Write-Info "Build policy:       main worktree target only"
 	Write-Info "Periodic cleanup:   ./clean-rust-cache.ps1"
 } catch {
 	Write-Host ""

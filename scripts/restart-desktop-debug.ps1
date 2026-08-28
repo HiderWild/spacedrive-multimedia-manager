@@ -381,6 +381,12 @@ if (-not $project) {
 }
 Write-Host "Resolved repo root: $project"
 
+$buildPolicyPath = Join-Path $PSScriptRoot "build-policy.ps1"
+$cargoWrapperPath = Join-Path $PSScriptRoot "invoke-spacedrive-cargo.ps1"
+. $buildPolicyPath
+$targetRoot = Get-SpacedriveCargoTarget -RepoRoot $project
+Write-Host "Policy Cargo target: $targetRoot"
+
 if (Test-PortIsExcluded -Port $DaemonPort) {
     Write-Host "Warning: TCP port ${DaemonPort} is in an OS excluded range. Falling back to 8488."
     $DaemonPort = 8488
@@ -455,15 +461,20 @@ if (-not $SkipRebuild) {
     Write-Host "Rebuilding daemon ($BuildProfile)..."
     $buildLogPath = Join-Path $project "scripts\\restart-desktop-debug.build.log"
     $buildSucceeded = $true
-    & $cargoCmd @cargoArgs 2>&1 | Tee-Object -FilePath $buildLogPath
-    if ($LASTEXITCODE -ne 0) {
+    $wrapperArgs = @(
+        "-RepoRoot", $project,
+        "-CargoPath", $cargoCmd
+    ) + @($cargoArgs)
+    & $cargoWrapperPath @wrapperArgs 2>&1 | Tee-Object -FilePath $buildLogPath
+    $buildExitCode = $LASTEXITCODE
+    if ($buildExitCode -ne 0) {
         $buildSucceeded = $false
     }
     if (-not $buildSucceeded) {
         $tail = if (Test-Path $buildLogPath) { Get-Content $buildLogPath -Tail 40 } else { @() }
         Write-Host "Build failed, showing last 40 lines from: $buildLogPath"
         $tail | ForEach-Object { Write-Host $_ }
-        throw "cargo build --bin sd-daemon failed. profile=$BuildProfile"
+        throw "Spacedrive daemon rebuild failed. profile=$BuildProfile exit=$buildExitCode"
     }
 }
 

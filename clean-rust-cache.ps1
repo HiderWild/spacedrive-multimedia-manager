@@ -1,13 +1,13 @@
 # Spacedrive Rust disk cleanup (safe, selective)
 # Implements the recommended low-risk cache controls:
-#   1) Drop unused build profiles / leftover trees under target/
+#   1) Drop unused build profiles / leftover trees under the policy-selected target
 #   2) Optional: prune cargo registry (downloads) via cargo-cache when installed
 #   3) Optional: cargo-sweep time-based target pruning when installed
 #
 # Usage:
 #   ./clean-rust-cache.ps1                 # report + prune debug (keep release)
 #   ./clean-rust-cache.ps1 -KeepDebug      # report + prune release (keep debug)
-#   ./clean-rust-cache.ps1 -AllTarget      # remove entire target dir
+#   ./clean-rust-cache.ps1 -AllTarget      # clean the entire policy-selected target
 #   ./clean-rust-cache.ps1 -Registry       # also clean cargo registry cache
 #   ./clean-rust-cache.ps1 -SweepDays 14   # cargo-sweep artifacts older than N days
 #   ./clean-rust-cache.ps1 -DryRun         # show what would be deleted
@@ -27,7 +27,16 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
 if (-not $RepoRoot) { $RepoRoot = (Get-Location).Path }
+
+if ($PSBoundParameters.ContainsKey('TargetDir')) {
+	throw "Build policy error: -TargetDir is a deprecated compatibility parameter. The main worktree target is mandatory and alternate targets are no longer supported."
+}
+
 Set-Location $RepoRoot
+
+$BuildPolicyPath = Join-Path $RepoRoot "scripts\build-policy.ps1"
+$CargoWrapperPath = Join-Path $RepoRoot "scripts\invoke-spacedrive-cargo.ps1"
+. $BuildPolicyPath
 
 function Write-Step($msg, $color = "Cyan") { Write-Host $msg -ForegroundColor $color }
 function Write-Ok($msg) { Write-Host "  $msg" -ForegroundColor Green }
@@ -48,9 +57,15 @@ function Get-DirSizeGB {
 }
 
 function Get-TargetRoot {
-	if ($TargetDir) { return $TargetDir }
-	if ($env:CARGO_TARGET_DIR) { return $env:CARGO_TARGET_DIR }
-	return (Join-Path $RepoRoot "target")
+	return Get-SpacedriveCargoTarget -RepoRoot $RepoRoot
+}
+
+function Invoke-ProjectCargo {
+	param([Parameter(Mandatory = $true)][string[]]$CargoArguments)
+
+	$wrapperArgs = @("-RepoRoot", $RepoRoot) + @($CargoArguments)
+	& $CargoWrapperPath @wrapperArgs
+	return $LASTEXITCODE
 }
 
 function Show-Report {
@@ -125,7 +140,10 @@ if ($ReportOnly) {
 Write-Step "Applying recommended cleanup..." "Yellow"
 
 if ($AllTarget) {
-	Remove-Path -Path $targetRoot -Label "entire target"
+	$cleanCode = Invoke-ProjectCargo -CargoArguments @("clean")
+	if ($cleanCode -ne 0) {
+		throw "Cargo clean failed with exit code $cleanCode"
+	}
 } elseif ($KeepDebug) {
 	Remove-Path -Path (Join-Path $targetRoot "release") -Label "target/release"
 } else {
@@ -154,8 +172,14 @@ if ($SweepDays -gt 0) {
 		} else {
 			Push-Location $RepoRoot
 			try {
-				cargo sweep -s 2>$null | Out-Null
-				cargo sweep -t $SweepDays
+				$sweepSetupCode = Invoke-ProjectCargo -CargoArguments @("sweep", "-s")
+				if ($sweepSetupCode -ne 0) {
+					throw "cargo-sweep setup failed with exit code $sweepSetupCode"
+				}
+				$sweepCode = Invoke-ProjectCargo -CargoArguments @("sweep", "-t", "$SweepDays")
+				if ($sweepCode -ne 0) {
+					throw "cargo-sweep failed with exit code $sweepCode"
+				}
 				Write-Ok "cargo-sweep done"
 			} finally {
 				Pop-Location
@@ -172,7 +196,10 @@ if ($Registry) {
 		if ($DryRun) {
 			Write-Warn "[DryRun] would run: cargo cache --autoclean"
 		} else {
-			cargo cache --autoclean
+			$cacheCode = Invoke-ProjectCargo -CargoArguments @("cache", "--autoclean")
+			if ($cacheCode -ne 0) {
+				throw "cargo-cache failed with exit code $cacheCode"
+			}
 			Write-Ok "Registry cache cleaned"
 		}
 	} else {
@@ -185,4 +212,4 @@ Write-Host ""
 Show-Report -TargetRoot $targetRoot
 Write-Step "Done." "Green"
 Write-Info "Recommended install (once): cargo install cargo-sweep cargo-cache"
-Write-Info "Optional env for large disk: `$env:CARGO_TARGET_DIR = 'D:\rust-targets\spacedrive'"
+Write-Info "Cargo artifacts are fixed to the main worktree target by build-policy.ps1."
