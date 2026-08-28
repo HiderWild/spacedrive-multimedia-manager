@@ -765,7 +765,7 @@ pub enum OrganizeAcceptChangesOutcome {
 	},
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OperationSettlement {
 	pub item_id: Uuid,
 	pub state: OrganizeOperationState,

@@ -79,6 +79,7 @@ impl LibraryAction for OrganizeCommitAction {
 				active_child_job_id: None,
 				delete_dispatched: false,
 				completed_root_ids: Vec::new(),
+				settlements: Vec::new(),
 			},
 		};
 		let handle = match library.jobs().dispatch(job).await {

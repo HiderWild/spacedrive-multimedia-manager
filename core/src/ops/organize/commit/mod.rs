@@ -128,6 +128,8 @@ pub struct OrganizeCommitCheckpoint {
 	pub active_child_job_id: Option<JobId>,
 	pub delete_dispatched: bool,
 	pub completed_root_ids: Vec<Uuid>,
+	#[serde(default)]
+	pub settlements: Vec<super::repository::OperationSettlement>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Job)]

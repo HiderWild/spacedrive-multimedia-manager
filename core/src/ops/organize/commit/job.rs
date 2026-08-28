@@ -61,7 +61,10 @@ impl JobHandler for OrganizeCommitJob {
 			self.checkpoint_with(&ctx).await?;
 		}
 
-		let mut settlements = Vec::new();
+		if let Some(missing_id) = missing_checkpoint_settlement(&self.checkpoint.completed_root_ids, &self.checkpoint.settlements) {
+			return Err(JobError::execution(format!("checkpoint has no settlement for completed root {missing_id}")));
+		}
+		let mut settlements = self.checkpoint.settlements.clone();
 		self.reconcile_active_child(&ctx, &mut settlements).await?;
 		for index in self.checkpoint.next_move_group..self.plan.move_groups.len() {
 			let group = self.plan.move_groups[index].clone();
@@ -88,6 +91,7 @@ impl JobHandler for OrganizeCommitJob {
 			self.checkpoint
 				.completed_root_ids
 				.extend(group.roots.iter().map(|root| root.item_id));
+			self.checkpoint.settlements = unique_settlements(settlements.clone());
 			self.checkpoint_with(&ctx).await?;
 		}
 
@@ -109,6 +113,7 @@ impl JobHandler for OrganizeCommitJob {
 				});
 				self.checkpoint.completed_root_ids.push(root.item_id);
 				self.checkpoint.active_child_job_id = None;
+				self.checkpoint.settlements = unique_settlements(settlements.clone());
 				self.checkpoint_with(&ctx).await?;
 			}
 		}
@@ -120,6 +125,7 @@ impl JobHandler for OrganizeCommitJob {
 			.await
 			.map_err(|error| JobError::execution(error.to_string()))?;
 		self.checkpoint.completed_root_ids = unique.iter().map(|item| item.item_id).collect();
+		self.checkpoint.settlements = unique.clone();
 		self.checkpoint_with(&ctx).await?;
 		let failed_root_ids = unique
 			.iter()
@@ -177,6 +183,7 @@ impl OrganizeCommitJob {
 		}
 		self.checkpoint.active_child_job_id = None;
 		self.checkpoint.delete_dispatched = false;
+		self.checkpoint.settlements = unique_settlements(settlements.clone());
 		self.checkpoint_with(ctx).await
 	}
 
@@ -268,6 +275,10 @@ fn child_succeeded(status: JobStatus) -> bool {
 	status == JobStatus::Completed
 }
 
+fn missing_checkpoint_settlement(completed_root_ids: &[Uuid], settlements: &[OperationSettlement]) -> Option<Uuid> {
+	completed_root_ids.iter().copied().find(|id| !settlements.iter().any(|settlement| settlement.item_id == *id))
+}
+
 impl From<OrganizeCommitOutput> for JobOutput {
 	fn from(output: OrganizeCommitOutput) -> Self {
 		JobOutput::custom(serde_json::json!({
@@ -280,13 +291,23 @@ impl From<OrganizeCommitOutput> for JobOutput {
 
 #[cfg(test)]
 mod tests {
-	use super::child_succeeded;
+	use super::{child_succeeded, missing_checkpoint_settlement, OperationSettlement};
 	use crate::infra::job::JobStatus;
+	use crate::ops::organize::model::OrganizeOperationState;
+	use chrono::Utc;
+	use uuid::Uuid;
 
 	#[test]
 	fn only_completed_child_jobs_are_reconciled_as_applied() {
 		assert!(child_succeeded(JobStatus::Completed));
 		assert!(!child_succeeded(JobStatus::Failed));
 		assert!(!child_succeeded(JobStatus::Cancelled));
+	}
+
+	#[test]
+	fn refuses_old_checkpoint_that_cannot_prove_completed_root_outcome() {
+		let completed = Uuid::from_u128(1);
+		let settlement = OperationSettlement { item_id: Uuid::from_u128(2), state: OrganizeOperationState::Applied, last_error: None, applied_at: Some(Utc::now()) };
+		assert_eq!(missing_checkpoint_settlement(&[completed], &[settlement]), Some(completed));
 	}
 }
