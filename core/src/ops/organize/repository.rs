@@ -324,36 +324,67 @@ async fn rebuild_included_tree(
 	});
 	let mut counter = 0_i64;
 	let mut updates = Vec::new();
+	let mut visited = HashSet::with_capacity(items.len());
 	let total_units = if let Some(root_id) = roots.first().copied() {
-		let (units, _) = visit_tree(root_id, &children, &by_id, &mut counter, &mut updates)?;
+		let (units, _) = visit_tree(
+			root_id,
+			&children,
+			&by_id,
+			&mut counter,
+			&mut visited,
+			&mut updates,
+		)?;
 		units
 	} else {
 		0
 	};
-	if updates.len() != items.len() {
+	if visited.len() != items.len() || updates.len() != items.len() {
 		return Err(OrganizeError::InvalidTree(
 			"included tree contains a cycle or unreachable item".into(),
 		)
 		.into());
 	}
-	let mut temporary_tree_start = items
+	let final_tree_starts = updates
 		.iter()
-		.filter_map(|item| item.tree_end)
-		.max()
-		.unwrap_or(0)
-		.saturating_add(1);
-	for item in &items {
+		.map(|(_, tree_start, _, _, _)| *tree_start)
+		.collect::<HashSet<_>>();
+	let occupied_tree_starts = items
+		.iter()
+		.filter_map(|item| item.tree_start)
+		.chain(final_tree_starts)
+		.collect::<HashSet<_>>();
+	let mut temporary_tree_starts = Vec::with_capacity(items.len());
+	let mut candidate = 0_i64;
+	while temporary_tree_starts.len() < items.len() {
+		if candidate == i64::MAX {
+			return Err(OrganizeError::InvalidTree(
+				"included tree has no legal temporary interval".into(),
+			)
+			.into());
+		}
+		if !occupied_tree_starts.contains(&candidate) {
+			temporary_tree_starts.push(candidate);
+		}
+		if temporary_tree_starts.len() < items.len() {
+			candidate = candidate.checked_add(1).ok_or_else(|| {
+				OrganizeError::InvalidTree("included tree has no legal temporary interval".into())
+			})?;
+		}
+	}
+	for (item, temporary_tree_start) in items.iter().zip(temporary_tree_starts) {
+		let temporary_tree_end = temporary_tree_start.checked_add(1).ok_or_else(|| {
+			OrganizeError::InvalidTree("included tree has no legal temporary interval".into())
+		})?;
 		let current = organize_task_item::Entity::find_by_id(item.id)
 			.one(txn)
 			.await?
 			.ok_or_else(|| OrganizeError::InvalidTree("tree item disappeared".into()))?;
 		let mut active: organize_task_item::ActiveModel = current.into();
 		active.tree_start = Set(Some(temporary_tree_start));
-		active.tree_end = Set(Some(temporary_tree_start.saturating_add(1)));
+		active.tree_end = Set(Some(temporary_tree_end));
 		active.unit_count = Set(Some(1));
 		active.updated_at = Set(Utc::now());
 		active.update(txn).await?;
-		temporary_tree_start = temporary_tree_start.saturating_add(1);
 	}
 	for &(id, tree_start, tree_end, unit_count, aggregate_size_bytes) in &updates {
 		let item = organize_task_item::Entity::find_by_id(id)
@@ -382,19 +413,32 @@ fn visit_tree(
 	children: &std::collections::HashMap<i32, Vec<i32>>,
 	by_id: &std::collections::HashMap<i32, &organize_task_item::Model>,
 	counter: &mut i64,
+	visited: &mut HashSet<i32>,
 	updates: &mut Vec<(i32, i64, i64, i64, i64)>,
 ) -> Result<(i64, i64)> {
 	let item = by_id
 		.get(&id)
 		.ok_or_else(|| OrganizeError::InvalidTree("tree item disappeared".into()))?;
+	if !visited.insert(id) {
+		return Err(OrganizeError::InvalidTree(
+			"included tree contains a cycle or duplicate child".into(),
+		)
+		.into());
+	}
 	let start = *counter;
-	*counter += 1;
+	*counter = counter.checked_add(1).ok_or_else(|| {
+		OrganizeError::InvalidTree("included tree interval counter overflowed".into())
+	})?;
 	let mut child_units = 0_i64;
 	let mut child_bytes = 0_i64;
 	for child_id in children.get(&id).into_iter().flatten() {
-		let (units, bytes) = visit_tree(*child_id, children, by_id, counter, updates)?;
-		child_units += units;
-		child_bytes += bytes;
+		let (units, bytes) = visit_tree(*child_id, children, by_id, counter, visited, updates)?;
+		child_units = child_units.checked_add(units).ok_or_else(|| {
+			OrganizeError::InvalidTree("included tree unit count overflowed".into())
+		})?;
+		child_bytes = child_bytes.checked_add(bytes).ok_or_else(|| {
+			OrganizeError::InvalidTree("included tree byte count overflowed".into())
+		})?;
 	}
 	let end = *counter;
 	let has_children = children

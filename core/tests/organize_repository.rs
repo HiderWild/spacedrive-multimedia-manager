@@ -769,6 +769,187 @@ async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 }
 
 #[tokio::test]
+async fn rebuilding_reordered_tree_uses_distinct_legal_temporary_intervals() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let z_id = Uuid::new_v4();
+	let a_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Reorder", OrganizeTaskStatus::Scanning))
+		.await
+		.expect("insert reorder task");
+
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(3);
+	let mut z = item(task_id, z_id, Some(1), "z");
+	z.id = Some(2);
+	z.tree_start = Some(1);
+	z.tree_end = Some(2);
+	let mut a = item(task_id, a_id, Some(1), "a");
+	a.id = Some(3);
+	a.tree_start = Some(2);
+	a.tree_end = Some(3);
+	let revision = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root, z, a],
+			SnapshotTotals {
+				total_entries: 3,
+				total_units: 2,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert reorder snapshot");
+
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET tree_end = ? WHERE task_id = ?",
+		[i64::MAX.into(), task_id.into()],
+	))
+	.await
+	.expect("inflate old intervals");
+
+	repo.accept_changes(OrganizeAcceptChangesInput {
+		task_id,
+		expected_revision: revision,
+		include_addition_ids: Vec::new(),
+		remove_missing_ids: Vec::new(),
+		refresh_changed_ids: Vec::new(),
+		preserve_changed_decisions: false,
+		confirm_inherited_destructive: false,
+	})
+	.await
+	.expect("rebuild reordered tree without unique collision");
+
+	let models = organize_task_item::Entity::find()
+		.filter(organize_task_item::Column::TaskId.eq(task_id))
+		.order_by_asc(organize_task_item::Column::TreeStart)
+		.all(&db)
+		.await
+		.expect("read reordered tree");
+	assert_eq!(
+		models
+			.iter()
+			.map(|item| item.tree_start)
+			.collect::<Vec<_>>(),
+		vec![Some(0), Some(1), Some(2)]
+	);
+	assert_eq!(models[0].relative_path, "");
+	assert_eq!(models[1].relative_path, "a");
+	assert_eq!(models[2].relative_path, "z");
+	let task = repo.get_task(task_id).await.expect("read rebuilt task");
+	assert_eq!(task.task.total_units, 2);
+}
+
+#[tokio::test]
+async fn rebuilding_rejects_a_disconnected_included_cycle() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Cycle", OrganizeTaskStatus::Scanning))
+		.await
+		.expect("insert cycle task");
+
+	let mut root = item(task_id, Uuid::new_v4(), None, "");
+	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(3);
+	let mut first = item(task_id, Uuid::new_v4(), Some(1), "first");
+	first.id = Some(2);
+	first.tree_start = Some(1);
+	first.tree_end = Some(2);
+	let mut second = item(task_id, Uuid::new_v4(), Some(1), "second");
+	second.id = Some(3);
+	second.tree_start = Some(2);
+	second.tree_end = Some(3);
+	let revision = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root, first, second],
+			SnapshotTotals {
+				total_entries: 3,
+				total_units: 2,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert cycle snapshot");
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET parent_id = CASE id WHEN 2 THEN 3 WHEN 3 THEN 2 ELSE parent_id END WHERE task_id = ?",
+		[task_id.into()],
+	))
+	.await
+	.expect("create disconnected cycle");
+
+	let error = repo
+		.accept_changes(OrganizeAcceptChangesInput {
+			task_id,
+			expected_revision: revision,
+			include_addition_ids: Vec::new(),
+			remove_missing_ids: Vec::new(),
+			refresh_changed_ids: Vec::new(),
+			preserve_changed_decisions: false,
+			confirm_inherited_destructive: false,
+		})
+		.await
+		.expect_err("disconnected cycle must reject rebuild");
+	assert!(matches!(
+		error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree(message))
+			if message.contains("cycle") || message.contains("unreachable")
+	));
+}
+
+#[tokio::test]
+async fn rebuilding_rejects_a_file_with_included_children() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(
+		task_id,
+		r"C:\FileParent",
+		OrganizeTaskStatus::Scanning,
+	))
+	.await
+	.expect("insert file-parent task");
+
+	let mut root = item(task_id, Uuid::new_v4(), None, "");
+	root.id = Some(1);
+	root.kind = OrganizeItemKind::File;
+	root.tree_start = Some(0);
+	root.tree_end = Some(2);
+	let mut child = item(task_id, Uuid::new_v4(), Some(1), "child");
+	child.id = Some(2);
+	child.tree_start = Some(1);
+	child.tree_end = Some(2);
+	let error = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root, child],
+			SnapshotTotals {
+				total_entries: 2,
+				total_units: 1,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect_err("file with children must reject rebuild");
+	assert!(matches!(
+		error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree(message))
+			if message.contains("only directories")
+	));
+}
+
+#[tokio::test]
 async fn accepting_changes_rejects_multiple_included_roots_before_mutation() {
 	let (_temp_dir, db) = migrated_temp_db().await;
 	let repo = OrganizeRepository::new(&db);
