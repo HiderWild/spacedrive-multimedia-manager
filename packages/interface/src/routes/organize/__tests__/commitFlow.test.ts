@@ -19,8 +19,8 @@ const plan = (overrides: Partial<OrganizeCommitPlanOutput> = {}): OrganizeCommit
 
 describe('organize commit review contract', () => {
 	test('uses the plan revision and requires permanent deletion confirmation', () => {
-		const review = buildCommitReview(plan({discard_roots: [{item_id: 'discard', source: {Physical: {device_slug: 'local', path: 'C:\\old'}}, units: 1, bytes: 10}]}));
-		expect(review).toMatchObject({revision: 9, canCommit: true, requiresPermanentDeleteConfirmation: true});
+		const review = buildCommitReview(plan({discard_roots: [{item_id: 'discard', source: {Physical: {device_slug: 'local', path: 'C:\\old'}}, units: 1, bytes: 10}], move_groups: [{destination: {Physical: {device_slug: 'local', path: 'C:\\sorted'}}, roots: [], units: 2, bytes: 20}]}));
+		expect(review).toMatchObject({revision: 9, canCommit: true, requiresPermanentDeleteConfirmation: true, discardRoots: [{item_id: 'discard'}], moveGroups: [{units: 2, bytes: 20}]});
 		expect(buildOrganizeCommitInput('task', review, false)).toMatchObject({
 			task_id: 'task', expected_revision: 9, permanent_delete_confirmed: false,
 			move_conflict_policy: 'AutoModifyName', allow_current_subtree_drift: false,

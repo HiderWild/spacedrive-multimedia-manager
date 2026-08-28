@@ -1,4 +1,4 @@
-import type {OrganizeCommitInput, OrganizeCommitPlanOutput, OrganizeCommitBlockReason} from '@sd/ts-client';
+import type {OrganizeCommitInput, OrganizeCommitPlanOutput, OrganizeCommitBlockReason, SdPath} from '@sd/ts-client';
 import {useState} from 'react';
 
 export interface CommitReview {
@@ -7,6 +7,8 @@ export interface CommitReview {
 	requiresPermanentDeleteConfirmation: boolean;
 	requiresDriftConfirmation: boolean;
 	blockingReasons: string[];
+	discardRoots: OrganizeCommitPlanOutput['discard_roots'];
+	moveGroups: OrganizeCommitPlanOutput['move_groups'];
 }
 
 export function commitBlockReasonText(reason: OrganizeCommitBlockReason): string {
@@ -17,6 +19,14 @@ export function commitBlockReasonText(reason: OrganizeCommitBlockReason): string
 	return `Unsafe topology blocks commit for ${reason.UnsafeTopology.conflicts.length} item(s).`;
 }
 
+function pathText(path: SdPath): string {
+	if ('Physical' in path) return path.Physical.path;
+	if ('Cloud' in path) return path.Cloud.path;
+	if ('Content' in path) return path.Content.content_id;
+	if ('Sidecar' in path) return `${path.Sidecar.content_id}/${path.Sidecar.kind}/${path.Sidecar.variant}`;
+	return 'Unknown path';
+}
+
 export function buildCommitReview(plan: OrganizeCommitPlanOutput): CommitReview {
 	return {
 		revision: plan.revision,
@@ -24,6 +34,8 @@ export function buildCommitReview(plan: OrganizeCommitPlanOutput): CommitReview 
 		requiresPermanentDeleteConfirmation: plan.discard_roots.length > 0,
 		requiresDriftConfirmation: plan.changed_or_missing_roots.length > 0,
 		blockingReasons: plan.blocking_reasons.map(commitBlockReasonText),
+		discardRoots: plan.discard_roots,
+		moveGroups: plan.move_groups,
 	};
 }
 
@@ -64,6 +76,8 @@ function CommitReviewPanel({review, taskId, onCancel, onConfirm}: {review: Commi
 		<h2 className="text-base font-semibold">Review commit</h2>
 		<p className="mt-1 text-xs text-ink-faint">Revision {review.revision}. This applies the task plan to the files.</p>
 		{review.blockingReasons.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-300">{review.blockingReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
+		<div className="mt-3 space-y-2 text-sm"><h3 className="font-medium">Discard roots</h3>{review.discardRoots.length === 0 ? <p className="text-ink-faint">None</p> : review.discardRoots.map((root) => <p key={root.item_id} className="text-red-300">{pathText(root.source)} · {root.units} units · {root.bytes} bytes</p>)}</div>
+		<div className="mt-3 space-y-2 text-sm"><h3 className="font-medium">Move groups</h3>{review.moveGroups.length === 0 ? <p className="text-ink-faint">None</p> : review.moveGroups.map((group, index) => <p key={`${index}-${group.units}`} className="text-accent">{pathText(group.destination)} · {group.roots.length} roots · {group.units} units · {group.bytes} bytes</p>)}</div>
 		{permanentDeleteConfirmed && <p className="mt-3 text-sm text-red-300">Discarded files will be permanently deleted.</p>}
 		{driftConfirmed && <p className="mt-2 text-sm text-amber-300">The source subtree changed since the snapshot.</p>}
 		{review.requiresPermanentDeleteConfirmation && <label className="mt-3 flex gap-2 text-sm"><input type="checkbox" checked={permanentDeleteConfirmed} onChange={(event) => setPermanentDeleteConfirmed(event.target.checked)} /> I understand discarded files will be permanently deleted.</label>}
