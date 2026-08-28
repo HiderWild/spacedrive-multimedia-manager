@@ -100,6 +100,18 @@ impl JobManager {
 			.await
 	}
 
+	/// Dispatch a job using a caller-provided identity.
+	///
+	/// Callers that persist an intent before dispatching can use this to make a
+	/// resumed lookup refer to the same job rather than creating another one.
+	pub async fn dispatch_with_id<J>(&self, job_id: JobId, job: J) -> JobResult<JobHandle>
+	where
+		J: Job + JobHandler + DynJob,
+	{
+		self.dispatch_with_priority_and_id(job_id, job, JobPriority::NORMAL, None)
+			.await
+	}
+
 	/// Dispatch a job by name and parameters (useful for APIs)
 	pub async fn dispatch_by_name(
 		&self,
@@ -553,7 +565,20 @@ impl JobManager {
 	where
 		J: Job + JobHandler + DynJob,
 	{
-		let job_id = JobId::new();
+		self.dispatch_with_priority_and_id(JobId::new(), job, priority, action_context)
+			.await
+	}
+
+	async fn dispatch_with_priority_and_id<J>(
+		&self,
+		job_id: JobId,
+		job: J,
+		priority: JobPriority,
+		action_context: Option<ActionContext>,
+	) -> JobResult<JobHandle>
+	where
+		J: Job + JobHandler + DynJob,
+	{
 		let should_persist = job.should_persist();
 		let should_emit_events = job.should_emit_events();
 
@@ -974,7 +999,21 @@ impl JobManager {
 
 				Ok(handle)
 			}
-			Err(e) => Err(JobError::task_system(format!("{:?}", e))),
+			Err(e) => {
+				let message = format!("{:?}", e);
+				if should_persist {
+					database::jobs::ActiveModel {
+						id: Set(job_id.to_string()),
+						status: Set(JobStatus::Failed.to_string()),
+						completed_at: Set(Some(Utc::now())),
+						error_message: Set(Some(message.clone())),
+						..Default::default()
+					}
+					.update(self.db.conn())
+					.await?;
+				}
+				Err(JobError::task_system(message))
+			}
 		}
 	}
 

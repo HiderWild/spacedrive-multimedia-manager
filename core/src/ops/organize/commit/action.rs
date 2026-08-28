@@ -58,13 +58,9 @@ impl LibraryAction for OrganizeCommitAction {
 			return Ok(OrganizeCommitOutcome::RejectedPermanentConfirmation);
 		}
 
-		let placeholder = JobId::new();
+		let job_id = JobId::new();
 		let locked_revision = OrganizeRepository::new(db)
-			.lock_for_commit(
-				self.input.task_id,
-				self.input.expected_revision,
-				placeholder,
-			)
+			.lock_for_commit(self.input.task_id, self.input.expected_revision, job_id)
 			.await
 			.map_err(database_error)?;
 		let job = OrganizeCommitJob {
@@ -82,7 +78,7 @@ impl LibraryAction for OrganizeCommitAction {
 				settlements: Vec::new(),
 			},
 		};
-		let handle = match library.jobs().dispatch(job).await {
+		let handle = match library.jobs().dispatch_with_id(job_id, job).await {
 			Ok(handle) => handle,
 			Err(error) => {
 				let message = error.to_string();
@@ -93,12 +89,7 @@ impl LibraryAction for OrganizeCommitAction {
 			}
 		};
 		if !OrganizeRepository::new(db)
-			.attach_commit_job(
-				self.input.task_id,
-				locked_revision,
-				placeholder,
-				handle.id(),
-			)
+			.attach_commit_job(self.input.task_id, locked_revision, job_id, handle.id())
 			.await
 			.map_err(database_error)?
 		{
