@@ -80,22 +80,6 @@ impl LibraryAction for OrganizeCreateAction {
 				})
 			}
 		};
-		let metadata = tokio::fs::metadata(&identity.display_path)
-			.await
-			.map_err(|error| ActionError::Validation {
-				field: "root".into(),
-				message: format!(
-					"cannot inspect '{}': {error}",
-					identity.display_path.display()
-				),
-			})?;
-		if !metadata.is_dir() {
-			return Ok(OrganizeCreateOutcome::Rejected {
-				reason: OrganizeCreateRejection::RootNotDirectory {
-					path: identity.display_path.to_string_lossy().into_owned(),
-				},
-			});
-		}
 		let task_id = Uuid::new_v4();
 		let scan_job_id = JobId::new();
 		let now = Utc::now();
@@ -169,7 +153,7 @@ impl LibraryAction for OrganizeCreateAction {
 	}
 }
 
-pub(crate) fn rejection(
+fn rejection(
 	error: crate::ops::organize::error::OrganizeError,
 	root: &SdPath,
 ) -> OrganizeCreateRejection {
