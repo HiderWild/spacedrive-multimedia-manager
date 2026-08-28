@@ -715,6 +715,199 @@ async fn direct_children_paging_is_stable_and_filters_exclusions() {
 }
 
 #[tokio::test]
+async fn pending_additions_are_visible_as_unmarked_items_without_tree_intervals() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let existing_id = Uuid::new_v4();
+	let addition_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Pending", OrganizeTaskStatus::Scanning))
+		.await
+		.expect("insert pending-addition task");
+
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(2);
+	let mut existing = item(task_id, existing_id, Some(1), "existing");
+	existing.id = Some(2);
+	existing.tree_start = Some(1);
+	existing.tree_end = Some(2);
+	let revision = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root, existing],
+			SnapshotTotals {
+				total_entries: 2,
+				total_units: 1,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert pending-addition snapshot");
+
+	let mut addition = item(task_id, addition_id, Some(1), "addition");
+	addition.id = Some(3);
+	repo.store_change_scan(
+		task_id,
+		ChangeScanResult {
+			additions: vec![addition],
+			changed_ids: Vec::new(),
+			missing_ids: Vec::new(),
+		},
+	)
+	.await
+	.expect("store pending addition");
+
+	let page = repo
+		.children(OrganizeChildrenInput {
+			task_id,
+			parent_item_id: root_id,
+			cursor: None,
+			limit: 10,
+			sort: OrganizeItemSort::Name,
+			direction: OrganizeSortDirection::Asc,
+			filter: OrganizeItemFilter::All,
+		})
+		.await
+		.expect("pending addition must not break children");
+	let pending = page
+		.items
+		.iter()
+		.find(|item| item.uuid == addition_id)
+		.expect("pending addition is visible in children");
+	assert_eq!(pending.membership_state, "pending_addition");
+	assert_eq!(pending.tree_start, None);
+	assert_eq!(pending.tree_end, None);
+	assert_eq!(pending.unit_count, None);
+
+	let projection = page
+		.decision_projections
+		.iter()
+		.find(|projection| projection.item_id == addition_id)
+		.expect("pending addition has a decision projection");
+	assert_eq!(projection.explicit_decision, None);
+	assert_eq!(projection.effective_decision, None);
+	assert_eq!(projection.decision_source, None);
+	assert_eq!(projection.progress, Default::default());
+	assert_eq!(projection.move_destination, None);
+	assert_eq!(projection.operation_state, OrganizeOperationState::None);
+
+	let selected = repo
+		.resolve_selection(
+			task_id,
+			revision + 1,
+			OrganizeSelectionInput::DirectChildren {
+				parent_item_id: root_id,
+				filter: SelectionFilter::All,
+				excluded_item_ids: vec![existing_id],
+			},
+		)
+		.await
+		.expect("pending addition participates in change selection");
+	assert_eq!(
+		selected.iter().map(|item| item.uuid).collect::<Vec<_>>(),
+		vec![addition_id]
+	);
+}
+
+#[tokio::test]
+async fn pending_additions_do_not_inherit_decisions_before_acceptance() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let addition_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(
+		task_id,
+		r"C:\PendingInheritance",
+		OrganizeTaskStatus::Scanning,
+	))
+	.await
+	.expect("insert pending-inheritance task");
+
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(1);
+	let revision = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root],
+			SnapshotTotals {
+				total_entries: 1,
+				total_units: 1,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert inheritance snapshot");
+	repo.apply_decision(DecisionTransactionRequest {
+		task_id,
+		selection: OrganizeSelectionInput::Items {
+			item_ids: vec![root_id],
+		},
+		decision: Some(DecisionValue::discard()),
+		expected_revision: revision,
+		confirm_descendant_override: true,
+		confirm_ancestor_split: true,
+	})
+	.await
+	.expect("mark root discard");
+
+	let mut addition = item(task_id, addition_id, Some(1), "new");
+	addition.id = Some(2);
+	repo.store_change_scan(
+		task_id,
+		ChangeScanResult {
+			additions: vec![addition],
+			changed_ids: Vec::new(),
+			missing_ids: Vec::new(),
+		},
+	)
+	.await
+	.expect("store pending inherited addition");
+
+	let unmarked = repo
+		.children(OrganizeChildrenInput {
+			task_id,
+			parent_item_id: root_id,
+			cursor: None,
+			limit: 10,
+			sort: OrganizeItemSort::Name,
+			direction: OrganizeSortDirection::Asc,
+			filter: OrganizeItemFilter::Unmarked,
+		})
+		.await
+		.expect("read pending addition as unmarked");
+	assert_eq!(
+		unmarked
+			.items
+			.iter()
+			.map(|item| item.uuid)
+			.collect::<Vec<_>>(),
+		vec![addition_id]
+	);
+
+	let discard = repo
+		.children(OrganizeChildrenInput {
+			task_id,
+			parent_item_id: root_id,
+			cursor: None,
+			limit: 10,
+			sort: OrganizeItemSort::Name,
+			direction: OrganizeSortDirection::Asc,
+			filter: OrganizeItemFilter::Discard,
+		})
+		.await
+		.expect("pending addition must not match inherited discard");
+	assert!(discard.items.is_empty());
+}
+
+#[tokio::test]
 async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 	let (_temp_dir, db) = migrated_temp_db().await;
 	let repo = OrganizeRepository::new(&db);

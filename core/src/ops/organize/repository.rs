@@ -211,6 +211,9 @@ fn effective_decision<'a>(
 	items: &'a [organize_task_item::Model],
 	item: &organize_task_item::Model,
 ) -> Option<&'a organize_task_item::Model> {
+	if item.membership_state == "pending_addition" {
+		return None;
+	}
 	if item.membership_state == "included" && item.decision_kind.is_some() {
 		items.iter().find(|candidate| candidate.uuid == item.uuid)
 	} else {
@@ -1260,7 +1263,21 @@ impl<'db> OrganizeRepository<'db> {
 		)?;
 		let decision_projections = page
 			.iter()
-			.map(|item| decision_projection(&task, &all_items, &decision_state, item))
+			.map(|item| {
+				if item.membership_state == "pending_addition" {
+					Ok(OrganizeItemDecisionProjection {
+						item_id: item.uuid,
+						explicit_decision: None,
+						effective_decision: None,
+						decision_source: None,
+						progress: OrganizeProgressSummary::default(),
+						move_destination: None,
+						operation_state: OrganizeOperationState::None,
+					})
+				} else {
+					decision_projection(&task, &all_items, &decision_state, item)
+				}
+			})
 			.collect::<Result<Vec<_>>>()?;
 		let next_cursor = (end_index < children.len()).then(|| {
 			let item = &page[page.len() - 1];
