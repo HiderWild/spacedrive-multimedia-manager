@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
 	entity::prelude::*, ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-	DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+	DbErr, EntityTrait, NotSet, PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -1063,7 +1063,7 @@ impl<'db> OrganizeRepository<'db> {
 	}
 }
 
-async fn selection_ids<C: sea_orm::ConnectionTrait + ?Sized>(
+async fn selection_ids<C: sea_orm::ConnectionTrait>(
 	txn: &C,
 	task_id: Uuid,
 	selection: OrganizeSelectionInput,
