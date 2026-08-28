@@ -13,12 +13,14 @@ drives the real React UI, and asserts that:
 3. **Daemon running**: `get_daemon_status` returns `is_running: true`
 4. **One real recursive task** is created from the `/organize` entry form for a
    physical Windows directory and navigated through nested children.
-5. **Visible decisions** cover Keep, Discard, and Move. Parent/descendant
-   conflicts are handled by the real confirmation dialog.
+5. **Visible decisions** cover Keep, Discard, Move, lasso selection, and a
+   parent/descendant conflict handled by the real confirmation dialog.
 6. **Persistence and safety**: reload restores the task and decisions, and no
-   file changes occur before commit.
+   file changes occur before commit. A changed source keeps the commit disabled
+   until drift is explicitly acknowledged.
 7. **Lifecycle**: Finish makes the task read-only, Reopen restores editing, and
-   the review dialog reports filesystem drift without side effects.
+   the review dialog commits the plan and the harness verifies the resulting
+   move/delete disk effects.
 
 ## What This Does *Not* Prove
 
@@ -68,8 +70,8 @@ python tests/webdriver/test_real_tauri_app.py
 The vertical test opens `/organize`, fills the visible device and Windows-folder
 inputs, starts a real snapshot, and follows the redirect to `/organize/:taskId`.
 It uses only visible DOM controls and temporary files. Task state is verified
-through the route and lifecycle controls rather than an internal persistence
-format.
+through the route, rendered decision projections, commit review, disk state, and
+lifecycle controls rather than an internal persistence format.
 
 ## Test Results
 
@@ -78,7 +80,7 @@ format.
 | App Connection | Title `Spacedrive`, URL on a recognised app origin |
 | Tauri API | `__TAURI__`, `__TAURI_INTERNALS__`, `core.invoke` all present |
 | Daemon Status | `is_running == true` |
-| Recursive task vertical flow | Create, nested navigation, Keep/Discard/Move, reload, Finish/Reopen, and drift safety |
+| Recursive task vertical flow | Create, nested navigation, Keep/Discard/Move, lasso, conflict cancel/confirm, reload, drift-gated commit, disk effects, and Finish/Reopen |
 
 ## Known Limitations
 
@@ -86,6 +88,14 @@ format.
 - The current UI uses visible English labels such as `Start scan`, `Discard`,
   `Move…`, `Finish`, and `Reopen`; the harness does not alter localStorage or
   seed route/view state.
-- The flow stops at the drift review dialog. It intentionally does not confirm
-  a destructive commit, so the test can assert that pre-commit file state is
-  unchanged.
+- The entry step uses the current `/organize` task form. It does not yet drive
+  the Explorer path-bar or directory-context-menu entry required by ORG-INT-01.
+- The move destination is entered through the visible path field. The native
+  `Browse…` picker is an OS dialog and is not controllable through Selenium's
+  WebView session.
+- The harness verifies the drift gate and the confirmed commit, but it does not
+  force a snapshot or partial-operation failure. Those branches need a stable
+  failure injection point or an OS-level fixture.
+- The organize commit UI currently submits the generated default
+  `AutoModifyName` conflict policy. There is no visible overwrite/abort policy
+  control for this harness to exercise.

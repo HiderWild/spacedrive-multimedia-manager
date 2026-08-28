@@ -22,7 +22,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from selenium import webdriver
-from selenium.common.exceptions import NoAlertPresentException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.edge.options import Options as EdgeOptions
@@ -50,6 +49,78 @@ def find_clickable_by_text(driver, text: str):
         EC.element_to_be_clickable(
             (By.XPATH, f"//button[normalize-space()='{text}' and not(@disabled)]")
         )
+    )
+
+
+def find_card(driver, name: str):
+    """Find the rendered organize card for a snapshot item by its visible name."""
+    return WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        EC.presence_of_element_located(
+            (
+                By.XPATH,
+                "//div[@data-organize-item-id]"
+                f"[.//span[normalize-space()='{name}']]",
+            )
+        )
+    )
+
+
+def click_card(driver, name: str):
+    """Select a visible organize card by its snapshot item name."""
+    card = find_card(driver, name)
+    card.find_element(By.TAG_NAME, "button").click()
+    return card
+
+
+def wait_for_card_decision(driver, name: str, decision: str):
+    """Wait until the current projection shows the requested decision."""
+    return WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: decision.lower()
+        in find_card(current, name).text.lower()
+    )
+
+
+def open_directory(driver, name: str):
+    """Double-click a visible directory card and wait for its children."""
+    card = find_card(driver, name)
+    ActionChains(driver).double_click(card.find_element(By.TAG_NAME, "button")).perform()
+    wait_for_text(driver, "direct children")
+
+
+def back_to_task_root(driver):
+    """Return from a nested task directory to the task root."""
+    find_clickable_by_text(driver, "Back to task root").click()
+    wait_for_text(driver, "direct children")
+
+
+def lasso_select_card(driver, name: str):
+    """Use the real pointer lasso to select one rendered card."""
+    surface = driver.find_element(By.CSS_SELECTOR, "[data-testid='organize-grid']")
+    card = find_card(driver, name)
+    surface_rect = driver.execute_script(
+        "return arguments[0].getBoundingClientRect();", surface
+    )
+    card_rect = driver.execute_script(
+        "return arguments[0].getBoundingClientRect();", card
+    )
+    center_x = surface_rect["x"] + surface_rect["width"] / 2
+    center_y = surface_rect["y"] + surface_rect["height"] / 2
+    start_x = card_rect["left"] + 5
+    start_y = card_rect["top"] + 5
+    end_x = card_rect["right"] - 5
+    end_y = card_rect["bottom"] - 5
+
+    ActionChains(driver).move_to_element_with_offset(
+        surface, start_x - center_x, start_y - center_y
+    ).click_and_hold().move_to_element_with_offset(
+        surface, end_x - center_x, end_y - center_y
+    ).release().perform()
+
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: find_card(current, name)
+        .find_element(By.TAG_NAME, "button")
+        .get_attribute("data-selected")
+        == "true"
     )
 
 
@@ -155,14 +226,21 @@ def test_recursive_organize_task_vertical_flow():
     print("\n[Recursive Organize Task - Vertical Flow]")
     driver = connect_to_app()
     root = Path(tempfile.mkdtemp(prefix="spacedrive-organize-task-"))
-    destination = root / "sorted"
+    # Keep the destination outside the source tree so the real commit preflight
+    # does not reject the fixture as an unsafe move topology.
+    destination = root.with_name(f"{root.name}-sorted")
     destination.mkdir()
-    nested = root / "nested" / "deeper"
-    nested.mkdir(parents=True)
+    nested = root / "nested"
+    deeper = nested / "deeper"
+    conflict_dir = nested / "conflict-dir"
+    deeper.mkdir(parents=True)
+    conflict_dir.mkdir(parents=True)
     keep = root / "keep.txt"
-    discard = nested / "discard.txt"
-    moved = nested / "move.txt"
-    for path in (keep, discard, moved):
+    discard = deeper / "discard.txt"
+    moved = deeper / "move.txt"
+    lasso = deeper / "lasso.txt"
+    preserve = conflict_dir / "preserve.txt"
+    for path in (keep, discard, moved, lasso, preserve):
         path.write_text(path.name, encoding="utf-8")
 
     try:
@@ -171,11 +249,16 @@ def test_recursive_organize_task_vertical_flow():
         driver.get(f"{origin}/organize")
         wait_for_text(driver, "New organize task")
 
-        inputs = driver.find_elements(By.TAG_NAME, "input")
-        assert len(inputs) >= 2, "Expected device and Windows folder inputs"
-        inputs[0].clear()
-        inputs[0].send_keys("local")
-        inputs[1].send_keys(str(root))
+        device_input = driver.find_element(
+            By.XPATH, "//label[contains(normalize-space(), 'Device')]/input"
+        )
+        folder_input = driver.find_element(
+            By.XPATH, "//label[contains(normalize-space(), 'Windows folder')]/input"
+        )
+        device_input.clear()
+        device_input.send_keys("local")
+        folder_input.clear()
+        folder_input.send_keys(str(root))
         find_clickable_by_text(driver, "Start scan").click()
 
         WebDriverWait(driver, UI_WAIT_SECONDS).until(
@@ -183,66 +266,144 @@ def test_recursive_organize_task_vertical_flow():
         )
         wait_for_text(driver, "direct children")
         wait_for_text(driver, "nested")
+        # The snapshot job is asynchronous. Decisions are disabled until the
+        # active task state is rendered by the lifecycle controls.
+        find_clickable_by_text(driver, "Finish")
 
-        nested_card = driver.find_element(
-            By.XPATH, "//button[.//span[normalize-space()='nested']]"
-        )
-        ActionChains(driver).double_click(nested_card).perform()
+        click_card(driver, "keep.txt")
+        find_clickable_by_text(driver, "Keep").click()
+        wait_for_card_decision(driver, "keep.txt", "keep")
+
+        open_directory(driver, "nested")
+        open_directory(driver, "deeper")
         wait_for_text(driver, "discard.txt")
 
-        driver.find_element(
-            By.XPATH, "//button[.//span[normalize-space()='discard.txt']]"
-        ).click()
-        find_clickable_by_text(driver, "Discard").click()
+        lasso_select_card(driver, "lasso.txt")
+        find_clickable_by_text(driver, "Keep").click()
+        wait_for_card_decision(driver, "lasso.txt", "keep")
 
-        driver.find_element(
-            By.XPATH, "//button[.//span[normalize-space()='move.txt']]"
-        ).click()
+        click_card(driver, "discard.txt")
+        find_clickable_by_text(driver, "Discard").click()
+        wait_for_card_decision(driver, "discard.txt", "discard")
+
+        click_card(driver, "move.txt")
         find_clickable_by_text(driver, "Move…").click()
         move_input = driver.find_element(
             By.CSS_SELECTOR, "input[placeholder='C:\\Sorted\\Keep']"
         )
         move_input.send_keys(str(destination))
         find_clickable_by_text(driver, "Set destination").click()
+        wait_for_card_decision(driver, "move.txt", "move")
+
+        # Establish a Keep descendant, then exercise the real parent conflict
+        # dialog once with Cancel and once with Confirm override.
+        back_to_task_root(driver)
+        open_directory(driver, "nested")
+        open_directory(driver, "conflict-dir")
+        click_card(driver, "preserve.txt")
+        find_clickable_by_text(driver, "Keep").click()
+        wait_for_card_decision(driver, "preserve.txt", "keep")
+        back_to_task_root(driver)
+        open_directory(driver, "nested")
+        click_card(driver, "conflict-dir")
+        find_clickable_by_text(driver, "Discard").click()
+        conflict_dialog = WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, "[role='alertdialog']"))
+        )
+        conflict_dialog.find_element(
+            By.XPATH, ".//button[normalize-space()='Cancel']"
+        ).click()
+        open_directory(driver, "conflict-dir")
+        assert "keep" in find_card(driver, "preserve.txt").text.lower()
+        back_to_task_root(driver)
+        open_directory(driver, "nested")
+        click_card(driver, "conflict-dir")
+        find_clickable_by_text(driver, "Discard").click()
+        conflict_dialog = WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, "[role='alertdialog']"))
+        )
+        conflict_dialog.find_element(
+            By.XPATH, ".//button[normalize-space()='Confirm override']"
+        ).click()
+        wait_for_card_decision(driver, "conflict-dir", "discard")
 
         # Decisions are task state, while files remain unchanged until commit.
         driver.refresh()
-        wait_for_text(driver, "discard.txt")
+        find_clickable_by_text(driver, "Finish")
+        open_directory(driver, "nested")
+        open_directory(driver, "deeper")
+        assert "discard" in find_card(driver, "discard.txt").text.lower()
+        assert "move" in find_card(driver, "move.txt").text.lower()
         assert keep.exists() and discard.exists() and moved.exists()
 
+        # Change a decided source after the snapshot. The review must require
+        # explicit drift confirmation before the commit can be dispatched.
+        discard.write_text("external drift", encoding="utf-8")
+        find_clickable_by_text(driver, "Scan changes").click()
+        # The scan action dispatches a job. Refresh after the action so the
+        # review reads the settled change-scan result, not the old plan cache.
+        driver.refresh()
+        find_clickable_by_text(driver, "Finish")
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            lambda current: "1 changed or missing roots"
+            in current.find_element(
+                By.CSS_SELECTOR, "[aria-label='Organize changes']"
+            ).text
+        )
+        find_clickable_by_text(driver, "Review commit").click()
+        commit_dialog = WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, "[role='dialog']"))
+        )
+        assert "changed or missing" in commit_dialog.text.lower()
+        delete_confirmation = commit_dialog.find_element(
+            By.XPATH, ".//label[contains(., 'permanently deleted')]//input"
+        )
+        delete_confirmation.click()
+        commit_button = commit_dialog.find_element(
+            By.XPATH, ".//button[normalize-space()='Commit plan']"
+        )
+        assert commit_button.get_attribute("disabled") is not None
+        # No commit was dispatched while drift remained unconfirmed.
+        assert keep.exists() and discard.exists() and moved.exists()
+
+        commit_dialog.find_element(
+            By.XPATH, ".//label[contains(., 'allow current subtree drift')]//input"
+        ).click()
+        commit_dialog.find_element(
+            By.XPATH, ".//button[normalize-space()='Commit plan']"
+        ).click()
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            lambda _current: not discard.exists()
+            and not conflict_dir.exists()
+            and not moved.exists()
+            and (destination / moved.name).exists()
+        )
+        find_clickable_by_text(driver, "Finish")
+
+        assert keep.exists() and lasso.exists()
+        assert not discard.exists()
+        assert not conflict_dir.exists()
+        assert not moved.exists()
+        assert (destination / moved.name).exists()
+
         find_clickable_by_text(driver, "Finish").click()
-        try:
-            driver.switch_to.alert.accept()
-        except NoAlertPresentException:
-            pass
         WebDriverWait(driver, UI_WAIT_SECONDS).until(
             lambda current: len(
                 current.find_elements(By.XPATH, "//button[normalize-space()='Reopen']")
             ) == 1
         )
-        assert keep.exists() and discard.exists() and moved.exists()
         assert driver.find_element(
             By.XPATH, "//button[normalize-space()='Keep']"
         ).get_attribute("disabled") is not None
 
         find_clickable_by_text(driver, "Reopen").click()
-        WebDriverWait(driver, UI_WAIT_SECONDS).until(
-            lambda current: len(
-                current.find_elements(By.XPATH, "//button[normalize-space()='Finish']")
-            ) == 1
-        )
-
-        drift = nested / "drift.txt"
-        drift.write_text("external", encoding="utf-8")
-        find_clickable_by_text(driver, "Scan changes").click()
-        find_clickable_by_text(driver, "Review commit").click()
-        wait_for_text(driver, "changed")
-        assert keep.exists() and discard.exists() and moved.exists() and drift.exists()
-        print("  Recursive task, nested navigation, decisions, reload, lifecycle, and drift safety passed")
+        find_clickable_by_text(driver, "Finish")
+        print("  Recursive task, nested navigation, decisions, lasso, conflict safety, reload, commit effects, drift gate, and lifecycle passed")
         print("  PASSED")
     finally:
         quit_driver(driver)
         shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(destination, ignore_errors=True)
 
 
 def main():
