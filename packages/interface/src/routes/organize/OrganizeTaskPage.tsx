@@ -1,7 +1,7 @@
 import {ArrowLeft, CaretRight, FolderOpen} from '@phosphor-icons/react';
 import {useMemo, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import type {File, LocationsListOutput, LocationsListQueryInput, SdPath} from '@sd/ts-client';
+import type {LocationsListOutput, LocationsListQueryInput, SdPath} from '@sd/ts-client';
 import {usePlatform} from '../../contexts/PlatformContext';
 import {useLibraryMutation, useLibraryQuery, useNormalizedQuery} from '../../contexts/SpacedriveContext';
 import {OrganizeDecisionBar} from './OrganizeDecisionBar';
@@ -69,7 +69,7 @@ export function OrganizeTaskPage() {
 			anchorId: current.anchorId,
 		}));
 	};
-	const selectedFile = (focusedFileQuery.data as File | undefined) ?? null;
+	const selectedFile = focusedFileQuery.data ?? null;
 	const moveDeviceSlug = 'Physical' in taskSummary.root_sd_path ? taskSummary.root_sd_path.Physical.device_slug : 'local';
 	const locationDestinations = mapLocationsToMoveDestinations(locationsQuery.data?.locations ?? []);
 	const changeItems = changeItemsQuery.data?.items ?? [];
