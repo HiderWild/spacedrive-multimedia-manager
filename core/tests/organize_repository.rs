@@ -492,9 +492,11 @@ async fn decision_transaction_is_atomic_and_revision_increments_once() {
 	repo.insert_scanning_task(task(task_id, r"C:\Photos", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert active task");
+	let mut parent = item(task_id, parent_id, None, "");
+	parent.tree_start = Some(0);
 	repo.replace_included_snapshot(
 		task_id,
-		vec![item(task_id, parent_id, None, "")],
+		vec![parent],
 		SnapshotTotals {
 			total_entries: 1,
 			total_units: 1,
@@ -582,17 +584,18 @@ async fn direct_children_paging_is_stable_and_filters_exclusions() {
 	let second_id = Uuid::new_v4();
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
+	root.tree_start = Some(0);
 	root.tree_end = Some(3);
 	let mut first = item(task_id, first_id, Some(1), "a");
 	first.id = Some(2);
 	first.name = "same".to_string();
 	first.tree_start = Some(1);
-	first.tree_end = Some(1);
+	first.tree_end = Some(2);
 	let mut second = item(task_id, second_id, Some(1), "b");
 	second.id = Some(3);
 	second.name = "same".to_string();
 	second.tree_start = Some(2);
-	second.tree_end = Some(2);
+	second.tree_end = Some(3);
 	repo.replace_included_snapshot(
 		task_id,
 		vec![root, first, second],
@@ -659,6 +662,7 @@ async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 	let root_id = Uuid::new_v4();
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
+	root.tree_start = Some(0);
 	root.tree_end = Some(1);
 	let initial_revision = repo
 		.replace_included_snapshot(
@@ -732,10 +736,16 @@ async fn decisions_normalize_nested_selection_and_repeat_without_revision() {
 		.expect("insert active task");
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(3);
 	let mut child = item(task_id, child_id, Some(1), "child");
 	child.id = Some(2);
+	child.tree_start = Some(1);
+	child.tree_end = Some(2);
 	let mut sibling = item(task_id, sibling_id, Some(1), "sibling");
 	sibling.id = Some(3);
+	sibling.tree_start = Some(2);
+	sibling.tree_end = Some(3);
 	let initial_revision = repo
 		.replace_included_snapshot(
 			task_id,
@@ -872,12 +882,18 @@ async fn decision_confirmation_reports_conflicting_root_statistics() {
 	.expect("insert active task");
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(3);
 	let mut keep = item(task_id, keep_id, Some(1), "keep");
 	keep.id = Some(2);
+	keep.tree_start = Some(1);
+	keep.tree_end = Some(2);
 	keep.kind = OrganizeItemKind::File;
 	keep.size_bytes = 10;
 	let mut moved = item(task_id, move_id, Some(1), "move");
 	moved.id = Some(3);
+	moved.tree_start = Some(2);
+	moved.tree_end = Some(3);
 	moved.kind = OrganizeItemKind::File;
 	moved.size_bytes = 20;
 	repo.replace_included_snapshot(
@@ -960,11 +976,17 @@ async fn finish_deduplicates_unmarked_units_and_uses_inherited_decisions() {
 	.expect("insert unmarked task");
 	let mut unmarked_root = item(unmarked_task_id, Uuid::new_v4(), None, "");
 	unmarked_root.id = Some(1);
+	unmarked_root.tree_start = Some(0);
+	unmarked_root.tree_end = Some(3);
 	let mut first = item(unmarked_task_id, Uuid::new_v4(), Some(1), "first");
 	first.id = Some(2);
+	first.tree_start = Some(1);
+	first.tree_end = Some(2);
 	first.kind = OrganizeItemKind::File;
 	let mut second = item(unmarked_task_id, Uuid::new_v4(), Some(1), "second");
 	second.id = Some(3);
+	second.tree_start = Some(2);
+	second.tree_end = Some(3);
 	second.kind = OrganizeItemKind::File;
 	repo.replace_included_snapshot(
 		unmarked_task_id,
@@ -1004,11 +1026,17 @@ async fn finish_deduplicates_unmarked_units_and_uses_inherited_decisions() {
 	.expect("insert inherited task");
 	let mut inherited_root = item(inherited_task_id, inherited_root_id, None, "");
 	inherited_root.id = Some(1);
+	inherited_root.tree_start = Some(0);
+	inherited_root.tree_end = Some(3);
 	let mut inherited_first = item(inherited_task_id, Uuid::new_v4(), Some(1), "first");
 	inherited_first.id = Some(2);
+	inherited_first.tree_start = Some(1);
+	inherited_first.tree_end = Some(2);
 	inherited_first.kind = OrganizeItemKind::File;
 	let mut inherited_second = item(inherited_task_id, Uuid::new_v4(), Some(1), "second");
 	inherited_second.id = Some(3);
+	inherited_second.tree_start = Some(2);
+	inherited_second.tree_end = Some(3);
 	inherited_second.kind = OrganizeItemKind::File;
 	repo.replace_included_snapshot(
 		inherited_task_id,
@@ -1280,10 +1308,16 @@ async fn children_cursor_is_opaque_and_binds_query_metadata() {
 	let second_id = Uuid::new_v4();
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(3);
 	let mut first = item(task_id, first_id, Some(1), "a");
 	first.id = Some(2);
+	first.tree_start = Some(1);
+	first.tree_end = Some(2);
 	let mut second = item(task_id, second_id, Some(1), "b");
 	second.id = Some(3);
+	second.tree_start = Some(2);
+	second.tree_end = Some(3);
 	repo.replace_included_snapshot(
 		task_id,
 		vec![root, first, second],
