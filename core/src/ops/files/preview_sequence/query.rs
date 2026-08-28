@@ -38,9 +38,7 @@ impl LibraryQuery for PreviewSequenceQuery {
 
 	fn from_input(input: Self::Input) -> QueryResult<Self> {
 		if input.limit == 0 {
-			return Err(QueryError::InvalidInput(
-				"limit must be greater than zero".into(),
-			));
+			return Err(QueryError::InvalidInput("limit must be greater than zero"));
 		}
 		Ok(Self { input })
 	}
@@ -60,7 +58,7 @@ impl LibraryQuery for PreviewSequenceQuery {
 				.get_library(library_id)
 				.await
 				.ok_or_else(|| QueryError::LibraryNotFound(library_id))?;
-			let db = library.db().conn();
+			let db = library.db();
 			let task = organize_task::Entity::find_by_id(organize.task_id)
 				.one(db)
 				.await?
