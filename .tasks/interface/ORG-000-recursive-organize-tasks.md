@@ -74,8 +74,8 @@ The approved design is the behavior contract. The implementation plan translates
 | ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-00A-SCOPE | Merged | Ptolemy + coordinator | `44ee62cc0a4e9d27d9d2607d8865f4c7c0db1d42` plus scoped documentation `70579803a7e8e364e01d9d671c06d2ce4cac1586`; 12/12 fixture, AST, diff and quality review passed |
 | ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | Merged | Archimedes | Recovery and P1 fixes accepted; no residual worktree remains |
 | ORG-BUILD-00B | Wire every project build entry point to the shared wrapper and resolver | ORG-BUILD-00A | In Flight | coordinator + entrypoint agents | Split into disjoint 00B-PW and 00B-SH lanes |
-| ORG-BUILD-00B-PW | Wire PowerShell start/run/restart/cache entry points | ORG-BUILD-00A | In Flight | Unassigned | Waiting for dispatch |
-| ORG-BUILD-00B-SH | Wire justfile, Tauri package, and shell Cargo entry points | ORG-BUILD-00A | In Flight | Unassigned | Waiting for dispatch |
+| ORG-BUILD-00B-PW | Wire PowerShell start/run/restart/cache entry points | ORG-BUILD-00A | In Flight | PowerShell entrypoint agent | Dispatching now |
+| ORG-BUILD-00B-SH | Wire justfile, Tauri package, and shell Cargo entry points | ORG-BUILD-00A | In Flight | Shell entrypoint agent | Dispatching now |
 | ORG-BUILD-00C | Independent policy review and fixture verification | ORG-BUILD-00B-PW, ORG-BUILD-00B-SH | Blocked | Unassigned | Waiting for both wiring lanes |
 
 ## Acceptance Criteria
