@@ -24,6 +24,7 @@ pub mod media;
 pub mod metadata;
 pub mod models;
 pub mod network;
+pub mod organize;
 pub mod redundancy;
 pub mod rules;
 pub mod search;
