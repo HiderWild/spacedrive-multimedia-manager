@@ -1,4 +1,4 @@
-# Spacedrive Organize View - WebDriver Verification
+# Spacedrive Recursive Organize Task - WebDriver Verification
 
 WebDriver-based runtime verification that recursive organize tasks work inside a
 running Spacedrive Tauri app.
@@ -36,16 +36,15 @@ These intentionally remain out of scope of the harness:
 - **Python Selenium**: `pip install selenium`
 - **msedgedriver**: auto-downloaded by Selenium on first run
 - **Tauri app built and running** with WebView2 debugging enabled
-- The app must have opened the explorer at least once so a real `device_slug`
-  is present in `localStorage` (the harness reads it from `sd-tabs-state` /
-  `spacedrive-view-preferences` rather than guessing)
+- The current app library must be open and the attached daemon must be running
+- The temporary test directory must be writable by the Windows user running the app
 
 ## Usage
 
 ```bash
-# Launch with debugging (cargo tauri dev or a packaged build both work)
+# Launch the app with debugging (a packaged build or an existing Tauri debug run)
 set WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222
-cargo tauri dev --no-watch    # or run the packaged Spacedrive.exe
+Spacedrive.exe                # or start the configured Tauri debug instance
 
 # Run the harness
 python tests/webdriver/test_real_tauri_app.py
@@ -68,9 +67,9 @@ python tests/webdriver/test_real_tauri_app.py
 
 The vertical test opens `/organize`, fills the visible device and Windows-folder
 inputs, starts a real snapshot, and follows the redirect to `/organize/:taskId`.
-It uses only visible DOM controls and temporary files. It does not seed
-Explorer `viewMode`, call private Tauri JSON commands, or inspect an internal
-organize-state file.
+It uses only visible DOM controls and temporary files. Task state is verified
+through the route and lifecycle controls rather than an internal persistence
+format.
 
 ## Test Results
 
@@ -84,7 +83,9 @@ organize-state file.
 ## Known Limitations
 
 - Requires the app to be running before test execution.
-- The UI assertions key on Tailwind class names (`opacity-50`,
-   `text-emerald-400`, `text-rose-400`, `ring-2`) and visible English strings;
-  the harness temporarily forces `sd-language = en` to keep those strings
-  stable, then restores the original keys before the driver exits.
+- The current UI uses visible English labels such as `Start scan`, `Discard`,
+  `Move…`, `Finish`, and `Reopen`; the harness does not alter localStorage or
+  seed route/view state.
+- The flow stops at the drift review dialog. It intentionally does not confirm
+  a destructive commit, so the test can assert that pre-commit file state is
+  unchanged.
