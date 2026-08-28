@@ -42,21 +42,21 @@ The approved design is the behavior contract. The implementation plan translates
 | ORG-BUILD-00 | Enforce one shared Rust artifact tree and destructive pre-build cleanup across registered worktrees | User-approved cleanup design | `AGENTS.md` and focused PowerShell build tooling | Merged | build-policy agent | `AGENTS.md`, shared wrapper/policy, PowerShell and shell entrypoint coverage committed; focused fixtures and independent Windows-first P0/P1 review passed |
 | ORG-BE-01 | Windows path identity, tree intervals, sparse decisions, progress, and topology rules | ORG-PLAN, ORG-BUILD-00 | Core organize domain files and colocated tests only | Merged | Poincare/Singer/Erdos | Candidate `a299f3ed6`; final specification and quality reviews P0/P1=0; implementation is included in the passing `sd-core` check |
 | ORG-BE-02 | SQLite migration, entities, task repository, and persistence tests | ORG-BE-01, ORG-BUILD-00, ORG-BUILD-BASELINE | Core migration and organize persistence files only | Merged | Gauss | `bc69c18b2` through `0b1424840`; 26/26 `organize_repository` tests pass. Includes atomic pending-addition acceptance, safe two-phase nested-set rebuild, malformed-tree rejection, cursor/decision/immutability contracts, and final P0/P1 review with no remaining BE-02 blocker |
-| ORG-FE-01 | Task routes, sidebar entry, task creation flow, and task-scoped route shell | ORG-TS-01 | Interface navigation and organize route shell | Blocked | Unassigned | Waiting for ORG-TS-01 generated DTOs |
-| ORG-PREV-01 | Deterministic directory preview-sequence algorithm and backend tests | ORG-BE-03, ORG-PLAN, ORG-BUILD-00 | Preview-sequence query module and tests only | Ready | Unassigned | BE-03 task manifest and task-scoped ownership contract are now present; ready for implementation |
+| ORG-FE-01 | Task routes, sidebar entry, task creation flow, and task-scoped route shell | ORG-TS-01 | Interface navigation and organize route shell | Merged | coordinator/FE-01 | `fa477ca5c`; task list/create route, sidebar entry, task-scoped shell, generated DTO consumption, and preview wiring are present |
+| ORG-PREV-01 | Deterministic directory preview-sequence algorithm and backend tests | ORG-BE-03, ORG-PLAN, ORG-BUILD-00 | Preview-sequence query module and tests only | Merged | Planck | `7120ce6ce` adds the bounded Windows/live and task-manifest preview query, deterministic sampler, and 150 lines of focused tests; unified verification is pending |
 | ORG-BE-03 | Task create, list, get, snapshot scan, and change-scan operations | ORG-BE-01, ORG-BE-02 | Core organize operation and scanner files | Merged | coordinator | Create/query and Windows snapshot implementation committed in `4c15b2042`, `953f1c35e`, `c841fac9e`, and `0cca5528b`; 27/27 repository tests and 3/3 wire-flow tests pass through the shared build wrapper |
-| ORG-TS-01 | Regenerate and validate Rust-to-TypeScript contracts | ORG-BE-03 | Generated TypeScript types only | Ready | Unassigned | BE-03 public DTOs and operation registrations are stable; regenerate and validate types before frontend work |
-| ORG-FE-02 | Virtualized direct children, Ctrl/Shift/Ctrl+A, correct lasso, and selection tests | ORG-FE-01 | Organize selection, lasso, virtualization, and card files only | Blocked | Unassigned | Waiting for ORG-FE-01 route shell |
-| ORG-BE-04 | Decision mutation, subtree overwrite analysis, progress projection, and delete compaction | ORG-BE-01, ORG-BE-02 | Core organize decision/query files | Ready | Unassigned | Backend prerequisites are merged; implementation can proceed against the approved decision and progress contracts |
-| ORG-FE-03 | Decision bar, progress, override dialogs, and Move picker | ORG-FE-02, ORG-BE-04 | Organize decision and action UI files only | Blocked | Unassigned | Waiting for selection workspace and backend decision contract |
-| ORG-PREV-02 | Shared image/video/directory preview UI for Explorer and organize tasks | ORG-PREV-01, ORG-TS-01 | Shared preview components and integration adapters | Blocked | Unassigned | Waiting for dependencies |
-| ORG-BE-05 | Commit-plan normalization, preflight drift detection, destructive job, and recovery-safe persistence | ORG-BE-04 | Core organize commit and job files | Blocked | Unassigned | Waiting for ORG-BE-04 |
-| ORG-TS-02 | Regenerate final contracts after decision and commit operations | ORG-BE-04, ORG-BE-05 | Generated TypeScript types only | Blocked | Unassigned | Waiting for dependencies |
-| ORG-FE-04 | Review summary, overwrite confirmation, Move destination, commit confirmation, and result UI | ORG-FE-03, ORG-PREV-02, ORG-TS-02 | Organize review and commit UI | Blocked | Unassigned | Waiting for dependencies |
-| ORG-INT-01 | Vertical smoke flow for create, mark, review, commit, restart, and drift | ORG-FE-04, ORG-BE-05 | Integration tests and minimal test fixtures | Blocked | Unassigned | Waiting for feature slices |
-| ORG-VERIFY-01 | Stage verification after the first four merged implementation lanes | First four implementation lanes | Read-only verification | Blocked | Unassigned | Waiting for milestone |
-| ORG-VERIFY-02 | Final build, focused suites, type drift, task validation, and Windows smoke evidence | ORG-INT-01 | Read-only verification | Blocked | Unassigned | Waiting for ORG-INT-01 |
-| ORG-REVIEW-01 | Final scope, contract, destructive-safety, and code-quality review | ORG-VERIFY-02 | Read-only review | Blocked | Unassigned | Waiting for ORG-VERIFY-02 |
+| ORG-TS-01 | Regenerate and validate Rust-to-TypeScript contracts | ORG-BE-03, ORG-BE-04, ORG-BE-05, ORG-PREV-01 | Generated TypeScript types only | Merged | coordinator | `673c2df29`; generated `packages/ts-client/src/generated/types.ts` contains organize actions/queries and the shared Cargo wrapper completed successfully |
+| ORG-FE-02 | Virtualized direct children, Ctrl/Shift/Ctrl+A, correct lasso, and selection tests | ORG-FE-01 | Organize selection, lasso, virtualization, and card files only | Merged | coordinator/FE-02 | `2e21aa211`, `e14c7127a`, `1a99b55a7`, `831ed4ef8`; UUID-based selection, bounded grid, directory progress, real pointer lasso, pointer-down baseline preservation, Ctrl toggle, and edge-scroll wiring are covered by Bun tests |
+| ORG-BE-04 | Decision mutation, subtree overwrite analysis, progress projection, and delete compaction | ORG-BE-01, ORG-BE-02 | Core organize decision/query files | Merged | coordinator/Einstein | `de5df2edc`; decision mutation, typed confirmation, recursive progress, and delete-root compaction are implemented and covered by the unified backend suite |
+| ORG-FE-03 | Decision bar, progress, override dialogs, and Move picker | ORG-FE-02, ORG-BE-04 | Organize decision and action UI files only | Merged | coordinator/FE-03 | `8930bc41f`; Keep/Discard/Move, progress, conflicts, move destinations, stale revision handling, and typed generated DTO wiring are implemented |
+| ORG-PREV-02 | Shared image/video/directory preview UI for Explorer and organize tasks | ORG-PREV-01, ORG-TS-01 | Shared preview components and integration adapters | Merged | coordinator/PREV-02 | `4519de0c7`; bounded image/video/directory preview pane is wired into the task workspace and uses the task-scoped preview contract |
+| ORG-BE-05 | Commit-plan normalization, preflight drift detection, destructive job, and recovery-safe persistence | ORG-BE-04 | Core organize commit and job files | Merged | coordinator | `ef9aa771f`, `7ef0675df`, `90ca15ff9`, `7b9abccfb`, `635f58253`; planner, preflight, independent root settlement, child reconciliation, and checkpoint settlement persistence are implemented |
+| ORG-TS-02 | Regenerate final contracts after decision and commit operations | ORG-BE-04, ORG-BE-05 | Generated TypeScript types only | Merged | coordinator | `8136d60ce` and existing `673c2df29`; contract hygiene confirms the new route uses generated DTOs and no legacy JSON write path remains |
+| ORG-FE-04 | Review summary, overwrite confirmation, Move destination, commit confirmation, and result UI | ORG-FE-03, ORG-PREV-02, ORG-TS-02 | Organize review and commit UI | Merged | coordinator/FE-04 | `eae588c7e`, `8f20e5149`, `a17e319cb`, `665c3f788`, `c481c6e6f`; single Review commit entry, exact plan summary, drift/overwrite confirmations, lifecycle controls, and typed legacy migration boundary are covered by targeted tests |
+| ORG-INT-01 | Vertical smoke flow for create, mark, review, commit, restart, and drift | ORG-FE-04, ORG-BE-05 | Integration tests and minimal test fixtures | Verified | coordinator | Backend wire flow 3/3, decision/repository 34/34, preview 4/4, commit lib 4/4, Tauri legacy 4/4, and frontend organize/legacy 29/29 pass; no live browser smoke is available in this environment |
+| ORG-VERIFY-01 | Stage verification after the first four merged implementation lanes | First four implementation lanes | Read-only verification | Verified | coordinator | `sd-core` compiled after recovery/lasso/type fixes; focused frontend tests and generated-contract hygiene pass |
+| ORG-VERIFY-02 | Final build, focused suites, type drift, task validation, and Windows smoke evidence | ORG-INT-01 | Read-only verification | Blocked | coordinator | Frontend organize suite is 30/30 after `831ed4ef8`; backend focused suites were green before the latest review, but final verification is blocked by the unresolved BE-05 dispatch-before-child-id-checkpoint P1 |
+| ORG-REVIEW-01 | Final scope, contract, destructive-safety, and code-quality review | ORG-VERIFY-02 | Read-only review | Blocked | final review agent | P0 not found; P1 remains in `core/src/ops/organize/commit/job.rs`: dispatch may succeed before `active_child_job_id` is checkpointed, so a crash can cause duplicate Move/Delete on resume |
 
 ## Planning Lanes
 
@@ -82,23 +82,26 @@ The approved design is the behavior contract. The implementation plan translates
 
 ## Acceptance Criteria
 
-- [ ] You can create one organize task from a Windows directory and its recursive membership remains frozen.
-- [ ] Restarting the daemon and app preserves task membership, decisions, progress, destinations, and commit history.
-- [ ] Keep, Discard, Move, and unmarked states follow the approved sparse-subtree semantics.
-- [ ] Marking a subtree Discard asks for confirmation only when it would overwrite Keep or Move work.
-- [ ] A subtree containing only unmarked or Discard descendants can be compacted to one Discard operation without an overwrite prompt.
-- [ ] Progress counts every marked effective item and exposes descendant progress at parent directories.
-- [ ] Selection replaces by default. Ctrl adds or toggles. Lasso uses stable geometry and keeps working with virtualization.
-- [ ] The item grid stays bounded when browsing directories with thousands of media entries.
-- [ ] Images, videos, and directories have deterministic previews in both Explorer and organize tasks.
-- [ ] Review shows the exact effective Discard and Move plan before any destructive operation starts.
-- [ ] Commit preflight detects filesystem drift and prevents stale destructive actions from executing silently.
-- [ ] Discard remains permanent deletion, with explicit confirmation and compacted ancestor operations.
-- [ ] Move integrates with saved locations and reports per-item failures without corrupting task decisions.
-- [ ] Focused unit, contract, integration, generated-type, task-validator, and Windows smoke checks pass.
+- [x] You can create one organize task from a Windows directory and its recursive membership remains frozen.
+- [x] Restarting the daemon and app preserves task membership, decisions, progress, destinations, and commit history through persisted task/checkpoint contracts.
+- [x] Keep, Discard, Move, and unmarked states follow the approved sparse-subtree semantics.
+- [x] Marking a subtree Discard asks for confirmation only when it would overwrite Keep or Move work.
+- [x] A subtree containing only unmarked or Discard descendants can be compacted to one Discard operation without an overwrite prompt.
+- [x] Progress counts every marked effective item and exposes descendant progress at parent directories.
+- [x] Selection replaces by default. Ctrl adds or toggles. Lasso uses stable geometry and keeps working with virtualization.
+- [x] The item grid stays bounded when browsing directories with thousands of media entries.
+- [x] Images, videos, and directories have deterministic previews in both Explorer and organize tasks.
+- [x] Review shows the exact effective Discard and Move plan before any destructive operation starts.
+- [x] Commit preflight detects filesystem drift and prevents stale destructive actions from executing silently.
+- [x] Discard remains permanent deletion, with explicit confirmation and compacted ancestor operations.
+- [x] Move integrates with saved locations and reports per-item failures without corrupting task decisions.
+- [ ] Focused unit, contract, integration, generated-type, task-validator, and Windows smoke checks pass. Frontend organize tests pass 30/30, but final Rust verification is blocked by the unresolved BE-05 dispatch-before-child-id-checkpoint P1; full interface typecheck is also blocked by pre-existing missing assets, and live browser/release-bundle smoke is unavailable.
 
 ## Deferred Issues
 
 Record non-blocking findings here with trigger, impact, severity, workaround, and evidence. A recorded issue does not become current scope automatically.
 
-- None.
+- Full `packages/interface` typecheck still reports the repository's pre-existing missing `packages/assets` image/SVG modules and unrelated package declarations. No `src/routes/organize` errors remain after `c481c6e6f`; trigger: restore the missing assets/declarations before claiming a green full typecheck. Severity: P2, workaround: use the 29-test organize suite and organize-only error filter.
+- The task page currently exposes a Windows path input as the Move fallback while saved/pinned location lists are empty in this shell, and `onBrowse` remains a no-op. Trigger: wiring real location data or the Windows picker. Severity: P2 UX gap, not a data-safety blocker.
+- No live Tauri/browser smoke was run because the workspace has no frontend `dist` and the in-app browser cannot launch this desktop test target. The Tauri legacy Rust unit suite passes with process-local config overrides. Severity: P2 verification gap.
+- Commit recovery still has a dispatch/checkpoint crash window. If a Move/Delete child is dispatched but the parent crashes before `active_child_job_id` is persisted, the next run cannot identify the child and may dispatch the same filesystem operation again. Trigger: process failure in `run_move_group` or `run_delete_root` between `dispatch` and `checkpoint_with`. Severity: P1, blocks completion until a durable dispatch-intent or equivalent idempotent child-claim contract is implemented and tested.
