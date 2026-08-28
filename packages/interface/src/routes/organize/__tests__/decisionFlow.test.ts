@@ -29,6 +29,15 @@ describe('organize decision contracts', () => {
 		});
 	});
 
+	test('serializes the matching confirmation flag for a retried move', () => {
+		expect(
+			buildSetDecisionInput('task', 8, selection, {Move: {destination: {Physical: {device_slug: 'dev', path: 'C:/Sorted'}}}}, 'ancestor_split'),
+		).toMatchObject({
+			confirm_descendant_override: false,
+			confirm_ancestor_split: true,
+		});
+	});
+
 	test('keeps backend counts in conflict presentation', () => {
 		const model = conflictDialogModel({ConfirmationRequired: {
 			conflict_kind: 'descendant_override', keep_units: 4, discard_units: 2, move_units: 3,

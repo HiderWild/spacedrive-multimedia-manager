@@ -46,14 +46,15 @@ export function buildSetDecisionInput(
 	revision: number,
 	selection: OrganizeSelectionState,
 	decision: OrganizeDecisionInput | null,
+	confirmationKind?: ConflictDialogModel['kind'],
 ): OrganizeSetDecisionInput {
 	return {
 		task_id: taskId,
 		expected_revision: revision,
 		selection: toWireSelection(selection),
 		decision,
-		confirm_descendant_override: false,
-		confirm_ancestor_split: false,
+		confirm_descendant_override: confirmationKind === 'descendant_override',
+		confirm_ancestor_split: confirmationKind === 'ancestor_split',
 	};
 }
 
