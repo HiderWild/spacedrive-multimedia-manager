@@ -2,8 +2,9 @@
 
 use chrono::{DateTime, Utc};
 use sea_orm::{
-	entity::prelude::*, ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-	DbErr, EntityTrait, NotSet, PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+	entity::prelude::*, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
+	DatabaseTransaction, DbErr, EntityTrait, NotSet, PaginatorTrait, QueryFilter, QueryOrder, Set,
+	TransactionTrait,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -43,6 +44,60 @@ async fn task_in_state(
 		return Err(OrganizeError::InvalidTaskState(task.status).into());
 	}
 	Ok(task)
+}
+
+async fn find_overlapping_active_on<C: ConnectionTrait>(
+	connection: &C,
+	root_path_key: &str,
+) -> Result<Option<Uuid>> {
+	let candidates = organize_task::Entity::find()
+		.filter(organize_task::Column::Status.is_in([
+			task_status(OrganizeTaskStatus::Scanning),
+			task_status(OrganizeTaskStatus::Active),
+			task_status(OrganizeTaskStatus::Committing),
+		]))
+		.all(connection)
+		.await?;
+	Ok(candidates
+		.into_iter()
+		.find(|candidate| paths_overlap(&candidate.root_path_key, root_path_key))
+		.map(|candidate| candidate.id))
+}
+
+async fn ensure_no_decisions(txn: &DatabaseTransaction, task_id: Uuid) -> Result<()> {
+	let has_decision = organize_task_item::Entity::find()
+		.filter(organize_task_item::Column::TaskId.eq(task_id))
+		.filter(organize_task_item::Column::DecisionKind.is_not_null())
+		.one(txn)
+		.await?
+		.is_some();
+	if has_decision {
+		return Err(OrganizeError::InvalidTaskState(
+			"organize snapshot already has decisions".into(),
+		)
+		.into());
+	}
+	Ok(())
+}
+
+async fn ensure_no_applied_items(
+	txn: &DatabaseTransaction,
+	task_id: Uuid,
+	item_ids: &[Uuid],
+) -> Result<()> {
+	for item_id in item_ids {
+		if let Some(item) = organize_task_item::Entity::find()
+			.filter(organize_task_item::Column::TaskId.eq(task_id))
+			.filter(organize_task_item::Column::Uuid.eq(*item_id))
+			.one(txn)
+			.await?
+		{
+			if item.operation_state == operation_state(OrganizeOperationState::Applied) {
+				return Err(OrganizeError::AppliedDecisionImmutable(item.uuid).into());
+			}
+		}
+	}
+	Ok(())
 }
 
 async fn mark_external_state(
@@ -228,6 +283,32 @@ pub struct NewOrganizeTask {
 	pub completed_at: Option<DateTime<Utc>>,
 	pub created_at: DateTime<Utc>,
 	pub updated_at: DateTime<Utc>,
+}
+
+fn task_active_model(draft: NewOrganizeTask) -> organize_task::ActiveModel {
+	organize_task::ActiveModel {
+		id: Set(draft.id),
+		name: Set(draft.name),
+		root_path: Set(draft.root_path),
+		root_path_key: Set(draft.root_path_key),
+		device_slug: Set(draft.device_slug),
+		volume_id: Set(draft.volume_id),
+		root_entry_uuid: Set(draft.root_entry_uuid),
+		status: Set(task_status(draft.status)),
+		revision: Set(draft.revision),
+		snapshot_version: Set(draft.snapshot_version),
+		total_entries: Set(draft.total_entries),
+		total_units: Set(draft.total_units),
+		total_bytes: Set(draft.total_bytes),
+		scan_issue_count: Set(draft.scan_issue_count),
+		pending_addition_count: Set(draft.pending_addition_count),
+		scan_job_id: Set(draft.scan_job_id.map(Into::into)),
+		commit_job_id: Set(draft.commit_job_id.map(Into::into)),
+		last_error: Set(draft.last_error),
+		created_at: Set(draft.created_at),
+		updated_at: Set(draft.updated_at),
+		completed_at: Set(draft.completed_at),
+	}
 }
 
 /// One manifest row supplied by a snapshot or change-scan job.
@@ -437,46 +518,21 @@ impl<'db> OrganizeRepository<'db> {
 		&self,
 		draft: NewOrganizeTask,
 	) -> Result<organize_task::Model> {
-		let model = organize_task::ActiveModel {
-			id: Set(draft.id),
-			name: Set(draft.name),
-			root_path: Set(draft.root_path),
-			root_path_key: Set(draft.root_path_key),
-			device_slug: Set(draft.device_slug),
-			volume_id: Set(draft.volume_id),
-			root_entry_uuid: Set(draft.root_entry_uuid),
-			status: Set(task_status(draft.status)),
-			revision: Set(draft.revision),
-			snapshot_version: Set(draft.snapshot_version),
-			total_entries: Set(draft.total_entries),
-			total_units: Set(draft.total_units),
-			total_bytes: Set(draft.total_bytes),
-			scan_issue_count: Set(draft.scan_issue_count),
-			pending_addition_count: Set(draft.pending_addition_count),
-			scan_job_id: Set(draft.scan_job_id.map(Into::into)),
-			commit_job_id: Set(draft.commit_job_id.map(Into::into)),
-			last_error: Set(draft.last_error),
-			created_at: Set(draft.created_at),
-			updated_at: Set(draft.updated_at),
-			completed_at: Set(draft.completed_at),
-		};
-		Ok(model.insert(self.db).await?)
+		let txn = self.db.begin().await?;
+		if let Some(existing_id) = find_overlapping_active_on(&txn, &draft.root_path_key).await? {
+			txn.rollback().await?;
+			return Err(OrganizeError::UnsafeTopology(format!(
+				"organize task root overlaps active task {existing_id}"
+			))
+			.into());
+		}
+		let model = task_active_model(draft).insert(&txn).await?;
+		txn.commit().await?;
+		Ok(model)
 	}
 
 	pub async fn find_overlapping_active(&self, root_path_key: &str) -> Result<Option<Uuid>> {
-		let tasks = organize_task::Entity::find()
-			.filter(organize_task::Column::Status.is_in([
-				task_status(OrganizeTaskStatus::Scanning),
-				task_status(OrganizeTaskStatus::Active),
-				task_status(OrganizeTaskStatus::Committing),
-			]))
-			.all(self.db)
-			.await?;
-		let root_path_key = normalize_windows_key(root_path_key);
-		Ok(tasks
-			.into_iter()
-			.find(|task| paths_overlap(&task.root_path_key, &root_path_key))
-			.map(|task| task.id))
+		find_overlapping_active_on(self.db, root_path_key).await
 	}
 
 	pub async fn replace_included_snapshot(
@@ -486,6 +542,8 @@ impl<'db> OrganizeRepository<'db> {
 		totals: SnapshotTotals,
 	) -> Result<i64> {
 		let txn = self.db.begin().await?;
+		let task = task_in_state(&txn, task_id, &[OrganizeTaskStatus::Scanning]).await?;
+		ensure_no_decisions(&txn, task_id).await?;
 		organize_task_item::Entity::delete_many()
 			.filter(organize_task_item::Column::TaskId.eq(task_id))
 			.exec(&txn)
@@ -495,12 +553,6 @@ impl<'db> OrganizeRepository<'db> {
 			item_active_model(draft).insert(&txn).await?;
 		}
 
-		let task = organize_task::Entity::find_by_id(task_id)
-			.one(&txn)
-			.await?
-			.ok_or_else(|| {
-				OrganizeError::InvalidTaskState("organize task does not exist".into())
-			})?;
 		let revision = task.revision + 1;
 		let mut active: organize_task::ActiveModel = task.into();
 		active.total_entries = Set(totals.total_entries);
@@ -517,17 +569,15 @@ impl<'db> OrganizeRepository<'db> {
 	}
 
 	pub async fn fail_snapshot(&self, task_id: Uuid, message: String) -> Result<()> {
-		let task = organize_task::Entity::find_by_id(task_id)
-			.one(self.db)
-			.await?
-			.ok_or_else(|| {
-				OrganizeError::InvalidTaskState("organize task does not exist".into())
-			})?;
+		let txn = self.db.begin().await?;
+		let task = task_in_state(&txn, task_id, &[OrganizeTaskStatus::Scanning]).await?;
+		ensure_no_decisions(&txn, task_id).await?;
 		let mut active: organize_task::ActiveModel = task.into();
 		active.status = Set(task_status(OrganizeTaskStatus::Failed));
 		active.last_error = Set(Some(message));
 		active.updated_at = Set(Utc::now());
-		active.update(self.db).await?;
+		active.update(&txn).await?;
+		txn.commit().await?;
 		Ok(())
 	}
 
@@ -681,6 +731,9 @@ impl<'db> OrganizeRepository<'db> {
 			.filter(organize_task_item::Column::TaskId.eq(input.task_id))
 			.all(&txn)
 			.await?;
+		ensure_no_applied_items(&txn, input.task_id, &input.include_addition_ids).await?;
+		ensure_no_applied_items(&txn, input.task_id, &input.remove_missing_ids).await?;
+		ensure_no_applied_items(&txn, input.task_id, &input.refresh_changed_ids).await?;
 		let additions = selected_items(&all_items, &input.include_addition_ids);
 		let mut inherited_conflicts = Vec::new();
 		for addition in &additions {
@@ -790,6 +843,10 @@ impl<'db> OrganizeRepository<'db> {
 				.one(&txn)
 				.await?
 				.ok_or_else(|| OrganizeError::InvalidTree("operation root disappeared".into()))?;
+			if item.operation_state == operation_state(OrganizeOperationState::Applied) {
+				txn.rollback().await?;
+				return Err(OrganizeError::AppliedDecisionImmutable(item.uuid).into());
+			}
 			let mut active: organize_task_item::ActiveModel = item.into();
 			active.operation_state = Set(operation_state(settlement.state));
 			active.last_error = Set(settlement.last_error);

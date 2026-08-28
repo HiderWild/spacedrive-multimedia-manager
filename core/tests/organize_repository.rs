@@ -1,17 +1,19 @@
 use chrono::{DateTime, Utc};
 use sd_core::infra::db::entities::{organize_task, organize_task_item};
 use sd_core::infra::db::migration::Migrator;
+use sd_core::ops::organize::error::OrganizeError;
 use sd_core::ops::organize::model::{
 	DecisionValue, OrganizeItemKind, OrganizeOperationState, OrganizeTaskStatus,
 };
 use sd_core::ops::organize::repository::{
 	ChangeScanResult, DecisionTransactionRequest, NewOrganizeTask, OrganizeAcceptChangesInput,
 	OrganizeAcceptChangesOutcome, OrganizeChildrenInput, OrganizeDecisionOutcome,
-	OrganizeRepository, OrganizeSelectionInput, SelectionFilter, SnapshotItemDraft, SnapshotTotals,
+	OrganizeRepository, OrganizeRepositoryError, OrganizeSelectionInput, SelectionFilter,
+	SnapshotItemDraft, SnapshotTotals,
 };
 use sea_orm::{
-	ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
-	QueryOrder, Statement,
+	ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, PaginatorTrait,
+	QueryFilter, QueryOrder, Statement,
 };
 use sea_orm_migration::MigratorTrait;
 use tempfile::TempDir;
@@ -143,6 +145,247 @@ async fn inserting_scanning_and_active_tasks_preserves_uuid_primary_keys() {
 			.expect("insert task with UUID primary key");
 		assert_eq!(inserted.id, task_id);
 	}
+}
+
+#[tokio::test]
+async fn snapshot_updates_reject_active_completed_and_decided_tasks() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let totals = SnapshotTotals {
+		total_entries: 0,
+		total_units: 0,
+		total_bytes: 0,
+		scan_issue_count: 0,
+	};
+
+	let active_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(active_id, r"C:\Active", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert active task");
+	let active_error = repo
+		.replace_included_snapshot(active_id, Vec::new(), totals)
+		.await
+		.expect_err("active task must reject snapshot replacement");
+	assert!(matches!(
+		active_error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+	let active_failure_error = repo
+		.fail_snapshot(active_id, "late failure".to_string())
+		.await
+		.expect_err("active task must reject snapshot failure");
+	assert!(matches!(
+		active_failure_error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+
+	let completed_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(
+		completed_id,
+		r"C:\Completed",
+		OrganizeTaskStatus::Scanning,
+	))
+	.await
+	.expect("insert scanning task");
+	repo.replace_included_snapshot(completed_id, Vec::new(), totals)
+		.await
+		.expect("complete initial snapshot");
+	repo.set_completed(completed_id)
+		.await
+		.expect("complete task");
+	let completed_error = repo
+		.replace_included_snapshot(completed_id, Vec::new(), totals)
+		.await
+		.expect_err("completed task must reject snapshot replacement");
+	assert!(matches!(
+		completed_error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+	let completed_failure_error = repo
+		.fail_snapshot(completed_id, "late failure".to_string())
+		.await
+		.expect_err("completed task must reject snapshot failure");
+	assert!(matches!(
+		completed_failure_error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+
+	let decided_id = Uuid::new_v4();
+	let decided_item_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(
+		decided_id,
+		r"C:\Decided",
+		OrganizeTaskStatus::Scanning,
+	))
+	.await
+	.expect("insert scanning task with decision");
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"INSERT INTO organize_task_items (id, uuid, task_id, relative_path, relative_path_key, name, kind, size_bytes, aggregate_size_bytes, modified_at_100ns, metadata_signature, tree_start, tree_end, unit_count, membership_state, external_state, decision_kind, operation_state, created_at, updated_at) VALUES (1, ?, ?, '', '', 'root', 'directory', 0, 0, 0, 'signature', 0, 0, 1, 'included', 'present', 'keep', 'none', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+		[decided_item_id.into(), decided_id.into()],
+	))
+	.await
+	.expect("insert existing decision");
+	let decided_error = repo
+		.replace_included_snapshot(decided_id, Vec::new(), totals)
+		.await
+		.expect_err("decided task must reject snapshot replacement");
+	assert!(matches!(
+		decided_error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+	let decided_failure_error = repo
+		.fail_snapshot(decided_id, "late failure".to_string())
+		.await
+		.expect_err("decided task must reject snapshot failure");
+	assert!(matches!(
+		decided_failure_error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTaskState(_))
+	));
+}
+
+#[tokio::test]
+async fn inserting_overlapping_active_task_is_rejected_atomically() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let first_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(first_id, r"C:\Photos", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert first active task");
+
+	let second_error = repo
+		.insert_scanning_task(task(
+			Uuid::new_v4(),
+			r"C:\Photos\Trips",
+			OrganizeTaskStatus::Active,
+		))
+		.await
+		.expect_err("overlapping active task must be rejected");
+	assert!(matches!(
+		second_error,
+		OrganizeRepositoryError::Organize(OrganizeError::UnsafeTopology(_))
+	));
+	assert_eq!(organize_task::Entity::find().count(&db).await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn applied_items_are_immutable_for_decisions_acceptance_and_settlement() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+
+	let active_task_id = Uuid::new_v4();
+	let active_item_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(
+		active_task_id,
+		r"C:\Applied",
+		OrganizeTaskStatus::Scanning,
+	))
+	.await
+	.expect("insert active test task");
+	repo.replace_included_snapshot(
+		active_task_id,
+		vec![item(active_task_id, active_item_id, None, "")],
+		SnapshotTotals {
+			total_entries: 1,
+			total_units: 1,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert active test item");
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET decision_kind = 'discard', operation_state = 'applied' WHERE task_id = ? AND uuid = ?",
+		[active_task_id.into(), active_item_id.into()],
+	))
+	.await
+	.expect("mark item applied");
+
+	let decision_error = repo
+		.apply_decision(DecisionTransactionRequest {
+			task_id: active_task_id,
+			selection: OrganizeSelectionInput::Items {
+				item_ids: vec![active_item_id],
+			},
+			decision: Some(DecisionValue::keep()),
+			expected_revision: 1,
+			confirm_descendant_override: true,
+			confirm_ancestor_split: true,
+		})
+		.await
+		.expect_err("applied item must reject a new decision");
+	assert!(matches!(
+		decision_error,
+		OrganizeRepositoryError::Organize(OrganizeError::AppliedDecisionImmutable(id))
+			if id == active_item_id
+	));
+	let acceptance_error = repo
+		.accept_changes(OrganizeAcceptChangesInput {
+			task_id: active_task_id,
+			expected_revision: 1,
+			include_addition_ids: Vec::new(),
+			remove_missing_ids: Vec::new(),
+			refresh_changed_ids: vec![active_item_id],
+			preserve_changed_decisions: true,
+			confirm_inherited_destructive: false,
+		})
+		.await
+		.expect_err("applied item must reject acceptance refresh");
+	assert!(matches!(
+		acceptance_error,
+		OrganizeRepositoryError::Organize(OrganizeError::AppliedDecisionImmutable(id))
+			if id == active_item_id
+	));
+
+	let committing_task_id = Uuid::new_v4();
+	let committing_item_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(
+		committing_task_id,
+		r"C:\Committing",
+		OrganizeTaskStatus::Scanning,
+	))
+	.await
+	.expect("insert committing test task");
+	repo.replace_included_snapshot(
+		committing_task_id,
+		vec![item(committing_task_id, committing_item_id, None, "")],
+		SnapshotTotals {
+			total_entries: 1,
+			total_units: 1,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert committing test item");
+	repo.lock_for_commit(committing_task_id, 1, Uuid::new_v4().into())
+		.await
+		.expect("lock task for commit");
+	db.execute(Statement::from_sql_and_values(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET decision_kind = 'discard', operation_state = 'applied' WHERE task_id = ? AND uuid = ?",
+		[committing_task_id.into(), committing_item_id.into()],
+	))
+	.await
+	.expect("mark committing item applied");
+	let settlement_error = repo
+		.settle_operation_roots(
+			committing_task_id,
+			vec![sd_core::ops::organize::repository::OperationSettlement {
+				item_id: committing_item_id,
+				state: OrganizeOperationState::Failed,
+				last_error: Some("late settlement".to_string()),
+				applied_at: None,
+			}],
+		)
+		.await
+		.expect_err("applied item must reject settlement rewrite");
+	assert!(matches!(
+		settlement_error,
+		OrganizeRepositoryError::Organize(OrganizeError::AppliedDecisionImmutable(id))
+			if id == committing_item_id
+	));
 }
 
 #[tokio::test]
