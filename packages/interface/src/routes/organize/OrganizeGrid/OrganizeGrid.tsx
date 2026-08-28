@@ -27,6 +27,17 @@ export function OrganizeGrid({items, width, viewportHeight, scrollTop, minimumCa
 	const range = virtualRowRange(scrollTop, viewportHeight, rowHeight, rows, overscanRows);
 	const visible = useMemo(() => items.slice(range.start * columns, range.end * columns), [items, columns, range.start, range.end]);
 	return <div data-testid="organize-grid" data-organize-columns={columns} style={{display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap, minHeight: rows * rowHeight}}>
-		{visible.map((entry, index) => <div key={entry.item.uuid} data-organize-item-id={entry.item.uuid} data-organize-row={range.start + Math.floor(index / columns)}>{renderItem(entry)}</div>)}
+		{visible.map((entry, index) => <div key={entry.item.uuid} data-organize-item-id={entry.item.uuid} data-organize-row={range.start + Math.floor(index / columns)}>
+			{renderItem(entry)}
+			{entry.item.kind === 'directory' && entry.projection && <DirectoryProgress projection={entry.projection} />}
+		</div>)}
+	</div>;
+}
+
+function DirectoryProgress({projection}: {projection: OrganizeItemDecisionProjection}) {
+	const {processed_units: processed, total_units: total} = projection.progress;
+	const fraction = total > 0 ? Math.min(1, processed / total) : 0;
+	return <div data-organize-directory-progress aria-label={`${processed} of ${total} processed`}>
+		<div role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={processed} style={{width: `${fraction * 100}%`}} />
 	</div>;
 }
