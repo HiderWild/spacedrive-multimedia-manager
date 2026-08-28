@@ -662,6 +662,7 @@ async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 	let root_id = Uuid::new_v4();
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
+	root.tree_start = Some(0);
 	root.tree_end = Some(1);
 	let initial_revision = repo
 		.replace_included_snapshot(
@@ -889,12 +890,14 @@ async fn decision_confirmation_reports_conflicting_root_statistics() {
 	keep.tree_end = Some(2);
 	keep.kind = OrganizeItemKind::File;
 	keep.size_bytes = 10;
+	keep.aggregate_size_bytes = 10;
 	let mut moved = item(task_id, move_id, Some(1), "move");
 	moved.id = Some(3);
 	moved.tree_start = Some(2);
 	moved.tree_end = Some(3);
 	moved.kind = OrganizeItemKind::File;
 	moved.size_bytes = 20;
+	moved.aggregate_size_bytes = 20;
 	repo.replace_included_snapshot(
 		task_id,
 		vec![root, keep, moved],
@@ -977,6 +980,7 @@ async fn finish_deduplicates_unmarked_units_and_uses_inherited_decisions() {
 	unmarked_root.id = Some(1);
 	unmarked_root.tree_start = Some(0);
 	unmarked_root.tree_end = Some(3);
+	unmarked_root.unit_count = Some(2);
 	let mut first = item(unmarked_task_id, Uuid::new_v4(), Some(1), "first");
 	first.id = Some(2);
 	first.tree_start = Some(1);
@@ -1024,16 +1028,17 @@ async fn finish_deduplicates_unmarked_units_and_uses_inherited_decisions() {
 	.await
 	.expect("insert inherited task");
 	let mut inherited_root = item(inherited_task_id, inherited_root_id, None, "");
-	inherited_root.id = Some(1);
+	inherited_root.id = Some(4);
 	inherited_root.tree_start = Some(0);
 	inherited_root.tree_end = Some(3);
-	let mut inherited_first = item(inherited_task_id, Uuid::new_v4(), Some(1), "first");
-	inherited_first.id = Some(2);
+	inherited_root.unit_count = Some(2);
+	let mut inherited_first = item(inherited_task_id, Uuid::new_v4(), Some(4), "first");
+	inherited_first.id = Some(5);
 	inherited_first.tree_start = Some(1);
 	inherited_first.tree_end = Some(2);
 	inherited_first.kind = OrganizeItemKind::File;
-	let mut inherited_second = item(inherited_task_id, Uuid::new_v4(), Some(1), "second");
-	inherited_second.id = Some(3);
+	let mut inherited_second = item(inherited_task_id, Uuid::new_v4(), Some(4), "second");
+	inherited_second.id = Some(6);
 	inherited_second.tree_start = Some(2);
 	inherited_second.tree_end = Some(3);
 	inherited_second.kind = OrganizeItemKind::File;
