@@ -122,18 +122,9 @@ pub fn select_representatives(
 				video_count += 1;
 				if video_count > 3 {
 					if let Some(replacement) = image_replacements.next() {
-						*item = replacement.clone();
+						*item = replacement;
 					}
 				}
-				let mut retained_videos = 0;
-				selected.retain(|item| {
-					if item.media_kind == PreviewMediaKind::Video {
-						retained_videos += 1;
-						retained_videos <= 3
-					} else {
-						true
-					}
-				});
 			}
 		}
 		let mut retained_videos = 0;

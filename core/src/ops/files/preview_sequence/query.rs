@@ -125,7 +125,7 @@ impl LibraryQuery for PreviewSequenceQuery {
 			});
 		}
 		let root = match self.input.directory {
-			SdPath::Physical { path, .. } => PathBuf::from(path.as_ref()),
+			SdPath::Physical { path, .. } => path,
 			_ => {
 				return Err(QueryError::InvalidInput(
 					"preview requires a physical path".into(),
