@@ -138,10 +138,13 @@ async fn inserting_scanning_and_active_tasks_preserves_uuid_primary_keys() {
 	let (_temp_dir, db) = migrated_temp_db().await;
 	let repo = OrganizeRepository::new(&db);
 
-	for status in [OrganizeTaskStatus::Scanning, OrganizeTaskStatus::Active] {
+	for (status, root_path) in [
+		(OrganizeTaskStatus::Scanning, r"C:\Photos"),
+		(OrganizeTaskStatus::Active, r"C:\PhotosActive"),
+	] {
 		let task_id = Uuid::new_v4();
 		let inserted = repo
-			.insert_scanning_task(task(task_id, r"C:\Photos", status))
+			.insert_scanning_task(task(task_id, root_path, status))
 			.await
 			.expect("insert task with UUID primary key");
 		assert_eq!(inserted.id, task_id);
@@ -486,7 +489,7 @@ async fn decision_transaction_is_atomic_and_revision_increments_once() {
 	let repo = OrganizeRepository::new(&db);
 	let task_id = Uuid::new_v4();
 	let parent_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Photos", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Photos", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert active task");
 	repo.replace_included_snapshot(
@@ -530,7 +533,7 @@ async fn stale_decision_does_not_change_rows_or_revision() {
 	let repo = OrganizeRepository::new(&db);
 	let task_id = Uuid::new_v4();
 	let item_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Photos", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Photos", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert active task");
 	repo.replace_included_snapshot(
@@ -571,7 +574,7 @@ async fn direct_children_paging_is_stable_and_filters_exclusions() {
 	let (_temp_dir, db) = migrated_temp_db().await;
 	let repo = OrganizeRepository::new(&db);
 	let task_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Photos", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Photos", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert active task");
 	let root_id = Uuid::new_v4();
@@ -650,7 +653,7 @@ async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 	let (_temp_dir, db) = migrated_temp_db().await;
 	let repo = OrganizeRepository::new(&db);
 	let task_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Photos", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Photos", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert active task");
 	let root_id = Uuid::new_v4();
@@ -724,7 +727,7 @@ async fn decisions_normalize_nested_selection_and_repeat_without_revision() {
 	let root_id = Uuid::new_v4();
 	let child_id = Uuid::new_v4();
 	let sibling_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Decision", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Decision", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert active task");
 	let mut root = item(task_id, root_id, None, "");
@@ -860,9 +863,13 @@ async fn decision_confirmation_reports_conflicting_root_statistics() {
 	let root_id = Uuid::new_v4();
 	let keep_id = Uuid::new_v4();
 	let move_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Statistics", OrganizeTaskStatus::Active))
-		.await
-		.expect("insert active task");
+	repo.insert_scanning_task(task(
+		task_id,
+		r"C:\Statistics",
+		OrganizeTaskStatus::Scanning,
+	))
+	.await
+	.expect("insert active task");
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
 	let mut keep = item(task_id, keep_id, Some(1), "keep");
@@ -947,7 +954,7 @@ async fn finish_deduplicates_unmarked_units_and_uses_inherited_decisions() {
 	repo.insert_scanning_task(task(
 		unmarked_task_id,
 		r"C:\Unmarked",
-		OrganizeTaskStatus::Active,
+		OrganizeTaskStatus::Scanning,
 	))
 	.await
 	.expect("insert unmarked task");
@@ -991,7 +998,7 @@ async fn finish_deduplicates_unmarked_units_and_uses_inherited_decisions() {
 	repo.insert_scanning_task(task(
 		inherited_task_id,
 		r"C:\Inherited",
-		OrganizeTaskStatus::Active,
+		OrganizeTaskStatus::Scanning,
 	))
 	.await
 	.expect("insert inherited task");
@@ -1048,7 +1055,7 @@ async fn change_scan_rejects_foreign_additions_and_skips_applied_items() {
 	let task_id = Uuid::new_v4();
 	let foreign_task_id = Uuid::new_v4();
 	let root_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Scan", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Scan", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert scan task");
 	repo.insert_scanning_task(task(
@@ -1123,7 +1130,7 @@ async fn accept_changes_requires_membership_and_matching_external_state() {
 	let task_id = Uuid::new_v4();
 	let root_id = Uuid::new_v4();
 	let addition_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Accept", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Accept", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert accept task");
 	let mut root = item(task_id, root_id, None, "");
@@ -1218,7 +1225,7 @@ async fn settling_operation_roots_returns_task_to_active() {
 	let repo = OrganizeRepository::new(&db);
 	let task_id = Uuid::new_v4();
 	let root_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Settle", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Settle", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert settle task");
 	let mut root = item(task_id, root_id, None, "");
@@ -1265,7 +1272,7 @@ async fn children_cursor_is_opaque_and_binds_query_metadata() {
 	let (_temp_dir, db) = migrated_temp_db().await;
 	let repo = OrganizeRepository::new(&db);
 	let task_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Cursor", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Cursor", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert cursor task");
 	let root_id = Uuid::new_v4();
@@ -1352,7 +1359,7 @@ async fn list_tasks_pages_and_get_task_returns_root_item() {
 		(first_task_id, first_root_id, r"C:\ListA"),
 		(second_task_id, second_root_id, r"C:\ListB"),
 	] {
-		repo.insert_scanning_task(task(task_id, path, OrganizeTaskStatus::Active))
+		repo.insert_scanning_task(task(task_id, path, OrganizeTaskStatus::Scanning))
 			.await
 			.expect("insert listed task");
 		let mut root = item(task_id, root_id, None, "");
@@ -1403,7 +1410,7 @@ async fn children_filters_use_inherited_effective_decisions() {
 	let root_id = Uuid::new_v4();
 	let child_id = Uuid::new_v4();
 	let sibling_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Effective", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Effective", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert effective-decision task");
 	let mut root = item(task_id, root_id, None, "");
@@ -1483,7 +1490,7 @@ async fn accepting_addition_under_destructive_root_requires_confirmation() {
 	let task_id = Uuid::new_v4();
 	let root_id = Uuid::new_v4();
 	let addition_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Addition", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Addition", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert addition task");
 	let mut root = item(task_id, root_id, None, "");
@@ -1563,9 +1570,13 @@ async fn change_scan_ignores_children_covered_by_applied_discard_root() {
 	let task_id = Uuid::new_v4();
 	let root_id = Uuid::new_v4();
 	let child_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\AppliedScan", OrganizeTaskStatus::Active))
-		.await
-		.expect("insert applied-scan task");
+	repo.insert_scanning_task(task(
+		task_id,
+		r"C:\AppliedScan",
+		OrganizeTaskStatus::Scanning,
+	))
+	.await
+	.expect("insert applied-scan task");
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
 	root.tree_start = Some(0);
@@ -1637,7 +1648,7 @@ async fn removing_missing_parent_rejects_cascade_over_applied_child() {
 	let task_id = Uuid::new_v4();
 	let root_id = Uuid::new_v4();
 	let child_id = Uuid::new_v4();
-	repo.insert_scanning_task(task(task_id, r"C:\Cascade", OrganizeTaskStatus::Active))
+	repo.insert_scanning_task(task(task_id, r"C:\Cascade", OrganizeTaskStatus::Scanning))
 		.await
 		.expect("insert cascade task");
 	let mut root = item(task_id, root_id, None, "");
