@@ -111,7 +111,6 @@ fn main() {
 		);
 		std::path::Path::new(&daemon_source).exists()
 	});
-	let invoked_by_tauri = std::env::var_os("TAURI_CONFIG").is_some();
 	let release_bundle = is_release_tauri_bundle();
 
 	if release_bundle && !daemon_available {
@@ -121,10 +120,10 @@ fn main() {
 		);
 	}
 
-	if daemon_available || invoked_by_tauri {
+	if release_bundle {
 		tauri_build::build();
 	} else {
-		println!("cargo:warning=Skipping Tauri resource processing because sd-daemon is not built");
+		println!("cargo:warning=Skipping Tauri resource processing outside a release bundle");
 	}
 }
 
