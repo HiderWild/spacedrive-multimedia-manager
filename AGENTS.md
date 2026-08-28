@@ -4,35 +4,49 @@
 
 ### Development Workflow
 
-1. Start daemon: `cargo run --bin sd-daemon`
+1. Start daemon: `.\scripts\invoke-spacedrive-cargo.ps1 run --bin sd-daemon`
 2. Make code changes
-3. Run tests: `cargo test`
-4. Rebuild and restart: `cargo run --bin sd-cli -- restart`
-5. Test via CLI: `cargo run --bin sd-cli -- <command>`
+3. Run tests: `.\scripts\invoke-spacedrive-cargo.ps1 test`
+4. Rebuild and restart: `.\scripts\invoke-spacedrive-cargo.ps1 run --bin sd-cli -- restart`
+5. Test via CLI: `.\scripts\invoke-spacedrive-cargo.ps1 run --bin sd-cli -- <command>`
 
 ### Common Commands
 
-```bash
-cargo build                              # Build the project
-cargo test                               # Run all tests
-cargo test <test_name>                   # Run specific test
-cargo clippy                             # Lint code
-cargo fmt                                # Format code
-cargo run --bin sd-cli -- <command>      # Run CLI (binary is sd-cli, not spacedrive)
+```powershell
+.\scripts\invoke-spacedrive-cargo.ps1 build
+.\scripts\invoke-spacedrive-cargo.ps1 test
+.\scripts\invoke-spacedrive-cargo.ps1 test <test_name>
+.\scripts\invoke-spacedrive-cargo.ps1 clippy
+.\scripts\invoke-spacedrive-cargo.ps1 fmt
+.\scripts\invoke-spacedrive-cargo.ps1 run --bin sd-cli -- <command>
 ```
 
-### Windows startup scripts
+The binary name is `sd-cli`, not `spacedrive`.
+
+### Cargo build artifact policy
+
+Do not run bare `cargo` commands in this repository. Every Cargo operation that may compile, including `build`, `test`, `run`, `check`, `clippy`, `bench`, `doc`, and `xtask`, must use `scripts/invoke-spacedrive-cargo.ps1` or an entry point that explicitly integrates the same policy.
+
+The policy has one artifact directory: `<main-worktree>\target`. It obtains the main root from the first existing, non-prunable record returned by `git worktree list --porcelain`. Do not set or reuse a user-global `CARGO_TARGET_DIR`, pass a separate target directory, or keep a second profile tree.
+
+Before each compile-producing Cargo command, the wrapper:
+
+1. Acquires the repository build lock derived from the canonical git common directory.
+2. Enumerates every registered worktree without pruning records.
+3. Deletes only each worktree's exact `target` and `apps\tauri\src-tauri\target` candidates after safety checks.
+4. Records missing and prunable worktrees as skipped.
+5. Sets `CARGO_TARGET_DIR` to `<main-worktree>\target` and holds the lock until Cargo exits.
+
+Any cleanup failure stops the command. The policy rejects worktree roots, git directories, drive and user roots, external paths, and reparse points. Do not use `-KeepOtherProfile`, `-TargetDir`, a global `CARGO_TARGET_DIR`, or a cache tool to preserve or create another repository artifact tree.
+
+When you need a manual PowerShell flow, import the documented policy and call its guarded function. Do not reconstruct the cleanup commands yourself:
 
 ```powershell
-./start.ps1                    # formal RELEASE instance (default; no installer)
-./start.ps1 -DaemonOnly        # release backend only
-./start.ps1 -Dev               # debug / Tauri hot reload
-./start.ps1 -TargetDir D:\rust\spacedrive   # put target/ on a large disk
-./clean-rust-cache.ps1         # drop debug tree (keep release) + size report
-./clean-rust-cache.ps1 -AllTarget -Registry # full local target wipe + cargo registry
+. .\scripts\build-policy.ps1
+$repoRoot = git rev-parse --show-toplevel
+$code = Invoke-SpacedriveCargo -RepoRoot $repoRoot -CargoArguments @('test', '-p', 'sd-core')
+if ($code -ne 0) { exit $code }
 ```
-
-`start.ps1` prunes the opposite profile by default (`target/debug` when running release, and vice versa) so debug+release trees do not both grow toward 10GB+. Pass `-KeepOtherProfile` to keep both.
 
 ### Async media derivatives (add ≠ generate)
 
@@ -93,9 +107,9 @@ Notes: stock Debian/Ubuntu `ffmpeg` usually lacks `h264_nvenc`. GPU passthrough 
 
 Optional fast JPEG (libjpeg-turbo) feature chain:
 
-```bash
+```powershell
 # Host build (needs libturbojpeg + NASM/cmake on some platforms)
-cargo build -p sd-server --features heif,ffmpeg,turbojpeg
+.\scripts\invoke-spacedrive-cargo.ps1 build -p sd-server --features heif,ffmpeg,turbojpeg
 
 # GPU image enables turbojpeg by default (see apps/server/Dockerfile.gpu)
 ```
@@ -111,14 +125,7 @@ Server logs thumbnail knobs and ffmpeg HW encoder presence at startup (`log_impo
 
 ### Disk / target cache control
 
-Rust monorepos easily reach multi-GB `target/` dirs because each profile keeps its own deps tree.
-
-Recommended (low risk):
-
-1. Prefer one active profile (release for feature verification via `./start.ps1`).
-2. Periodically run `./clean-rust-cache.ps1` (or `cargo clean` when idle).
-3. Offload artifacts: `$env:CARGO_TARGET_DIR = "D:\rust-targets\spacedrive"` or `./start.ps1 -TargetDir ...`.
-4. Optional tools: `cargo install cargo-sweep cargo-cache` then `cargo sweep -t 14` and `cargo cache --autoclean`.
+Rust artifacts live only in the main worktree's `target` directory. The guarded wrapper clears every registered worktree artifact candidate before compile-producing commands, so do not offload, preserve, or independently clean repository targets.
 
 Do not set workspace-wide `incremental = false` for daily coding; it saves disk but makes rebuilds much slower. Release profile already disables incremental.
 
@@ -138,7 +145,7 @@ Profiles of note in root `Cargo.toml`:
 ### Quick tips
 
 - On frontend apps, such as the interface in React, you must ALWAYS ensure type-safety based on the auto generated TypeScript types from `ts-client`. Never cast to as any or redefine backend types. our hooks are typesafe with correct input/output types, but sometimes you might need to access types directly from the `ts-client`.
-- If you have changed types on the backend that are public to the frontend (have `Type` derive), then you must regenerate the types using `cargo run --bin generate_typescript_types` and commit the updated `packages/ts-client/src/generated/types.ts`. CI runs `scripts/check-ts-types.sh` (also `just check-types`) and fails if the committed types drift from Rust.
+- If you have changed types on the backend that are public to the frontend (have `Type` derive), then you must regenerate the types using `.\scripts\invoke-spacedrive-cargo.ps1 run --bin generate_typescript_types` and commit the updated `packages/ts-client/src/generated/types.ts`. CI runs `scripts/check-ts-types.sh` and fails if the committed types drift from Rust. Use that entry only after it integrates this same build policy.
 - Read the `.mdx` files in /docs for context on any part of the app, they are kept up to date.
 -
 
@@ -240,22 +247,17 @@ The Tauri app (`apps/tauri/`) is the primary desktop application for Spacedrive.
 ```bash
 # Install dependencies
 bun install
-
-# Run Tauri app in dev mode (auto-starts daemon)
-cd apps/tauri
-bun run tauri:dev
-
-# Build for production
-bun run tauri:build
 ```
+
+Tauri development and production commands may compile Rust. Run them only after their entry points explicitly integrate `scripts/build-policy.ps1`, including the same cleanup, shared target, and lock. Until then, use `scripts/invoke-spacedrive-cargo.ps1` for Rust operations and do not bypass the policy through the Tauri CLI.
 
 **TypeScript Client:**
 
 The TypeScript client (`packages/ts-client/`) is auto-generated from Rust types using Specta:
 
-```bash
+```powershell
 # Generate TypeScript types
-cargo run --bin generate_typescript_types
+.\scripts\invoke-spacedrive-cargo.ps1 run --bin generate_typescript_types
 ```
 
 **Output:** `packages/ts-client/src/generated.ts`
@@ -284,8 +286,8 @@ Native prototypes embed the core directly as a library via FFI rather than conne
 
 For the prototypes, Swift types can be generated:
 
-```bash
-cargo run --bin generate_swift_types
+```powershell
+.\scripts\invoke-spacedrive-cargo.ps1 run --bin generate_swift_types
 ```
 
 Output: `packages/swift-client/Sources/SpacedriveClient/`
@@ -382,11 +384,11 @@ extern "C" {
 
 **Building Extensions:**
 
-```bash
-# From extension directory
-cargo build --target wasm32-unknown-unknown --release
+```powershell
+# From the repository root
+.\scripts\invoke-spacedrive-cargo.ps1 build --manifest-path extensions\test-extension\Cargo.toml --target wasm32-unknown-unknown --release
 
-# Output: target/wasm32-unknown-unknown/release/extension_name.wasm
+# Output: <main-worktree>\target\wasm32-unknown-unknown\release\extension_name.wasm
 ```
 
 **Extension Capabilities:**
@@ -632,7 +634,7 @@ Track future work in GitHub issues, not code comments.
 
 ### Formatting
 
-Run `cargo fmt` before committing. Tabs for indentation. No emojis.
+Run `.\scripts\invoke-spacedrive-cargo.ps1 fmt` before committing. Tabs for indentation. No emojis.
 
 ## Logging
 
@@ -712,10 +714,10 @@ impl Job for MyJob {
 
 Use `RUST_LOG` environment variable:
 
-```bash
-RUST_LOG=debug cargo run --bin sd-cli
-RUST_LOG=sd_core=trace cargo run
-RUST_LOG=sd_core::ops=debug cargo run
+```powershell
+$env:RUST_LOG = 'debug'; .\scripts\invoke-spacedrive-cargo.ps1 run --bin sd-cli
+$env:RUST_LOG = 'sd_core=trace'; .\scripts\invoke-spacedrive-cargo.ps1 run
+$env:RUST_LOG = 'sd_core::ops=debug'; .\scripts\invoke-spacedrive-cargo.ps1 run
 ```
 
 ## Testing
@@ -747,11 +749,11 @@ mod tests {
 
 ### Running Tests
 
-```bash
-cargo test                    # All tests
-cargo test test_share_file    # Specific test
-cargo test --lib              # Library tests only
-cargo test -- --nocapture     # Show output
+```powershell
+.\scripts\invoke-spacedrive-cargo.ps1 test
+.\scripts\invoke-spacedrive-cargo.ps1 test test_share_file
+.\scripts\invoke-spacedrive-cargo.ps1 test --lib
+.\scripts\invoke-spacedrive-cargo.ps1 test -- --nocapture
 ```
 
 ## Task Tracking
@@ -805,15 +807,15 @@ Brief overview of what needs to be done and why.
 
 ### Managing Tasks
 
-```bash
+```powershell
 # List your active tasks
-cargo run -p task-validator -- list --assignee "yourname" --status "In Progress"
+.\scripts\invoke-spacedrive-cargo.ps1 run -p task-validator -- list --assignee "yourname" --status "In Progress"
 
 # List high priority tasks
-cargo run -p task-validator -- list --priority "High" --sort-by id
+.\scripts\invoke-spacedrive-cargo.ps1 run -p task-validator -- list --priority "High" --sort-by id
 
 # Validate before committing (automatic via git hook)
-cargo run -p task-validator -- validate
+.\scripts\invoke-spacedrive-cargo.ps1 run -p task-validator -- validate
 ```
 
 ### Task Lifecycle
@@ -835,16 +837,16 @@ Job logs live in the `job_logs` directory in the data folder root.
 
 After rebuilding, restart the daemon to use the latest code:
 
-```bash
-cargo build
-cargo run --bin sd-cli -- restart
+```powershell
+.\scripts\invoke-spacedrive-cargo.ps1 build
+.\scripts\invoke-spacedrive-cargo.ps1 run --bin sd-cli -- restart
 ```
 
 ### Verbose Logging
 
-```bash
-RUST_LOG=debug cargo run --bin sd-daemon
-RUST_LOG=sd_core::jobs=trace cargo run
+```powershell
+$env:RUST_LOG = 'debug'; .\scripts\invoke-spacedrive-cargo.ps1 run --bin sd-daemon
+$env:RUST_LOG = 'sd_core::jobs=trace'; .\scripts\invoke-spacedrive-cargo.ps1 run
 ```
 
 ## Documentation Locations
