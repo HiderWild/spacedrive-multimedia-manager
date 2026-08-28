@@ -1,6 +1,6 @@
 import {FolderOpen, Plus, ArrowRight} from '@phosphor-icons/react';
 import {useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useLocation, useNavigate} from 'react-router-dom';
 import type {OrganizeCreateOutcome, OrganizeListOutput, SdPath} from '@sd/ts-client';
 import {useLibraryMutation, useLibraryQuery} from '../../contexts/SpacedriveContext';
 
@@ -10,8 +10,10 @@ function physicalPath(deviceSlug: string, path: string): SdPath {
 
 export function OrganizeTasksPage() {
 	const navigate = useNavigate();
-	const [deviceSlug, setDeviceSlug] = useState('local');
-	const [rootPath, setRootPath] = useState('');
+	const {search} = useLocation();
+	const initialQuery = new URLSearchParams(search);
+	const [deviceSlug, setDeviceSlug] = useState(() => initialQuery.get('device') ?? 'local');
+	const [rootPath, setRootPath] = useState(() => initialQuery.get('path') ?? '');
 	const tasks = useLibraryQuery({type: 'organize.list', input: {statuses: null, cursor: null, limit: 100}});
 	const create = useLibraryMutation('organize.create');
 	const taskList = (tasks.data as OrganizeListOutput | undefined)?.tasks ?? [];

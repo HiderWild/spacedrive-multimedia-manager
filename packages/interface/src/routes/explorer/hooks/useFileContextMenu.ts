@@ -25,6 +25,7 @@ import {
 import type {File} from '@sd/ts-client';
 import {getContentKind, isVirtualFile} from '@sd/ts-client';
 import {toast} from '@spacedrive/primitives';
+import {useNavigate} from 'react-router-dom';
 import {useFileOperationDialog} from '../../../components/modals/FileOperationModal';
 import {usePlatform} from '../../../contexts/PlatformContext';
 import {useLibraryMutation} from '../../../contexts/SpacedriveContext';
@@ -56,6 +57,7 @@ export function useFileContextMenu({
 }: UseFileContextMenuProps) {
 	const {navigateToPath, currentPath, mode} = useExplorer();
 	const platform = usePlatform();
+	const navigate = useNavigate();
 	const refetchTagQueries = useRefetchTagQueries();
 
 	const {deleteFiles} = useDeleteFiles();
@@ -120,8 +122,29 @@ export function useFileContextMenu({
 			? isVirtualFile(file)
 			: false;
 
+	const organizePath = () => {
+		const target = selected && selectedFiles.length > 0 ? selectedFiles[0] : file;
+		if (!target || !('Physical' in target.sd_path)) return;
+		const physicalPath = target.sd_path.Physical.path;
+		const parentPath = target.kind === 'Directory'
+			? physicalPath
+			: physicalPath.slice(0, physicalPath.lastIndexOf('/')) || '/';
+		const params = new URLSearchParams({
+			device: target.sd_path.Physical.device_slug,
+			path: parentPath
+		});
+		navigate(`/organize?${params.toString()}`);
+	};
+
 	return useContextMenu({
 		items: [
+			{
+				icon: FolderOpen,
+				label: 'Organize',
+				onClick: organizePath,
+				condition: () =>
+					!!file && 'Physical' in file.sd_path && !hasVirtualFiles
+			},
 			{
 				icon: Eye,
 				label: 'Quick Look',

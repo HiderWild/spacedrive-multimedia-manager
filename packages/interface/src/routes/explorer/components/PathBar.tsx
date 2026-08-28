@@ -15,6 +15,7 @@ import {
 import {Button, CircleButton, Popover, usePopover} from '@spacedrive/primitives';
 import clsx from 'clsx';
 import {motion} from 'framer-motion';
+import {useNavigate} from 'react-router-dom';
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useExplorer} from '../context';
@@ -254,6 +255,15 @@ export function PathBar({path, devices, onNavigate}: PathBarProps) {
 	const [editValue, setEditValue] = useState('');
 	const [editingAsUri, setEditingAsUri] = useState(false);
 	const {navigateToView} = useExplorer();
+	const navigate = useNavigate();
+	const navigateToOrganize = () => {
+		if (!('Physical' in path)) return;
+		const params = new URLSearchParams({
+			device: path.Physical.device_slug,
+			path: path.Physical.path
+		});
+		navigate(`/organize?${params.toString()}`);
+	};
 	const uri = sdPathToUri(path);
 	const currentDir = getCurrentDirectoryName(path);
 	const segments = parsePathSegments(path);
@@ -528,6 +538,11 @@ export function PathBar({path, devices, onNavigate}: PathBarProps) {
 					/>
 				)}
 			</motion.div>
+			{'Physical' in path && (
+				<Button size="sm" variant="outline" onClick={navigateToOrganize}>
+					{t('viewModes.organize')}
+				</Button>
+			)}
 			<IndexIndicator path={path} />
 		</div>
 	);
