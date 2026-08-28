@@ -1,6 +1,17 @@
 #[cfg(target_os = "macos")]
 use std::process::Command;
 
+fn is_release_tauri_bundle() -> bool {
+	is_release_tauri_bundle_with(
+		std::env::var_os("TAURI_CONFIG").is_some(),
+		std::env::var("TAURI_ENV_DEBUG").ok().as_deref(),
+	)
+}
+
+fn is_release_tauri_bundle_with(has_tauri_config: bool, tauri_env_debug: Option<&str>) -> bool {
+	has_tauri_config && matches!(tauri_env_debug, Some("false") | Some("0"))
+}
+
 fn main() {
 	// Compile .icon to Assets.car on macOS
 	#[cfg(target_os = "macos")]
@@ -101,12 +112,32 @@ fn main() {
 		std::path::Path::new(&daemon_source).exists()
 	});
 	let invoked_by_tauri = std::env::var_os("TAURI_CONFIG").is_some();
+	let release_bundle = is_release_tauri_bundle();
+
+	if release_bundle && !daemon_available {
+		panic!(
+			"Cannot create a release bundle without the daemon at target/release/sd-daemon{}",
+			exe_ext
+		);
+	}
 
 	if daemon_available || invoked_by_tauri {
 		tauri_build::build();
 	} else {
-		println!(
-			"cargo:warning=Skipping Tauri resource processing because sd-daemon is not built"
-		);
+		println!("cargo:warning=Skipping Tauri resource processing because sd-daemon is not built");
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::is_release_tauri_bundle_with;
+
+	#[test]
+	fn only_release_tauri_invocations_require_the_daemon() {
+		assert!(is_release_tauri_bundle_with(true, Some("false")));
+		assert!(is_release_tauri_bundle_with(true, Some("0")));
+		assert!(!is_release_tauri_bundle_with(true, Some("true")));
+		assert!(!is_release_tauri_bundle_with(true, None));
+		assert!(!is_release_tauri_bundle_with(false, Some("false")));
 	}
 }
