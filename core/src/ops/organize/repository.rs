@@ -399,18 +399,6 @@ pub enum OrganizeSelectionInput {
 	},
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SelectionFilter {
-	All,
-	Unmarked,
-	Keep,
-	Discard,
-	Move,
-	Failed,
-	Changed,
-	Missing,
-}
-
 pub struct DecisionTransactionRequest {
 	pub task_id: Uuid,
 	pub selection: OrganizeSelectionInput,
@@ -999,9 +987,9 @@ impl<'db> OrganizeRepository<'db> {
 			.await?;
 		let additions = selected_items(&all_items, &input.include_addition_ids);
 		let mut inherited_conflicts = Vec::new();
-		let mut discard_units = 0;
-		let mut move_units = 0;
-		let mut affected_bytes = 0;
+		let mut discard_units = 0_u64;
+		let mut move_units = 0_u64;
+		let mut affected_bytes = 0_u64;
 		for addition in &additions {
 			if let Some(ancestor) = explicit_ancestor(&all_items, addition) {
 				if matches!(ancestor.decision_kind.as_deref(), Some("discard" | "move")) {
