@@ -1008,6 +1008,8 @@ async fn decision_confirmation_reports_conflicting_root_statistics() {
 	root.id = Some(1);
 	root.tree_start = Some(0);
 	root.tree_end = Some(3);
+	root.unit_count = Some(2);
+	root.aggregate_size_bytes = 30;
 	let mut keep = item(task_id, keep_id, Some(1), "keep");
 	keep.id = Some(2);
 	keep.tree_start = Some(1);
