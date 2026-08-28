@@ -503,7 +503,7 @@ pub struct SnapshotTotals {
 	pub scan_issue_count: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum OrganizeSelectionInput {
 	Items {
 		item_ids: Vec<Uuid>,
@@ -515,6 +515,7 @@ pub enum OrganizeSelectionInput {
 	},
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct DecisionTransactionRequest {
 	pub task_id: Uuid,
 	pub selection: OrganizeSelectionInput,
@@ -553,6 +554,42 @@ pub struct DecisionRecord {
 	pub decision_kind: Option<String>,
 	pub move_destination: Option<String>,
 	pub operation_state: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum OrganizeDecisionKind {
+	Keep,
+	Discard,
+	Move,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub enum OrganizeDecisionSource {
+	Explicit,
+	Inherited { ancestor_item_id: Uuid },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct OrganizeItemDecisionProjection {
+	pub item_id: Uuid,
+	pub explicit_decision: Option<OrganizeDecisionKind>,
+	pub effective_decision: Option<OrganizeDecisionKind>,
+	pub decision_source: Option<OrganizeDecisionSource>,
+	pub progress: OrganizeProgressSummary,
+	pub move_destination: Option<SdPath>,
+	pub operation_state: OrganizeOperationState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct OrganizeDestructiveRoot {
+	pub item_id: Uuid,
+	pub relative_path: String,
+	pub decision: OrganizeDecisionKind,
+	pub move_destination: Option<SdPath>,
+	pub units: u64,
+	pub bytes: u64,
+	pub operation_state: OrganizeOperationState,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -645,6 +682,7 @@ pub struct OrganizeChildrenInput {
 pub struct OrganizeChildrenOutput {
 	pub revision: i64,
 	pub items: Vec<organize_task_item::Model>,
+	pub decision_projections: Vec<OrganizeItemDecisionProjection>,
 	pub next_cursor: Option<String>,
 	pub matching_child_count: u64,
 }
@@ -961,6 +999,67 @@ impl<'db> OrganizeRepository<'db> {
 			.collect())
 	}
 
+	/// Returns the minimal destructive roots consumed by commit planning.
+	///
+	/// The repository invariant normally prevents nested explicit decisions. This
+	/// projection still compacts them defensively so a damaged or legacy manifest
+	/// cannot cause the execution layer to delete the same subtree twice.
+	pub async fn compact_destructive_roots(
+		&self,
+		task_id: Uuid,
+	) -> Result<Vec<OrganizeDestructiveRoot>> {
+		let task = organize_task::Entity::find_by_id(task_id)
+			.one(self.db)
+			.await?
+			.ok_or_else(|| {
+				OrganizeError::InvalidTaskState("organize task does not exist".into())
+			})?;
+		let items = organize_task_item::Entity::find()
+			.filter(organize_task_item::Column::TaskId.eq(task_id))
+			.filter(organize_task_item::Column::MembershipState.eq("included"))
+			.all(self.db)
+			.await?;
+		let state = decision_tree_state(&items)?;
+		let destructive = state
+			.decisions
+			.into_iter()
+			.filter(|root| {
+				matches!(
+					root.decision,
+					DecisionValue::Discard | DecisionValue::Move { .. }
+				)
+			})
+			.collect::<Vec<_>>();
+		compact_operation_roots(&destructive)
+			.into_iter()
+			.map(|root| {
+				let item = items
+					.iter()
+					.find(|item| item.uuid == root.item_id)
+					.ok_or_else(|| {
+						OrganizeError::InvalidTree("destructive root disappeared".into())
+					})?;
+				let decision = decision_kind(&root.decision);
+				let move_destination = match &root.decision {
+					DecisionValue::Move { destination } => Some(SdPath::physical(
+						task.device_slug.clone(),
+						destination.clone(),
+					)),
+					_ => None,
+				};
+				Ok(OrganizeDestructiveRoot {
+					item_id: root.item_id,
+					relative_path: item.relative_path.clone(),
+					decision,
+					move_destination,
+					units: root.unit_count,
+					bytes: root.aggregate_size_bytes,
+					operation_state: root.operation_state,
+				})
+			})
+			.collect()
+	}
+
 	pub async fn list_tasks(&self, input: OrganizeListInput) -> Result<OrganizeListOutput> {
 		let status_keys = input.statuses.as_ref().map(|statuses| {
 			let mut keys = statuses
@@ -1038,7 +1137,13 @@ impl<'db> OrganizeRepository<'db> {
 	}
 
 	pub async fn children(&self, input: OrganizeChildrenInput) -> Result<OrganizeChildrenOutput> {
-		let revision = self.get_task_revision(input.task_id).await?;
+		let task = organize_task::Entity::find_by_id(input.task_id)
+			.one(self.db)
+			.await?
+			.ok_or_else(|| {
+				OrganizeError::InvalidTaskState("organize task does not exist".into())
+			})?;
+		let revision = task.revision;
 		let cursor = input
 			.cursor
 			.as_deref()
@@ -1102,6 +1207,17 @@ impl<'db> OrganizeRepository<'db> {
 			.unwrap_or(0);
 		let end_index = (start_index + limit).min(children.len());
 		let page = children[start_index..end_index].to_vec();
+		let decision_state = decision_tree_state(
+			&all_items
+				.iter()
+				.filter(|item| item.membership_state == "included")
+				.cloned()
+				.collect::<Vec<_>>(),
+		)?;
+		let decision_projections = page
+			.iter()
+			.map(|item| decision_projection(&task, &all_items, &decision_state, item))
+			.collect::<Result<Vec<_>>>()?;
 		let next_cursor = (end_index < children.len()).then(|| {
 			let item = &page[page.len() - 1];
 			encode_child_cursor(&ChildCursor {
@@ -1120,6 +1236,7 @@ impl<'db> OrganizeRepository<'db> {
 		Ok(OrganizeChildrenOutput {
 			revision,
 			items: page,
+			decision_projections,
 			next_cursor,
 			matching_child_count,
 		})
@@ -1457,6 +1574,21 @@ impl<'db> OrganizeRepository<'db> {
 			request.confirm_descendant_override,
 			request.confirm_ancestor_split,
 		)?;
+		let resolution = match resolution {
+			DecisionResolution::ConfirmationRequired {
+				conflict_kind: OrganizeDecisionConflictKind::DescendantOverride,
+				..
+			} => descendant_override_confirmation(
+				&state,
+				&normalized_ids,
+				request.decision.as_ref().ok_or_else(|| {
+					OrganizeError::InvalidTree(
+						"clear unexpectedly requested descendant override".into(),
+					)
+				})?,
+			)?,
+			other => other,
+		};
 		match resolution {
 			DecisionResolution::ConfirmationRequired {
 				conflict_kind,
@@ -1482,7 +1614,10 @@ impl<'db> OrganizeRepository<'db> {
 				txn.rollback().await?;
 				return Ok(OrganizeDecisionOutcome::InheritedNoOp { ancestor_item_id });
 			}
-			DecisionResolution::Apply(patch) => {
+			DecisionResolution::Apply(mut patch) => {
+				if request.decision.is_none() {
+					restrict_clear_patch(&state, &normalized_ids, &mut patch);
+				}
 				if decision_patch_is_noop(&all_items, &patch) {
 					txn.rollback().await?;
 					return Ok(OrganizeDecisionOutcome::InheritedNoOp {
@@ -2011,6 +2146,170 @@ fn decision_tree_state(items: &[organize_task_item::Model]) -> Result<DecisionTr
 		})
 		.collect::<Result<Vec<_>>>()?;
 	Ok(DecisionTreeState { nodes, decisions })
+}
+
+fn descendant_override_confirmation(
+	state: &DecisionTreeState,
+	selected_ids: &[Uuid],
+	requested: &DecisionValue,
+) -> Result<DecisionResolution> {
+	let mut keep_units = 0_u64;
+	let mut discard_units = 0_u64;
+	let mut move_units = 0_u64;
+	let mut unmarked_units = 0_u64;
+	let mut affected_bytes = 0_u64;
+	let mut conflicts = Vec::new();
+	for selected_id in selected_ids {
+		let node = state
+			.nodes
+			.iter()
+			.find(|node| node.item_id == *selected_id)
+			.ok_or_else(|| OrganizeError::InvalidTree("selected node disappeared".into()))?;
+		let mut processed_units = 0_u64;
+		for root in state
+			.decisions
+			.iter()
+			.filter(|root| root.tree_start > node.tree_start && root.tree_end <= node.tree_end)
+		{
+			processed_units = processed_units
+				.checked_add(root.unit_count)
+				.ok_or_else(|| OrganizeError::InvalidTree("decision units overflow".into()))?;
+			match root.decision {
+				DecisionValue::Keep => keep_units += root.unit_count,
+				DecisionValue::Discard => discard_units += root.unit_count,
+				DecisionValue::Move { .. } => move_units += root.unit_count,
+			}
+			if root.decision != *requested {
+				conflicts.push((root.tree_start, root.item_id));
+			}
+		}
+		if processed_units > node.unit_count {
+			return Err(OrganizeError::InvalidTree(
+				"descendant decisions exceed selected subtree units".into(),
+			)
+			.into());
+		}
+		unmarked_units += node.unit_count - processed_units;
+		affected_bytes = affected_bytes
+			.checked_add(node.aggregate_size_bytes)
+			.ok_or_else(|| OrganizeError::InvalidTree("affected bytes overflow".into()))?;
+	}
+	conflicts.sort_by_key(|(tree_start, item_id)| (*tree_start, *item_id));
+	Ok(DecisionResolution::ConfirmationRequired {
+		conflict_kind: OrganizeDecisionConflictKind::DescendantOverride,
+		keep_units,
+		discard_units,
+		move_units,
+		unmarked_units,
+		affected_bytes,
+		conflicting_roots: conflicts.into_iter().map(|(_, item_id)| item_id).collect(),
+	})
+}
+
+fn restrict_clear_patch(
+	state: &DecisionTreeState,
+	selected_ids: &[Uuid],
+	patch: &mut crate::ops::organize::model::DecisionPatch,
+) {
+	let mut allowed = HashSet::new();
+	for selected_id in selected_ids {
+		let Some(node) = state.nodes.iter().find(|node| node.item_id == *selected_id) else {
+			continue;
+		};
+		if state
+			.decisions
+			.iter()
+			.any(|root| root.item_id == *selected_id)
+		{
+			allowed.insert(*selected_id);
+			continue;
+		}
+		if let Some(ancestor) = state
+			.decisions
+			.iter()
+			.filter(|root| root.tree_start < node.tree_start && node.tree_end <= root.tree_end)
+			.max_by_key(|root| root.tree_start)
+		{
+			allowed.insert(ancestor.item_id);
+		}
+	}
+	patch
+		.delete_roots
+		.retain(|item_id| allowed.contains(item_id));
+	patch.upsert_roots.clear();
+}
+
+fn decision_projection(
+	task: &organize_task::Model,
+	items: &[organize_task_item::Model],
+	state: &DecisionTreeState,
+	item: &organize_task_item::Model,
+) -> Result<OrganizeItemDecisionProjection> {
+	let node = state
+		.nodes
+		.iter()
+		.find(|node| node.item_id == item.uuid)
+		.ok_or_else(|| OrganizeError::InvalidTree("projection item is outside the tree".into()))?;
+	let explicit_value = decision_value(item)?;
+	let effective_root = effective_decision(items, item);
+	let effective_value = effective_root.map(decision_value).transpose()?.flatten();
+	let decision_source = if explicit_value.is_some() {
+		Some(OrganizeDecisionSource::Explicit)
+	} else {
+		effective_root.map(|ancestor| OrganizeDecisionSource::Inherited {
+			ancestor_item_id: ancestor.uuid,
+		})
+	};
+	let progress = if let Some(value) = &effective_value {
+		let mut progress = OrganizeProgressSummary {
+			total_units: node.unit_count,
+			processed_units: node.unit_count,
+			unmarked_units: 0,
+			..Default::default()
+		};
+		match value {
+			DecisionValue::Keep => progress.keep_units = node.unit_count,
+			DecisionValue::Discard => progress.discard_units = node.unit_count,
+			DecisionValue::Move { .. } => progress.move_units = node.unit_count,
+		}
+		progress
+	} else {
+		let descendant_decisions = state
+			.decisions
+			.iter()
+			.filter(|root| node.tree_start <= root.tree_start && root.tree_end <= node.tree_end)
+			.cloned()
+			.collect::<Vec<_>>();
+		reduce_progress(std::slice::from_ref(node), &descendant_decisions)?
+	};
+	let move_destination = effective_value.as_ref().and_then(|value| match value {
+		DecisionValue::Move { destination } => Some(SdPath::physical(
+			task.device_slug.clone(),
+			destination.clone(),
+		)),
+		_ => None,
+	});
+	let operation_state = effective_root
+		.map(|root| parse_operation_state(&root.operation_state))
+		.transpose()?
+		.unwrap_or(OrganizeOperationState::None);
+	Ok(OrganizeItemDecisionProjection {
+		item_id: item.uuid,
+		explicit_decision: explicit_value.as_ref().map(decision_kind),
+		effective_decision: effective_value.as_ref().map(decision_kind),
+		decision_source,
+		progress,
+		move_destination,
+		operation_state,
+	})
+}
+
+fn decision_kind(value: &DecisionValue) -> OrganizeDecisionKind {
+	match value {
+		DecisionValue::Keep => OrganizeDecisionKind::Keep,
+		DecisionValue::Discard => OrganizeDecisionKind::Discard,
+		DecisionValue::Move { .. } => OrganizeDecisionKind::Move,
+	}
 }
 
 fn decision_value(item: &organize_task_item::Model) -> Result<Option<DecisionValue>> {
