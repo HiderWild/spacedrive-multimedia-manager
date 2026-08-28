@@ -843,7 +843,7 @@ async fn rebuilding_reordered_tree_uses_distinct_legal_temporary_intervals() {
 	assert_eq!(models[1].relative_path, "a");
 	assert_eq!(models[2].relative_path, "z");
 	let task = repo.get_task(task_id).await.expect("read rebuilt task");
-	assert_eq!(task.task.total_units, 2);
+	assert_eq!(task.task.progress.total_units, 2);
 }
 
 #[tokio::test]
@@ -922,14 +922,13 @@ async fn rebuilding_rejects_a_file_with_included_children() {
 
 	let mut root = item(task_id, Uuid::new_v4(), None, "");
 	root.id = Some(1);
-	root.kind = OrganizeItemKind::File;
 	root.tree_start = Some(0);
 	root.tree_end = Some(2);
 	let mut child = item(task_id, Uuid::new_v4(), Some(1), "child");
 	child.id = Some(2);
 	child.tree_start = Some(1);
 	child.tree_end = Some(2);
-	let error = repo
+	let revision = repo
 		.replace_included_snapshot(
 			task_id,
 			vec![root, child],
@@ -940,6 +939,24 @@ async fn rebuilding_rejects_a_file_with_included_children() {
 				scan_issue_count: 0,
 			},
 		)
+		.await
+		.expect("insert valid file-parent fixture");
+	db.execute(Statement::from_string(
+		DatabaseBackend::Sqlite,
+		"UPDATE organize_task_items SET kind = 'file' WHERE id = 1",
+	))
+	.await
+	.expect("corrupt parent kind");
+	let error = repo
+		.accept_changes(OrganizeAcceptChangesInput {
+			task_id,
+			expected_revision: revision,
+			include_addition_ids: Vec::new(),
+			remove_missing_ids: Vec::new(),
+			refresh_changed_ids: Vec::new(),
+			preserve_changed_decisions: false,
+			confirm_inherited_destructive: false,
+		})
 		.await
 		.expect_err("file with children must reject rebuild");
 	assert!(matches!(
