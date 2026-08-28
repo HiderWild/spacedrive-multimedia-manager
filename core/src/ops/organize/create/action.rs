@@ -59,6 +59,10 @@ impl OrganizeCreateAction {
 	}
 }
 
+pub(crate) const fn initial_snapshot_version() -> i32 {
+	1
+}
+
 impl LibraryAction for OrganizeCreateAction {
 	type Input = OrganizeCreateInput;
 	type Output = OrganizeCreateOutcome;
@@ -125,7 +129,7 @@ impl LibraryAction for OrganizeCreateAction {
 			root_entry_uuid: None,
 			status: OrganizeTaskStatus::Scanning,
 			revision: 0,
-			snapshot_version: 0,
+			snapshot_version: initial_snapshot_version(),
 			total_entries: 0,
 			total_units: 0,
 			total_bytes: 0,

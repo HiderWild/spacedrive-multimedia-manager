@@ -1999,7 +1999,7 @@ impl<'db> OrganizeRepository<'db> {
 		let revision = task.revision + 1;
 		let mut active: organize_task::ActiveModel = task.into();
 		active.status = Set(task_status(OrganizeTaskStatus::Scanning));
-		active.snapshot_version = Set(0);
+		active.snapshot_version = Set(1);
 		active.total_entries = Set(0);
 		active.total_units = Set(0);
 		active.total_bytes = Set(0);

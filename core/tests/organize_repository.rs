@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use sd_core::infra::db::entities::{organize_task, organize_task_item};
 use sd_core::infra::db::migration::Migrator;
+use sd_core::infra::job::types::JobId;
 use sd_core::ops::organize::error::OrganizeError;
 use sd_core::ops::organize::model::{
 	DecisionValue, OrganizeItemKind, OrganizeOperationState, OrganizeTaskStatus,
@@ -158,6 +159,30 @@ fn item(
 		created_at: Utc::now(),
 		updated_at: Utc::now(),
 	}
+}
+
+#[tokio::test]
+async fn retrying_failed_task_preserves_schema_version_one() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Retry", OrganizeTaskStatus::Failed))
+		.await
+		.expect("insert failed task");
+
+	let revision = repo
+		.reset_snapshot_for_retry(task_id, 0, JobId::new())
+		.await
+		.expect("reset failed task for retry");
+
+	let retried = organize_task::Entity::find_by_id(task_id)
+		.one(&db)
+		.await
+		.expect("read retried task")
+		.expect("retried task exists");
+	assert_eq!(revision, 1);
+	assert_eq!(retried.status, "scanning");
+	assert_eq!(retried.snapshot_version, 1);
 }
 
 #[tokio::test]
