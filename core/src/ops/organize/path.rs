@@ -152,6 +152,11 @@ pub fn validate_move_destination(
 			"a volume root cannot be moved or used as a move destination".into(),
 		));
 	}
+	if source == destination {
+		return Err(OrganizeError::UnsafeTopology(
+			"a move destination cannot equal its source".into(),
+		));
+	}
 	if paths_overlap(&source, &destination) && is_path_ancestor(&source, &destination) {
 		return Err(OrganizeError::UnsafeTopology(
 			"a move destination cannot be inside its source".into(),
@@ -252,6 +257,7 @@ mod tests {
 	use super::*;
 
 	#[test]
+	#[cfg(windows)]
 	fn normalizes_drive_unc_and_sibling_prefixes() {
 		assert_eq!(
 			windows_path_key(Path::new(r"c:/Photos/Trip/"), false).unwrap(),
@@ -267,6 +273,7 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(windows)]
 	fn rejects_destination_inside_source_and_move_cycles() {
 		let sources = vec![
 			(Uuid::from_u128(1), r"c:\a".into(), r"c:\b".into()),
@@ -279,6 +286,24 @@ mod tests {
 		assert!(matches!(
 			validate_move_destination(r"c:\a", r"c:\a\child", &[]),
 			Err(OrganizeError::UnsafeTopology(_))
+		));
+	}
+
+	#[test]
+	#[cfg(windows)]
+	fn rejects_destination_equal_to_source() {
+		assert!(matches!(
+			validate_move_destination(r"c:\photo", r"C:/PHOTO", &[]),
+			Err(OrganizeError::UnsafeTopology(_))
+		));
+	}
+
+	#[test]
+	#[cfg(not(windows))]
+	fn reports_windows_path_api_as_unsupported() {
+		assert!(matches!(
+			windows_path_key(Path::new("C:/photo"), false),
+			Err(OrganizeError::UnsupportedPlatform)
 		));
 	}
 }

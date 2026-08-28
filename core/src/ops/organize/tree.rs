@@ -31,6 +31,11 @@ pub fn compute_tree(items: &[TreeItemDraft]) -> Result<Vec<TreeItemComputed>, Or
 		}
 		children.entry(item.parent_item_id).or_default().push(index);
 	}
+	if children.get(&None).map_or(0, Vec::len) != 1 {
+		return Err(OrganizeError::InvalidTree(
+			"the organize tree must contain exactly one root".into(),
+		));
+	}
 
 	let mut order = Vec::with_capacity(items.len());
 	fn visit_order(
@@ -167,12 +172,13 @@ pub fn resolve_set_decision(
 
 	let mut delete_roots = Vec::new();
 	let mut upsert_roots = Vec::new();
+	let mut inherited_ancestor = None;
 	for item_id in selected {
 		let (start, end) = intervals[&item_id];
 		let descendants: Vec<&ExplicitDecisionRoot> = state
 			.decisions
 			.iter()
-			.filter(|root| root.tree_start >= start && root.tree_end <= end)
+			.filter(|root| root.tree_start > start && root.tree_end <= end)
 			.collect();
 		let ancestors: Vec<&ExplicitDecisionRoot> = state
 			.decisions
@@ -182,9 +188,8 @@ pub fn resolve_set_decision(
 
 		if let Some(ancestor) = ancestors.iter().max_by_key(|root| root.tree_start) {
 			if requested.as_ref() == Some(&ancestor.decision) {
-				return Ok(DecisionResolution::InheritedNoOp {
-					ancestor_item_id: ancestor.item_id,
-				});
+				inherited_ancestor.get_or_insert(ancestor.item_id);
+				continue;
 			}
 			if !confirm_ancestor_split {
 				return Ok(conflict(
@@ -225,6 +230,11 @@ pub fn resolve_set_decision(
 				decision,
 				operation_state: OrganizeOperationState::None,
 			});
+		}
+	}
+	if delete_roots.is_empty() && upsert_roots.is_empty() {
+		if let Some(ancestor_item_id) = inherited_ancestor {
+			return Ok(DecisionResolution::InheritedNoOp { ancestor_item_id });
 		}
 	}
 
@@ -376,6 +386,110 @@ mod tests {
 		)
 		.unwrap();
 		assert_eq!(selected, vec![outer]);
+	}
+
+	#[test]
+	fn compute_tree_rejects_multiple_roots() {
+		let result = compute_tree(&[
+			item(1, None, OrganizeItemKind::Directory, 0),
+			item(2, None, OrganizeItemKind::Directory, 0),
+		]);
+		assert!(matches!(result, Err(OrganizeError::InvalidTree(_))));
+	}
+
+	#[test]
+	fn selected_root_is_replaced_instead_of_treated_as_descendant_conflict() {
+		let id = Uuid::from_u128(1);
+		let node = TreeItemComputed {
+			item_id: id,
+			tree_start: 0,
+			tree_end: 1,
+			unit_count: 1,
+			aggregate_size_bytes: 10,
+		};
+		let state = DecisionTreeState {
+			nodes: vec![node],
+			decisions: vec![ExplicitDecisionRoot {
+				item_id: id,
+				tree_start: 0,
+				tree_end: 1,
+				unit_count: 1,
+				aggregate_size_bytes: 10,
+				decision: DecisionValue::discard(),
+				operation_state: OrganizeOperationState::None,
+			}],
+		};
+		let result =
+			resolve_set_decision(&state, &[id], Some(DecisionValue::keep()), false, false).unwrap();
+		assert!(matches!(
+			result,
+			DecisionResolution::Apply(ref patch)
+				if patch.delete_roots == vec![id]
+					&& patch.upsert_roots.len() == 1
+					&& patch.upsert_roots[0].decision == DecisionValue::keep()
+		));
+	}
+
+	#[test]
+	fn inherited_noop_does_not_discard_the_rest_of_a_batch() {
+		let ancestor = Uuid::from_u128(1);
+		let inherited = Uuid::from_u128(2);
+		let sibling = Uuid::from_u128(3);
+		let state = DecisionTreeState {
+			nodes: vec![
+				TreeItemComputed {
+					item_id: ancestor,
+					tree_start: 0,
+					tree_end: 2,
+					unit_count: 1,
+					aggregate_size_bytes: 10,
+				},
+				TreeItemComputed {
+					item_id: inherited,
+					tree_start: 1,
+					tree_end: 2,
+					unit_count: 1,
+					aggregate_size_bytes: 10,
+				},
+				TreeItemComputed {
+					item_id: sibling,
+					tree_start: 2,
+					tree_end: 3,
+					unit_count: 1,
+					aggregate_size_bytes: 10,
+				},
+			],
+			decisions: vec![ExplicitDecisionRoot {
+				item_id: ancestor,
+				tree_start: 0,
+				tree_end: 2,
+				unit_count: 1,
+				aggregate_size_bytes: 10,
+				decision: DecisionValue::keep(),
+				operation_state: OrganizeOperationState::None,
+			}],
+		};
+		let result = resolve_set_decision(
+			&state,
+			&[inherited, sibling],
+			Some(DecisionValue::keep()),
+			false,
+			false,
+		)
+		.unwrap();
+		assert!(matches!(
+			result,
+			DecisionResolution::Apply(ref patch)
+				if patch.upsert_roots.len() == 1 && patch.upsert_roots[0].item_id == sibling
+		));
+	}
+
+	#[test]
+	fn move_decisions_compare_normalized_windows_destinations() {
+		assert_eq!(
+			DecisionValue::move_to(r"C:\Archive\"),
+			DecisionValue::move_to(r"c:/archive")
+		);
 	}
 
 	#[test]

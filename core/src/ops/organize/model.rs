@@ -31,11 +31,41 @@ pub enum OrganizeOperationState {
 	Failed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum DecisionValue {
 	Keep,
 	Discard,
 	Move { destination: String },
+}
+
+impl PartialEq for DecisionValue {
+	fn eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(Self::Keep, Self::Keep) | (Self::Discard, Self::Discard) => true,
+			(Self::Move { destination: left }, Self::Move { destination: right }) => {
+				normalize_windows_destination(left) == normalize_windows_destination(right)
+			}
+			_ => false,
+		}
+	}
+}
+
+impl Eq for DecisionValue {}
+
+fn normalize_windows_destination(destination: &str) -> String {
+	let mut key = destination.replace('/', "\\").to_lowercase();
+	if let Some(unc) = key.strip_prefix(r"\\?\unc\") {
+		key = format!(r"\\{}", unc);
+	} else if let Some(drive) = key.strip_prefix(r"\\?\") {
+		if drive.as_bytes().get(1) == Some(&b':') {
+			key = drive.to_string();
+		}
+	}
+	let is_drive_root = key.len() == 2 && key.as_bytes().get(1) == Some(&b':');
+	if !is_drive_root {
+		key = key.trim_end_matches('\\').to_string();
+	}
+	key
 }
 
 impl DecisionValue {
