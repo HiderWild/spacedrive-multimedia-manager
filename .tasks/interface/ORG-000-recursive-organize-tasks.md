@@ -71,8 +71,8 @@ The approved design is the behavior contract. The implementation plan translates
 
 | ID | Responsibility | Depends on | Status | Owner | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-MAP | Review | Archimedes | Candidate `e461e23f0f7ca5304392e801300dbeb3ae0000d9`; coordinator reran fixture: 11/11 passed; AST/diff checks pending review |
-| ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | Review | Archimedes | Recovery commit is the candidate above; no separate residual remains |
+| ORG-BUILD-00A | Test-first safe artifact discovery/cleanup, shared target resolver, wrapper, and policy documentation | ORG-BUILD-00A-FIX | In Flight | Archimedes | Spec review found P1: compile aliases `ios`, `daemon`, `cli` are not detected; fix and regression tests required |
+| ORG-BUILD-00A-R | Recover ORG-BUILD-00A from any residual worktree and finish the minimal policy slice | ORG-BUILD-00A | In Flight | Archimedes | Same implementer is applying the P1 correction; no separate residual remains |
 | ORG-BUILD-00B | Wire every project build entry point to the shared wrapper and resolver | ORG-BUILD-00A | Blocked | Unassigned | Waiting for ORG-BUILD-00A |
 | ORG-BUILD-00C | Independent policy review and fixture verification | ORG-BUILD-00A, ORG-BUILD-00B | Blocked | Unassigned | Waiting for implementation |
 
