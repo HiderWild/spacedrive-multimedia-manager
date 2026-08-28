@@ -1,7 +1,9 @@
 export function computeLassoSelection(pointerDownSelection: Set<string>, currentIntersections: Set<string>, ctrlKey: boolean): Set<string> {
+	if (!ctrlKey) return new Set(currentIntersections);
+
 	const result = new Set(pointerDownSelection);
 	for (const itemId of currentIntersections) {
-		if (ctrlKey && result.has(itemId)) {
+		if (result.has(itemId)) {
 			result.delete(itemId);
 		} else {
 			result.add(itemId);

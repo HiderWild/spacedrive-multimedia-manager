@@ -2,10 +2,10 @@ import {describe, expect, test} from 'bun:test';
 import {computeLassoSelection, edgeScrollVelocity, isLassoDrag, lassoRect} from '../selection';
 
 	describe('organize lasso', () => {
-	test('keeps the pointer-down selection during a default drag', () => {
+	test('plain lasso replaces the pointer-down selection with current intersections', () => {
 		expect(computeLassoSelection(new Set(), new Set(['a', 'b', 'c']), false)).toEqual(new Set(['a', 'b', 'c']));
 		expect(computeLassoSelection(new Set(), new Set(['b']), false)).toEqual(new Set(['b']));
-		expect(computeLassoSelection(new Set(['fixed']), new Set(['b']), false)).toEqual(new Set(['fixed', 'b']));
+		expect(computeLassoSelection(new Set(['fixed']), new Set(['b']), false)).toEqual(new Set(['b']));
 	});
 
 	test('uses the pointer-down selection as the baseline for Ctrl toggling', () => {
