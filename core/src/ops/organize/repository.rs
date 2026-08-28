@@ -270,14 +270,40 @@ async fn rebuild_included_tree(
 		.filter(organize_task_item::Column::MembershipState.eq("included"))
 		.all(txn)
 		.await?;
+	let by_id = items
+		.iter()
+		.map(|item| (item.id, item))
+		.collect::<std::collections::HashMap<_, _>>();
 	let mut children = std::collections::HashMap::<i32, Vec<i32>>::new();
 	let mut roots = Vec::new();
 	for item in &items {
 		if let Some(parent_id) = item.parent_id {
+			if !by_id.contains_key(&parent_id) {
+				return Err(OrganizeError::InvalidTree(
+					"included item refers to a missing parent".into(),
+				)
+				.into());
+			}
 			children.entry(parent_id).or_default().push(item.id);
 		} else {
 			roots.push(item.id);
 		}
+	}
+	if !items.is_empty() && roots.len() != 1 {
+		return Err(OrganizeError::InvalidTree(
+			"included tree must contain exactly one root".into(),
+		)
+		.into());
+	}
+	if items.iter().any(|item| {
+		item.kind != "directory"
+			&& children
+				.get(&item.id)
+				.is_some_and(|child_ids| !child_ids.is_empty())
+	}) {
+		return Err(
+			OrganizeError::InvalidTree("only directories may contain children".into()).into(),
+		);
 	}
 	for child_ids in children.values_mut() {
 		child_ids.sort_by_key(|id| {
@@ -295,14 +321,38 @@ async fn rebuild_included_tree(
 			.map(|item| item.relative_path_key.as_str())
 			.unwrap_or("")
 	});
-	let by_id = items
-		.iter()
-		.map(|item| (item.id, item))
-		.collect::<std::collections::HashMap<_, _>>();
 	let mut counter = 0_i64;
 	let mut updates = Vec::new();
-	for root_id in roots {
-		visit_tree(root_id, &children, &by_id, &mut counter, &mut updates)?;
+	let total_units = if let Some(root_id) = roots.first().copied() {
+		let (units, _) = visit_tree(root_id, &children, &by_id, &mut counter, &mut updates)?;
+		units
+	} else {
+		0
+	};
+	if updates.len() != items.len() {
+		return Err(OrganizeError::InvalidTree(
+			"included tree contains a cycle or unreachable item".into(),
+		)
+		.into());
+	}
+	let mut temporary_tree_start = items
+		.iter()
+		.filter_map(|item| item.tree_end)
+		.max()
+		.unwrap_or(0)
+		.saturating_add(1);
+	for item in &items {
+		let current = organize_task_item::Entity::find_by_id(item.id)
+			.one(txn)
+			.await?
+			.ok_or_else(|| OrganizeError::InvalidTree("tree item disappeared".into()))?;
+		let mut active: organize_task_item::ActiveModel = current.into();
+		active.tree_start = Set(Some(temporary_tree_start));
+		active.tree_end = Set(Some(temporary_tree_start.saturating_add(1)));
+		active.unit_count = Set(Some(1));
+		active.updated_at = Set(Utc::now());
+		active.update(txn).await?;
+		temporary_tree_start = temporary_tree_start.saturating_add(1);
 	}
 	for &(id, tree_start, tree_end, unit_count, aggregate_size_bytes) in &updates {
 		let item = organize_task_item::Entity::find_by_id(id)
@@ -318,11 +368,6 @@ async fn rebuild_included_tree(
 		active.update(txn).await?;
 	}
 	let total_entries = items.len() as i64;
-	let total_units = updates
-		.iter()
-		.filter(|(_, start, _, _, _)| *start == 0)
-		.map(|(_, _, _, units, _)| *units)
-		.sum();
 	let total_bytes = items
 		.iter()
 		.filter(|item| item.kind == "file")

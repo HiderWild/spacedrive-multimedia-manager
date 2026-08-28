@@ -663,13 +663,17 @@ async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
 	root.tree_start = Some(0);
-	root.tree_end = Some(1);
+	root.tree_end = Some(2);
+	let mut existing_child = item(task_id, Uuid::new_v4(), Some(1), "z");
+	existing_child.id = Some(2);
+	existing_child.tree_start = Some(1);
+	existing_child.tree_end = Some(2);
 	let initial_revision = repo
 		.replace_included_snapshot(
 			task_id,
-			vec![root],
+			vec![root, existing_child],
 			SnapshotTotals {
-				total_entries: 1,
+				total_entries: 2,
 				total_units: 1,
 				total_bytes: 0,
 				scan_issue_count: 0,
@@ -678,8 +682,8 @@ async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 		.await
 		.expect("insert initial snapshot");
 	let addition_id = Uuid::new_v4();
-	let mut addition = item(task_id, addition_id, Some(1), "new");
-	addition.id = Some(2);
+	let mut addition = item(task_id, addition_id, Some(1), "a");
+	addition.id = Some(3);
 	addition.tree_start = None;
 	addition.tree_end = None;
 	addition.unit_count = None;
@@ -717,10 +721,92 @@ async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 		.all(&db)
 		.await
 		.expect("read rebuilt tree");
-	assert_eq!(models.len(), 2);
+	assert_eq!(models.len(), 3);
 	assert_eq!(models[0].tree_start, Some(0));
-	assert_eq!(models[0].tree_end, Some(2));
+	assert_eq!(models[0].tree_end, Some(3));
 	assert_eq!(models[1].tree_start, Some(1));
+	assert_eq!(models[1].relative_path, "a");
+	assert_eq!(models[2].tree_start, Some(2));
+	assert_eq!(models[2].relative_path, "z");
+}
+
+#[tokio::test]
+async fn accepting_changes_rejects_multiple_included_roots_before_mutation() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Malformed", OrganizeTaskStatus::Scanning))
+		.await
+		.expect("insert malformed tree task");
+	let mut first_root = item(task_id, Uuid::new_v4(), None, "");
+	first_root.id = Some(1);
+	first_root.tree_start = Some(0);
+	first_root.tree_end = Some(1);
+	let mut second_root = item(task_id, Uuid::new_v4(), None, "second");
+	second_root.id = Some(2);
+	second_root.tree_start = Some(1);
+	second_root.tree_end = Some(2);
+	repo.replace_included_snapshot(
+		task_id,
+		vec![first_root, second_root],
+		SnapshotTotals {
+			total_entries: 2,
+			total_units: 2,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert malformed snapshot");
+	let addition_id = Uuid::new_v4();
+	let mut addition = item(task_id, addition_id, Some(1), "addition");
+	addition.id = Some(3);
+	addition.tree_start = None;
+	addition.tree_end = None;
+	addition.unit_count = None;
+	addition.membership_state = "pending_addition".to_string();
+	repo.store_change_scan(
+		task_id,
+		ChangeScanResult {
+			additions: vec![addition],
+			changed_ids: Vec::new(),
+			missing_ids: Vec::new(),
+		},
+	)
+	.await
+	.expect("store pending addition");
+
+	let error = repo
+		.accept_changes(OrganizeAcceptChangesInput {
+			task_id,
+			expected_revision: 2,
+			include_addition_ids: vec![addition_id],
+			remove_missing_ids: Vec::new(),
+			refresh_changed_ids: Vec::new(),
+			preserve_changed_decisions: false,
+			confirm_inherited_destructive: false,
+		})
+		.await
+		.expect_err("multiple roots must reject acceptance");
+	assert!(matches!(
+		error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree(message))
+			if message.contains("exactly one root")
+	));
+	let task = organize_task::Entity::find_by_id(task_id)
+		.one(&db)
+		.await
+		.expect("read task after rejected acceptance")
+		.expect("task remains present");
+	assert_eq!(task.revision, 2);
+	let pending = organize_task_item::Entity::find()
+		.filter(organize_task_item::Column::TaskId.eq(task_id))
+		.filter(organize_task_item::Column::Uuid.eq(addition_id))
+		.one(&db)
+		.await
+		.expect("read pending addition")
+		.expect("pending addition remains present");
+	assert_eq!(pending.membership_state, "pending_addition");
 }
 
 #[tokio::test]
