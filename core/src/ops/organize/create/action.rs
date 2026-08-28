@@ -226,3 +226,13 @@ pub(crate) fn rejection(
 }
 
 crate::register_library_action!(OrganizeCreateAction, "organize.create");
+
+#[cfg(test)]
+mod tests {
+	use super::initial_snapshot_version;
+
+	#[test]
+	fn new_tasks_start_with_schema_version_one() {
+		assert_eq!(initial_snapshot_version(), 1);
+	}
+}
