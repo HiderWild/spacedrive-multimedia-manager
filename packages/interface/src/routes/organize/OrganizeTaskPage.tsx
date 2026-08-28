@@ -343,6 +343,8 @@ export function OrganizeTaskPage() {
 		const next = chooseValue(ORGANIZE_FILTERS, value);
 		if (next) {
 			setOrganizeFilter(next);
+			setSelection(createSelectionState());
+			setFocusedItemId(null);
 			resetScroll();
 		}
 	};
@@ -350,6 +352,8 @@ export function OrganizeTaskPage() {
 		const next = chooseValue(ORGANIZE_SORTS, value);
 		if (next) {
 			setOrganizeSort(next);
+			setSelection(createSelectionState());
+			setFocusedItemId(null);
 			resetScroll();
 		}
 	};
@@ -357,6 +361,8 @@ export function OrganizeTaskPage() {
 		const next = chooseValue(ORGANIZE_DIRECTIONS, value);
 		if (next) {
 			setOrganizeDirection(next);
+			setSelection(createSelectionState());
+			setFocusedItemId(null);
 			resetScroll();
 		}
 	};
