@@ -67,7 +67,9 @@ fn parse_legacy_state(key: &str, contents: &str) -> Result<LegacyOrganizeState, 
 }
 
 /// Lists active legacy JSON records and excludes archived or unsafe filenames.
-pub async fn list_legacy_state_files(root: &Path) -> Result<Vec<LegacyOrganizeStateSummary>, String> {
+pub async fn list_legacy_state_files(
+	root: &Path,
+) -> Result<Vec<LegacyOrganizeStateSummary>, String> {
 	let directory = legacy_state_dir(root);
 	let mut entries = match tokio::fs::read_dir(&directory).await {
 		Ok(entries) => entries,
@@ -123,17 +125,35 @@ pub async fn read_legacy_state_file(root: &Path, key: &str) -> Result<LegacyOrga
 pub async fn archive_legacy_state_file(root: &Path, key: &str) -> Result<(), String> {
 	read_legacy_state_file(root, key).await?;
 	let source = legacy_state_path(root, key)?;
-	let destination = source.with_file_name(format!("{}.migrated", source.file_name().unwrap().to_string_lossy()));
+	let destination = source.with_file_name(format!(
+		"{}.migrated",
+		source.file_name().unwrap().to_string_lossy()
+	));
 
 	match tokio::fs::metadata(&destination).await {
-		Ok(_) => return Err(format!("Legacy organize archive already exists for '{}'", key)),
+		Ok(_) => {
+			return Err(format!(
+				"Legacy organize archive already exists for '{}'",
+				key
+			))
+		}
 		Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-		Err(error) => return Err(format!("Failed to inspect legacy organize archive '{}': {}", key, error)),
+		Err(error) => {
+			return Err(format!(
+				"Failed to inspect legacy organize archive '{}': {}",
+				key, error
+			))
+		}
 	}
 
 	tokio::fs::rename(&source, &destination)
 		.await
-		.map_err(|error| format!("Failed to archive legacy organize state '{}': {}", key, error))
+		.map_err(|error| {
+			format!(
+				"Failed to archive legacy organize state '{}': {}",
+				key, error
+			)
+		})
 }
 
 /// Returns active legacy organize records from the current Tauri data directory.
@@ -194,7 +214,9 @@ mod tests {
 		let records = list_legacy_state_files(&root).await.unwrap();
 		assert_eq!(records.len(), 1);
 		assert_eq!(records[0].key, "dir-a");
-		let parsed = read_legacy_state_file(&root, &records[0].key).await.unwrap();
+		let parsed = read_legacy_state_file(&root, &records[0].key)
+			.await
+			.unwrap();
 		assert_eq!(parsed.directory_path, "C:/Photos");
 		assert_eq!(parsed.items.len(), 1);
 
@@ -208,13 +230,28 @@ mod tests {
 	#[tokio::test]
 	async fn listing_ignores_archived_and_invalid_filenames() {
 		let (_dir, root) = tmp_root();
-		write_legacy(&root, "active", r#"{"version":1,"directoryPath":"C:/Photos","updatedAt":"now","items":{}}"#).await;
+		write_legacy(
+			&root,
+			"active",
+			r#"{"version":1,"directoryPath":"C:/Photos","updatedAt":"now","items":{}}"#,
+		)
+		.await;
 		let folder = root.join("organize/v1");
-		tokio::fs::write(folder.join("active.json.migrated"), b"{}").await.unwrap();
-		tokio::fs::write(folder.join("bad.key.json"), b"{}").await.unwrap();
+		tokio::fs::write(folder.join("active.json.migrated"), b"{}")
+			.await
+			.unwrap();
+		tokio::fs::write(folder.join("bad.key.json"), b"{}")
+			.await
+			.unwrap();
 
 		let records = list_legacy_state_files(&root).await.unwrap();
-		assert_eq!(records.iter().map(|record| record.key.as_str()).collect::<Vec<_>>(), ["active"]);
+		assert_eq!(
+			records
+				.iter()
+				.map(|record| record.key.as_str())
+				.collect::<Vec<_>>(),
+			["active"]
+		);
 	}
 
 	#[tokio::test]

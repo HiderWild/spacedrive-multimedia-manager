@@ -1,4 +1,7 @@
-use super::{OrganizeCommitJob, OrganizeCommitOutput, OrganizeCommitPhase, OrganizeMoveGroup, OrganizePlanRoot};
+use super::{
+	OrganizeCommitJob, OrganizeCommitOutput, OrganizeCommitPhase, OrganizeMoveGroup,
+	OrganizePlanRoot,
+};
 use crate::domain::addressing::SdPathBatch;
 use crate::infra::job::prelude::*;
 use crate::ops::files::copy::{
@@ -61,8 +64,13 @@ impl JobHandler for OrganizeCommitJob {
 			self.checkpoint_with(&ctx).await?;
 		}
 
-		if let Some(missing_id) = missing_checkpoint_settlement(&self.checkpoint.completed_root_ids, &self.checkpoint.settlements) {
-			return Err(JobError::execution(format!("checkpoint has no settlement for completed root {missing_id}")));
+		if let Some(missing_id) = missing_checkpoint_settlement(
+			&self.checkpoint.completed_root_ids,
+			&self.checkpoint.settlements,
+		) {
+			return Err(JobError::execution(format!(
+				"checkpoint has no settlement for completed root {missing_id}"
+			)));
 		}
 		let mut settlements = self.checkpoint.settlements.clone();
 		self.reconcile_active_child(&ctx, &mut settlements).await?;
@@ -102,16 +110,25 @@ impl JobHandler for OrganizeCommitJob {
 				.discard_roots
 				.iter()
 				.filter(|root| !self.checkpoint.completed_root_ids.contains(&root.item_id))
-			.cloned()
-			.collect::<Vec<_>>();
-			for root in pending_discard_roots
-			{
+				.cloned()
+				.collect::<Vec<_>>();
+			for root in pending_discard_roots {
 				self.checkpoint.delete_dispatched = true;
 				self.checkpoint_with(&ctx).await?;
 				let result = self.run_delete_root(&ctx, &root).await;
 				settlements.push(match result {
-					Ok(()) => OperationSettlement { item_id: root.item_id, state: OrganizeOperationState::Applied, last_error: None, applied_at: Some(Utc::now()) },
-					Err(error) => OperationSettlement { item_id: root.item_id, state: OrganizeOperationState::Failed, last_error: Some(error), applied_at: None },
+					Ok(()) => OperationSettlement {
+						item_id: root.item_id,
+						state: OrganizeOperationState::Applied,
+						last_error: None,
+						applied_at: Some(Utc::now()),
+					},
+					Err(error) => OperationSettlement {
+						item_id: root.item_id,
+						state: OrganizeOperationState::Failed,
+						last_error: Some(error),
+						applied_at: None,
+					},
 				});
 				self.checkpoint.completed_root_ids.push(root.item_id);
 				self.checkpoint.active_child_job_id = None;
@@ -162,25 +179,63 @@ impl OrganizeCommitJob {
 			return Ok(());
 		};
 		let status = if let Some(handle) = ctx.library().jobs().get_job(child_id).await {
-			handle.wait().await.map(|_| JobStatus::Completed).unwrap_or(JobStatus::Failed)
+			handle
+				.wait()
+				.await
+				.map(|_| JobStatus::Completed)
+				.unwrap_or(JobStatus::Failed)
 		} else {
-			let status = ctx.library().jobs().get_job_info(child_id.0).await.map_err(|error| JobError::execution(error.to_string()))?.ok_or_else(|| JobError::execution(format!("active organize child job {child_id} disappeared")))?.status;
+			let status = ctx
+				.library()
+				.jobs()
+				.get_job_info(child_id.0)
+				.await
+				.map_err(|error| JobError::execution(error.to_string()))?
+				.ok_or_else(|| {
+					JobError::execution(format!("active organize child job {child_id} disappeared"))
+				})?
+				.status;
 			if !status.is_terminal() {
-				return Err(JobError::execution(format!("active organize child job {child_id} is not terminal: {status:?}")));
+				return Err(JobError::execution(format!(
+					"active organize child job {child_id} is not terminal: {status:?}"
+				)));
 			}
 			status
 		};
 		let succeeded = child_succeeded(status);
 		let roots: Vec<Uuid> = match self.checkpoint.phase {
-			OrganizeCommitPhase::MoveGroups => self.plan.move_groups.get(self.checkpoint.next_move_group).map(|group| group.roots.iter().map(|root| root.item_id).collect()).unwrap_or_default(),
-			OrganizeCommitPhase::DeleteRoots => self.plan.discard_roots.iter().find(|root| !self.checkpoint.completed_root_ids.contains(&root.item_id)).map(|root| vec![root.item_id]).unwrap_or_default(),
+			OrganizeCommitPhase::MoveGroups => self
+				.plan
+				.move_groups
+				.get(self.checkpoint.next_move_group)
+				.map(|group| group.roots.iter().map(|root| root.item_id).collect())
+				.unwrap_or_default(),
+			OrganizeCommitPhase::DeleteRoots => self
+				.plan
+				.discard_roots
+				.iter()
+				.find(|root| !self.checkpoint.completed_root_ids.contains(&root.item_id))
+				.map(|root| vec![root.item_id])
+				.unwrap_or_default(),
 			_ => Vec::new(),
 		};
 		for item_id in roots {
-			settlements.push(OperationSettlement { item_id, state: if succeeded { OrganizeOperationState::Applied } else { OrganizeOperationState::Failed }, last_error: (!succeeded).then(|| format!("child job {child_id} ended with {status:?}")), applied_at: succeeded.then_some(Utc::now()) });
+			settlements.push(OperationSettlement {
+				item_id,
+				state: if succeeded {
+					OrganizeOperationState::Applied
+				} else {
+					OrganizeOperationState::Failed
+				},
+				last_error: (!succeeded)
+					.then(|| format!("child job {child_id} ended with {status:?}")),
+				applied_at: succeeded.then_some(Utc::now()),
+			});
 			self.checkpoint.completed_root_ids.push(item_id);
 		}
-		if matches!(self.checkpoint.phase, OrganizeCommitPhase::MoveGroups) && !self.plan.move_groups.is_empty() {
+		if matches!(self.checkpoint.phase, OrganizeCommitPhase::MoveGroups)
+			&& !self.plan.move_groups.is_empty()
+		{
 			self.checkpoint.next_move_group += 1;
 		}
 		self.checkpoint.active_child_job_id = None;
@@ -189,11 +244,29 @@ impl OrganizeCommitJob {
 		self.checkpoint_with(ctx).await
 	}
 
-	async fn run_delete_root(&mut self, ctx: &JobContext<'_>, root: &OrganizePlanRoot) -> Result<(), String> {
-		let handle = ctx.library().jobs().dispatch(DeleteJob::permanent(SdPathBatch::new(vec![root.source.clone()]), true)).await.map_err(|error| error.to_string())?;
+	async fn run_delete_root(
+		&mut self,
+		ctx: &JobContext<'_>,
+		root: &OrganizePlanRoot,
+	) -> Result<(), String> {
+		let handle = ctx
+			.library()
+			.jobs()
+			.dispatch(DeleteJob::permanent(
+				SdPathBatch::new(vec![root.source.clone()]),
+				true,
+			))
+			.await
+			.map_err(|error| error.to_string())?;
 		self.checkpoint.active_child_job_id = Some(handle.id());
-		self.checkpoint_with(ctx).await.map_err(|error| error.to_string())?;
-		handle.wait().await.map(|_| ()).map_err(|error| error.to_string())
+		self.checkpoint_with(ctx)
+			.await
+			.map_err(|error| error.to_string())?;
+		handle
+			.wait()
+			.await
+			.map(|_| ())
+			.map_err(|error| error.to_string())
 	}
 
 	async fn run_move_group(
@@ -277,8 +350,15 @@ fn child_succeeded(status: JobStatus) -> bool {
 	status == JobStatus::Completed
 }
 
-fn missing_checkpoint_settlement(completed_root_ids: &[Uuid], settlements: &[OperationSettlement]) -> Option<Uuid> {
-	completed_root_ids.iter().copied().find(|id| !settlements.iter().any(|settlement| settlement.item_id == *id))
+fn missing_checkpoint_settlement(
+	completed_root_ids: &[Uuid],
+	settlements: &[OperationSettlement],
+) -> Option<Uuid> {
+	completed_root_ids.iter().copied().find(|id| {
+		!settlements
+			.iter()
+			.any(|settlement| settlement.item_id == *id)
+	})
 }
 
 impl From<OrganizeCommitOutput> for JobOutput {
@@ -309,7 +389,15 @@ mod tests {
 	#[test]
 	fn refuses_old_checkpoint_that_cannot_prove_completed_root_outcome() {
 		let completed = Uuid::from_u128(1);
-		let settlement = OperationSettlement { item_id: Uuid::from_u128(2), state: OrganizeOperationState::Applied, last_error: None, applied_at: Some(Utc::now()) };
-		assert_eq!(missing_checkpoint_settlement(&[completed], &[settlement]), Some(completed));
+		let settlement = OperationSettlement {
+			item_id: Uuid::from_u128(2),
+			state: OrganizeOperationState::Applied,
+			last_error: None,
+			applied_at: Some(Utc::now()),
+		};
+		assert_eq!(
+			missing_checkpoint_settlement(&[completed], &[settlement]),
+			Some(completed)
+		);
 	}
 }
