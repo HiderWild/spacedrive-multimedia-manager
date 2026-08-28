@@ -662,7 +662,6 @@ async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 	let root_id = Uuid::new_v4();
 	let mut root = item(task_id, root_id, None, "");
 	root.id = Some(1);
-	root.tree_start = Some(0);
 	root.tree_end = Some(1);
 	let initial_revision = repo
 		.replace_included_snapshot(
