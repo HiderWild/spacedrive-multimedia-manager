@@ -707,8 +707,333 @@ async fn accepted_additions_rebuild_included_intervals_in_one_revision() {
 		.expect("read rebuilt tree");
 	assert_eq!(models.len(), 2);
 	assert_eq!(models[0].tree_start, Some(0));
-	assert_eq!(models[0].tree_end, Some(1));
+	assert_eq!(models[0].tree_end, Some(2));
 	assert_eq!(models[1].tree_start, Some(1));
+}
+
+#[tokio::test]
+async fn decisions_normalize_nested_selection_and_repeat_without_revision() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let child_id = Uuid::new_v4();
+	let sibling_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Decision", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert active task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	let mut child = item(task_id, child_id, Some(1), "child");
+	child.id = Some(2);
+	let mut sibling = item(task_id, sibling_id, Some(1), "sibling");
+	sibling.id = Some(3);
+	let initial_revision = repo
+		.replace_included_snapshot(
+			task_id,
+			vec![root, child, sibling],
+			SnapshotTotals {
+				total_entries: 3,
+				total_units: 2,
+				total_bytes: 0,
+				scan_issue_count: 0,
+			},
+		)
+		.await
+		.expect("insert decision tree");
+
+	let root_keep = repo
+		.apply_decision(DecisionTransactionRequest {
+			task_id,
+			selection: OrganizeSelectionInput::Items {
+				item_ids: vec![root_id],
+			},
+			decision: Some(DecisionValue::keep()),
+			expected_revision: initial_revision,
+			confirm_descendant_override: false,
+			confirm_ancestor_split: false,
+		})
+		.await
+		.expect("keep root");
+	assert!(matches!(
+		root_keep,
+		OrganizeDecisionOutcome::Applied { revision: 2, .. }
+	));
+
+	let inherited = repo
+		.apply_decision(DecisionTransactionRequest {
+			task_id,
+			selection: OrganizeSelectionInput::Items {
+				item_ids: vec![child_id, root_id, child_id],
+			},
+			decision: Some(DecisionValue::keep()),
+			expected_revision: 2,
+			confirm_descendant_override: false,
+			confirm_ancestor_split: false,
+		})
+		.await
+		.expect("resolve inherited keep");
+	assert!(matches!(
+		inherited,
+		OrganizeDecisionOutcome::InheritedNoOp {
+			ancestor_item_id
+		} if ancestor_item_id == root_id
+	));
+	assert_eq!(repo.get_task_revision(task_id).await.unwrap(), 2);
+
+	let moved = repo
+		.apply_decision(DecisionTransactionRequest {
+			task_id,
+			selection: OrganizeSelectionInput::Items {
+				item_ids: vec![child_id],
+			},
+			decision: Some(DecisionValue::move_to(r"C:\Archive\\.\2026\..\Trip\\")),
+			expected_revision: 2,
+			confirm_descendant_override: false,
+			confirm_ancestor_split: true,
+		})
+		.await
+		.expect("split root decision and move child");
+	assert!(matches!(
+		moved,
+		OrganizeDecisionOutcome::Applied { revision: 3, .. }
+	));
+	let decisions = repo.dump_decisions(task_id).await.unwrap();
+	assert_eq!(decisions.len(), 1);
+	assert_eq!(decisions[0].item_id, child_id);
+	assert_eq!(
+		decisions[0].move_destination.as_deref(),
+		Some(r"c:\archive\trip")
+	);
+
+	let repeated = repo
+		.apply_decision(DecisionTransactionRequest {
+			task_id,
+			selection: OrganizeSelectionInput::Items {
+				item_ids: vec![child_id, child_id],
+			},
+			decision: Some(DecisionValue::move_to(r"c:/archive/trip")),
+			expected_revision: 3,
+			confirm_descendant_override: true,
+			confirm_ancestor_split: true,
+		})
+		.await
+		.expect("repeat move decision");
+	assert!(matches!(
+		repeated,
+		OrganizeDecisionOutcome::InheritedNoOp {
+			ancestor_item_id
+		} if ancestor_item_id == child_id
+	));
+	assert_eq!(repo.get_task_revision(task_id).await.unwrap(), 3);
+
+	let unknown_error = repo
+		.apply_decision(DecisionTransactionRequest {
+			task_id,
+			selection: OrganizeSelectionInput::Items {
+				item_ids: vec![Uuid::new_v4()],
+			},
+			decision: Some(DecisionValue::keep()),
+			expected_revision: 3,
+			confirm_descendant_override: true,
+			confirm_ancestor_split: true,
+		})
+		.await
+		.expect_err("unknown decision item must be rejected");
+	assert!(matches!(
+		unknown_error,
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree(_))
+	));
+	assert_eq!(repo.get_task_revision(task_id).await.unwrap(), 3);
+}
+
+#[tokio::test]
+async fn decision_confirmation_reports_conflicting_root_statistics() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let keep_id = Uuid::new_v4();
+	let move_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Statistics", OrganizeTaskStatus::Active))
+		.await
+		.expect("insert active task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	let mut keep = item(task_id, keep_id, Some(1), "keep");
+	keep.id = Some(2);
+	keep.kind = OrganizeItemKind::File;
+	keep.size_bytes = 10;
+	let mut moved = item(task_id, move_id, Some(1), "move");
+	moved.id = Some(3);
+	moved.kind = OrganizeItemKind::File;
+	moved.size_bytes = 20;
+	repo.replace_included_snapshot(
+		task_id,
+		vec![root, keep, moved],
+		SnapshotTotals {
+			total_entries: 3,
+			total_units: 2,
+			total_bytes: 30,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert statistics tree");
+	repo.apply_decision(DecisionTransactionRequest {
+		task_id,
+		selection: OrganizeSelectionInput::Items {
+			item_ids: vec![keep_id],
+		},
+		decision: Some(DecisionValue::keep()),
+		expected_revision: 1,
+		confirm_descendant_override: true,
+		confirm_ancestor_split: true,
+	})
+	.await
+	.expect("keep one child");
+	repo.apply_decision(DecisionTransactionRequest {
+		task_id,
+		selection: OrganizeSelectionInput::Items {
+			item_ids: vec![move_id],
+		},
+		decision: Some(DecisionValue::move_to(r"C:\Archive")),
+		expected_revision: 2,
+		confirm_descendant_override: true,
+		confirm_ancestor_split: true,
+	})
+	.await
+	.expect("move one child");
+
+	let outcome = repo
+		.apply_decision(DecisionTransactionRequest {
+			task_id,
+			selection: OrganizeSelectionInput::Items {
+				item_ids: vec![root_id],
+			},
+			decision: Some(DecisionValue::discard()),
+			expected_revision: 3,
+			confirm_descendant_override: false,
+			confirm_ancestor_split: true,
+		})
+		.await
+		.expect("get descendant confirmation");
+	assert!(matches!(
+		outcome,
+		OrganizeDecisionOutcome::ConfirmationRequired {
+			conflict_kind: sd_core::ops::organize::model::OrganizeDecisionConflictKind::DescendantOverride,
+			keep_units: 1,
+			discard_units: 0,
+			move_units: 1,
+			unmarked_units: 0,
+			affected_bytes: 30,
+			conflicting_roots,
+		} if conflicting_roots == vec![keep_id, move_id]
+	));
+	assert_eq!(repo.get_task_revision(task_id).await.unwrap(), 3);
+}
+
+#[tokio::test]
+async fn finish_deduplicates_unmarked_units_and_uses_inherited_decisions() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+
+	let unmarked_task_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(
+		unmarked_task_id,
+		r"C:\Unmarked",
+		OrganizeTaskStatus::Active,
+	))
+	.await
+	.expect("insert unmarked task");
+	let mut unmarked_root = item(unmarked_task_id, Uuid::new_v4(), None, "");
+	unmarked_root.id = Some(1);
+	let mut first = item(unmarked_task_id, Uuid::new_v4(), Some(1), "first");
+	first.id = Some(2);
+	first.kind = OrganizeItemKind::File;
+	let mut second = item(unmarked_task_id, Uuid::new_v4(), Some(1), "second");
+	second.id = Some(3);
+	second.kind = OrganizeItemKind::File;
+	repo.replace_included_snapshot(
+		unmarked_task_id,
+		vec![unmarked_root, first, second],
+		SnapshotTotals {
+			total_entries: 3,
+			total_units: 2,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert unmarked tree");
+	let unmarked = repo
+		.finish(sd_core::ops::organize::repository::OrganizeFinishInput {
+			task_id: unmarked_task_id,
+			expected_revision: 1,
+			confirm_unmarked: false,
+		})
+		.await
+		.expect("calculate unmarked units");
+	assert!(matches!(
+		unmarked,
+		sd_core::ops::organize::repository::OrganizeFinishOutcome::ConfirmationRequired {
+			unmarked_units: 2
+		}
+	));
+
+	let inherited_task_id = Uuid::new_v4();
+	let inherited_root_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(
+		inherited_task_id,
+		r"C:\Inherited",
+		OrganizeTaskStatus::Active,
+	))
+	.await
+	.expect("insert inherited task");
+	let mut inherited_root = item(inherited_task_id, inherited_root_id, None, "");
+	inherited_root.id = Some(1);
+	let mut inherited_first = item(inherited_task_id, Uuid::new_v4(), Some(1), "first");
+	inherited_first.id = Some(2);
+	inherited_first.kind = OrganizeItemKind::File;
+	let mut inherited_second = item(inherited_task_id, Uuid::new_v4(), Some(1), "second");
+	inherited_second.id = Some(3);
+	inherited_second.kind = OrganizeItemKind::File;
+	repo.replace_included_snapshot(
+		inherited_task_id,
+		vec![inherited_root, inherited_first, inherited_second],
+		SnapshotTotals {
+			total_entries: 3,
+			total_units: 2,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert inherited tree");
+	repo.apply_decision(DecisionTransactionRequest {
+		task_id: inherited_task_id,
+		selection: OrganizeSelectionInput::Items {
+			item_ids: vec![inherited_root_id],
+		},
+		decision: Some(DecisionValue::keep()),
+		expected_revision: 1,
+		confirm_descendant_override: true,
+		confirm_ancestor_split: true,
+	})
+	.await
+	.expect("keep inherited root");
+	let finished = repo
+		.finish(sd_core::ops::organize::repository::OrganizeFinishInput {
+			task_id: inherited_task_id,
+			expected_revision: 2,
+			confirm_unmarked: false,
+		})
+		.await
+		.expect("finish inherited decisions");
+	assert!(matches!(
+		finished,
+		sd_core::ops::organize::repository::OrganizeFinishOutcome::Completed { revision: 3 }
+	));
 }
 
 #[allow(dead_code)]

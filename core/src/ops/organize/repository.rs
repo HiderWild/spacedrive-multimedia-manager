@@ -6,6 +6,7 @@ use sea_orm::{
 	DatabaseTransaction, DbErr, EntityTrait, NotSet, PaginatorTrait, QueryFilter, QueryOrder, Set,
 	TransactionTrait,
 };
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -13,10 +14,14 @@ use crate::infra::db::entities::{organize_task, organize_task_item};
 use crate::infra::job::types::JobId;
 use crate::ops::organize::error::OrganizeError;
 use crate::ops::organize::model::{
-	DecisionValue, OrganizeDecisionConflictKind, OrganizeItemKind, OrganizeOperationState,
-	OrganizeTaskStatus,
+	DecisionResolution, DecisionTreeState, DecisionValue, ExplicitDecisionRoot,
+	OrganizeDecisionConflictKind, OrganizeItemKind, OrganizeOperationState, OrganizeTaskStatus,
+	TreeItemComputed,
 };
 use crate::ops::organize::path::paths_overlap;
+use crate::ops::organize::tree::{
+	compact_operation_roots, normalize_selection, reduce_progress, resolve_set_decision,
+};
 
 /// Errors returned by the organize persistence boundary.
 #[derive(Debug, Error)]
@@ -149,7 +154,7 @@ fn explicit_ancestor<'a>(
 					.is_some_and(|candidate_start| candidate_start < start)
 				&& candidate
 					.tree_end
-					.is_some_and(|candidate_end| candidate_end >= start)
+					.is_some_and(|candidate_end| candidate_end > start)
 		})
 		.max_by_key(|candidate| candidate.tree_start)
 }
@@ -243,7 +248,7 @@ fn visit_tree(
 		child_units += units;
 		child_bytes += bytes;
 	}
-	let end = *counter - 1;
+	let end = *counter;
 	let has_children = children
 		.get(&id)
 		.is_some_and(|children| !children.is_empty());
@@ -736,19 +741,37 @@ impl<'db> OrganizeRepository<'db> {
 		ensure_no_applied_items(&txn, input.task_id, &input.refresh_changed_ids).await?;
 		let additions = selected_items(&all_items, &input.include_addition_ids);
 		let mut inherited_conflicts = Vec::new();
+		let mut discard_units = 0;
+		let mut move_units = 0;
+		let mut affected_bytes = 0;
 		for addition in &additions {
 			if let Some(ancestor) = explicit_ancestor(&all_items, addition) {
 				if matches!(ancestor.decision_kind.as_deref(), Some("discard" | "move")) {
-					inherited_conflicts.push(ancestor.uuid);
+					if !inherited_conflicts.contains(&ancestor.uuid) {
+						inherited_conflicts.push(ancestor.uuid);
+						affected_bytes = affected_bytes
+							.saturating_add(ancestor.aggregate_size_bytes.max(0) as u64);
+						match ancestor.decision_kind.as_deref() {
+							Some("discard") => {
+								discard_units = discard_units
+									.saturating_add(ancestor.unit_count.unwrap_or(0).max(0) as u64);
+							}
+							Some("move") => {
+								move_units = move_units
+									.saturating_add(ancestor.unit_count.unwrap_or(0).max(0) as u64);
+							}
+							_ => {}
+						}
+					}
 				}
 			}
 		}
 		if !inherited_conflicts.is_empty() && !input.confirm_inherited_destructive {
 			txn.rollback().await?;
 			return Ok(OrganizeAcceptChangesOutcome::ConfirmationRequired {
-				discard_units: 0,
-				move_units: 0,
-				affected_bytes: additions.iter().map(|item| item.size_bytes as u64).sum(),
+				discard_units,
+				move_units,
+				affected_bytes,
 				conflicting_roots: inherited_conflicts,
 			});
 		}
@@ -890,100 +913,112 @@ impl<'db> OrganizeRepository<'db> {
 			txn.rollback().await?;
 			return Err(OrganizeError::InvalidTree("selection is empty".into()).into());
 		}
-		let selected = organize_task_item::Entity::find()
-			.filter(organize_task_item::Column::TaskId.eq(request.task_id))
-			.filter(organize_task_item::Column::Uuid.is_in(selected_ids.clone()))
-			.all(&txn)
-			.await?;
-		for item in &selected {
-			if item.operation_state == operation_state(OrganizeOperationState::Applied) {
-				txn.rollback().await?;
-				return Err(OrganizeError::AppliedDecisionImmutable(item.uuid).into());
-			}
-		}
-
 		let all_items = organize_task_item::Entity::find()
 			.filter(organize_task_item::Column::TaskId.eq(request.task_id))
+			.filter(organize_task_item::Column::MembershipState.eq("included"))
 			.all(&txn)
 			.await?;
-		let requested_decision = request.decision.as_ref();
-		let mut conflicting_roots = Vec::new();
-		for root in &selected {
-			if let Some(ancestor) = explicit_ancestor(&all_items, root) {
-				if !selected_ids.contains(&ancestor.uuid) && !request.confirm_ancestor_split {
+		let selected_unique = selected_ids.iter().copied().collect::<HashSet<_>>();
+		let selected = all_items
+			.iter()
+			.filter(|item| selected_unique.contains(&item.uuid))
+			.collect::<Vec<_>>();
+		if selected.len() != selected_unique.len() {
+			txn.rollback().await?;
+			return Err(
+				OrganizeError::InvalidTree("selection contains an unknown item".into()).into(),
+			);
+		}
+		ensure_no_applied_items(&txn, request.task_id, &selected_ids).await?;
+
+		let state = decision_tree_state(&all_items)?;
+		let intervals = state
+			.nodes
+			.iter()
+			.map(|node| (node.item_id, (node.tree_start, node.tree_end)))
+			.collect::<HashMap<_, _>>();
+		let normalized_ids = normalize_selection(&selected_ids, &intervals)?;
+		let resolution = resolve_set_decision(
+			&state,
+			&selected_ids,
+			request.decision.clone(),
+			request.confirm_descendant_override,
+			request.confirm_ancestor_split,
+		)?;
+		match resolution {
+			DecisionResolution::ConfirmationRequired {
+				conflict_kind,
+				keep_units,
+				discard_units,
+				move_units,
+				unmarked_units,
+				affected_bytes,
+				conflicting_roots,
+			} => {
+				txn.rollback().await?;
+				return Ok(OrganizeDecisionOutcome::ConfirmationRequired {
+					conflict_kind,
+					keep_units,
+					discard_units,
+					move_units,
+					unmarked_units,
+					affected_bytes,
+					conflicting_roots,
+				});
+			}
+			DecisionResolution::InheritedNoOp { ancestor_item_id } => {
+				txn.rollback().await?;
+				return Ok(OrganizeDecisionOutcome::InheritedNoOp { ancestor_item_id });
+			}
+			DecisionResolution::Apply(patch) => {
+				if decision_patch_is_noop(&all_items, &patch) {
 					txn.rollback().await?;
-					return Ok(OrganizeDecisionOutcome::ConfirmationRequired {
-						conflict_kind: OrganizeDecisionConflictKind::AncestorSplit,
-						keep_units: 0,
-						discard_units: 0,
-						move_units: 0,
-						unmarked_units: 0,
-						affected_bytes: 0,
-						conflicting_roots: vec![ancestor.uuid],
+					return Ok(OrganizeDecisionOutcome::InheritedNoOp {
+						ancestor_item_id: normalized_ids[0],
 					});
 				}
-			}
-			if let (Some(start), Some(end)) = (root.tree_start, root.tree_end) {
-				let nested = all_items
-					.iter()
-					.filter(|candidate| {
-						candidate.uuid != root.uuid
-							&& candidate.decision_kind.is_some()
-							&& candidate.membership_state == "included"
-							&& candidate.tree_start.is_some_and(|candidate_start| {
-								candidate_start >= start && candidate_start <= end
-							})
-					})
-					.collect::<Vec<_>>();
-				for candidate in &nested {
-					if destructive_overwrite(requested_decision, candidate) {
-						conflicting_roots.push(candidate.uuid);
+				for item_id in &patch.delete_roots {
+					if let Some(item) = all_items.iter().find(|item| item.uuid == *item_id) {
+						let mut active: organize_task_item::ActiveModel = item.clone().into();
+						active.decision_kind = Set(None);
+						active.move_destination = Set(None);
+						active.operation_state = Set(operation_state(OrganizeOperationState::None));
+						active.last_error = Set(None);
+						active.applied_at = Set(None);
+						active.updated_at = Set(Utc::now());
+						active.update(&txn).await?;
 					}
 				}
-				if !conflicting_roots.is_empty() && !request.confirm_descendant_override {
-					txn.rollback().await?;
-					return Ok(OrganizeDecisionOutcome::ConfirmationRequired {
-						conflict_kind: OrganizeDecisionConflictKind::DescendantOverride,
-						keep_units: 0,
-						discard_units: 0,
-						move_units: 0,
-						unmarked_units: 0,
-						affected_bytes: 0,
-						conflicting_roots,
-					});
-				}
-				for candidate in nested {
-					let mut active: organize_task_item::ActiveModel = candidate.clone().into();
-					active.decision_kind = Set(None);
-					active.move_destination = Set(None);
-					active.operation_state = Set(operation_state(OrganizeOperationState::None));
+				for root in &patch.upsert_roots {
+					let item = all_items
+						.iter()
+						.find(|item| item.uuid == root.item_id)
+						.ok_or_else(|| {
+							OrganizeError::InvalidTree("selected node disappeared".into())
+						})?;
+					let (decision_kind, move_destination, state) =
+						decision_columns(Some(&root.decision));
+					let mut active: organize_task_item::ActiveModel = item.clone().into();
+					active.decision_kind = Set(decision_kind);
+					active.move_destination = Set(move_destination);
+					active.operation_state = Set(state);
+					active.last_error = Set(None);
+					active.applied_at = Set(None);
 					active.updated_at = Set(Utc::now());
 					active.update(&txn).await?;
 				}
+				let revision = task.revision + 1;
+				let mut active: organize_task::ActiveModel = task.into();
+				active.revision = Set(revision);
+				active.updated_at = Set(Utc::now());
+				active.update(&txn).await?;
+				txn.commit().await?;
+				return Ok(OrganizeDecisionOutcome::Applied {
+					revision,
+					affected_roots: normalized_ids,
+				});
 			}
 		}
-
-		for item in &selected {
-			let (decision_kind, move_destination, state) =
-				decision_columns(request.decision.as_ref());
-			let mut active: organize_task_item::ActiveModel = item.clone().into();
-			active.decision_kind = Set(decision_kind);
-			active.move_destination = Set(move_destination);
-			active.operation_state = Set(state);
-			active.updated_at = Set(Utc::now());
-			active.update(&txn).await?;
-		}
-
-		let revision = task.revision + 1;
-		let mut active: organize_task::ActiveModel = task.into();
-		active.revision = Set(revision);
-		active.updated_at = Set(Utc::now());
-		active.update(&txn).await?;
-		txn.commit().await?;
-		Ok(OrganizeDecisionOutcome::Applied {
-			revision,
-			affected_roots: selected_ids,
-		})
 	}
 
 	pub async fn set_completed(&self, task_id: Uuid) -> Result<()> {
@@ -1015,26 +1050,25 @@ impl<'db> OrganizeRepository<'db> {
 			.filter(organize_task_item::Column::MembershipState.eq("included"))
 			.all(&txn)
 			.await?;
-		let unmarked_units = items
-			.iter()
-			.filter(|item| item.decision_kind.is_none())
-			.map(|item| item.unit_count.unwrap_or(0).max(0) as u64)
-			.sum();
+		let decision_state = decision_tree_state(&items)?;
+		let progress = reduce_progress(&decision_state.nodes, &decision_state.decisions)?;
+		let unmarked_units = progress.unmarked_units;
 		if unmarked_units > 0 && !input.confirm_unmarked {
 			txn.rollback().await?;
 			return Ok(OrganizeFinishOutcome::ConfirmationRequired { unmarked_units });
 		}
-		let pending = items
+		let operation_roots = compact_operation_roots(&decision_state.decisions);
+		let pending = operation_roots
 			.iter()
-			.filter(|item| item.operation_state == "pending")
+			.filter(|root| root.operation_state == OrganizeOperationState::Pending)
 			.count() as u64;
-		let running = items
+		let running = operation_roots
 			.iter()
-			.filter(|item| item.operation_state == "running")
+			.filter(|root| root.operation_state == OrganizeOperationState::Running)
 			.count() as u64;
-		let failed = items
+		let failed = operation_roots
 			.iter()
-			.filter(|item| item.operation_state == "failed")
+			.filter(|root| root.operation_state == OrganizeOperationState::Failed)
 			.count() as u64;
 		if pending > 0 || running > 0 || failed > 0 {
 			txn.rollback().await?;
@@ -1167,16 +1201,6 @@ fn selection_filter_matches(item: &organize_task_item::Model, filter: SelectionF
 	}
 }
 
-fn destructive_overwrite(
-	decision: Option<&DecisionValue>,
-	candidate: &organize_task_item::Model,
-) -> bool {
-	matches!(
-		decision,
-		Some(DecisionValue::Discard | DecisionValue::Move { .. })
-	) && matches!(candidate.decision_kind.as_deref(), Some("keep" | "move"))
-}
-
 fn parse_child_cursor(cursor: &str) -> Result<(String, Uuid)> {
 	let (name, uuid) = cursor
 		.rsplit_once('|')
@@ -1227,6 +1251,132 @@ fn item_active_model(draft: SnapshotItemDraft) -> organize_task_item::ActiveMode
 	}
 }
 
+fn decision_tree_state(items: &[organize_task_item::Model]) -> Result<DecisionTreeState> {
+	let nodes = items
+		.iter()
+		.filter(|item| item.membership_state == "included")
+		.map(|item| {
+			Ok(TreeItemComputed {
+				item_id: item.uuid,
+				tree_start: item.tree_start.ok_or_else(|| {
+					OrganizeError::InvalidTree("included item has no tree start".into())
+				})?,
+				tree_end: item.tree_end.ok_or_else(|| {
+					OrganizeError::InvalidTree("included item has no tree end".into())
+				})?,
+				unit_count: item
+					.unit_count
+					.ok_or_else(|| {
+						OrganizeError::InvalidTree("included item has no unit count".into())
+					})?
+					.try_into()
+					.map_err(|_| {
+						OrganizeError::InvalidTree("included item has invalid unit count".into())
+					})?,
+				aggregate_size_bytes: item.aggregate_size_bytes.max(0).try_into().map_err(
+					|_| {
+						OrganizeError::InvalidTree(
+							"included item has invalid aggregate size".into(),
+						)
+					},
+				)?,
+			})
+		})
+		.collect::<Result<Vec<_>>>()?;
+	let decisions = items
+		.iter()
+		.filter(|item| item.membership_state == "included" && item.decision_kind.is_some())
+		.map(|item| {
+			let decision = decision_value(item)?
+				.ok_or_else(|| OrganizeError::InvalidTree("decision kind disappeared".into()))?;
+			Ok(ExplicitDecisionRoot {
+				item_id: item.uuid,
+				tree_start: item.tree_start.ok_or_else(|| {
+					OrganizeError::InvalidTree("decision has no tree start".into())
+				})?,
+				tree_end: item
+					.tree_end
+					.ok_or_else(|| OrganizeError::InvalidTree("decision has no tree end".into()))?,
+				unit_count: item
+					.unit_count
+					.ok_or_else(|| OrganizeError::InvalidTree("decision has no unit count".into()))?
+					.try_into()
+					.map_err(|_| {
+						OrganizeError::InvalidTree("decision has invalid unit count".into())
+					})?,
+				aggregate_size_bytes: item.aggregate_size_bytes.max(0).try_into().map_err(
+					|_| OrganizeError::InvalidTree("decision has invalid aggregate size".into()),
+				)?,
+				decision,
+				operation_state: parse_operation_state(&item.operation_state)?,
+			})
+		})
+		.collect::<Result<Vec<_>>>()?;
+	Ok(DecisionTreeState { nodes, decisions })
+}
+
+fn decision_value(item: &organize_task_item::Model) -> Result<Option<DecisionValue>> {
+	match item.decision_kind.as_deref() {
+		None => Ok(None),
+		Some("keep") => Ok(Some(DecisionValue::keep())),
+		Some("discard") => Ok(Some(DecisionValue::discard())),
+		Some("move") => Ok(Some(DecisionValue::move_to(
+			item.move_destination.clone().ok_or_else(|| {
+				OrganizeError::InvalidTree("move decision has no destination".into())
+			})?,
+		))),
+		Some(kind) => {
+			Err(OrganizeError::InvalidTree(format!("unknown decision kind: {kind}")).into())
+		}
+	}
+}
+
+fn parse_operation_state(value: &str) -> Result<OrganizeOperationState> {
+	match value {
+		"none" => Ok(OrganizeOperationState::None),
+		"pending" => Ok(OrganizeOperationState::Pending),
+		"running" => Ok(OrganizeOperationState::Running),
+		"applied" => Ok(OrganizeOperationState::Applied),
+		"failed" => Ok(OrganizeOperationState::Failed),
+		state => {
+			Err(OrganizeError::InvalidTree(format!("unknown operation state: {state}")).into())
+		}
+	}
+}
+
+fn decision_patch_is_noop(
+	items: &[organize_task_item::Model],
+	patch: &crate::ops::organize::model::DecisionPatch,
+) -> bool {
+	let mut current = items
+		.iter()
+		.filter(|item| item.decision_kind.is_some())
+		.map(|item| {
+			(
+				item.uuid,
+				(
+					item.decision_kind.clone(),
+					item.move_destination.clone(),
+					item.operation_state.clone(),
+				),
+			)
+		})
+		.collect::<HashMap<_, _>>();
+	let original = current.clone();
+	for item_id in &patch.delete_roots {
+		current.remove(item_id);
+	}
+	for root in &patch.upsert_roots {
+		let (decision_kind, move_destination, operation_state) =
+			decision_columns(Some(&root.decision));
+		current.insert(
+			root.item_id,
+			(decision_kind, move_destination, operation_state),
+		);
+	}
+	current == original
+}
+
 fn decision_columns(decision: Option<&DecisionValue>) -> (Option<String>, Option<String>, String) {
 	match decision {
 		None => (None, None, operation_state(OrganizeOperationState::None)),
@@ -1242,9 +1392,46 @@ fn decision_columns(decision: Option<&DecisionValue>) -> (Option<String>, Option
 		),
 		Some(DecisionValue::Move { destination }) => (
 			Some("move".to_string()),
-			Some(destination.clone()),
+			Some(normalize_move_destination(destination)),
 			operation_state(OrganizeOperationState::Pending),
 		),
+	}
+}
+
+fn normalize_move_destination(destination: &str) -> String {
+	let mut key = destination.replace('/', "\\").to_lowercase();
+	if let Some(unc) = key.strip_prefix(r"\\?\unc\") {
+		key = format!(r"\\{}", unc);
+	} else if let Some(drive) = key.strip_prefix(r"\\?\") {
+		if drive.as_bytes().get(1) == Some(&b':') {
+			key = drive.to_string();
+		}
+	}
+
+	let is_unc = key.starts_with(r"\\");
+	let root_components = if is_unc { 2 } else { 1 };
+	let mut components = Vec::new();
+	for component in key.split('\\') {
+		if component.is_empty() || component == "." {
+			continue;
+		}
+		if component == ".." {
+			if components.len() > root_components {
+				components.pop();
+			}
+			continue;
+		}
+		components.push(component);
+	}
+
+	if is_unc {
+		format!(r"\\{}", components.join("\\"))
+	} else if components.len() == 1 && components[0].ends_with(':') {
+		components[0].to_string()
+	} else if let Some((drive, rest)) = components.split_first() {
+		format!("{}\\{}", drive, rest.join("\\"))
+	} else {
+		String::new()
 	}
 }
 
