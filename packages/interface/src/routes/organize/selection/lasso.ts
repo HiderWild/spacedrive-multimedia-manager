@@ -1,6 +1,13 @@
 export function computeLassoSelection(pointerDownSelection: Set<string>, currentIntersections: Set<string>, ctrlKey: boolean): Set<string> {
-	if (ctrlKey) return new Set([...pointerDownSelection, ...currentIntersections]);
-	return new Set(currentIntersections);
+	const result = new Set(pointerDownSelection);
+	for (const itemId of currentIntersections) {
+		if (ctrlKey && result.has(itemId)) {
+			result.delete(itemId);
+		} else {
+			result.add(itemId);
+		}
+	}
+	return result;
 }
 
 export function lassoRect(startX: number, startY: number, currentX: number, currentY: number): DOMRect {
