@@ -2,6 +2,7 @@ import type {
 	OrganizeCommitBlockReason,
 	OrganizeCommitInput,
 	OrganizeCommitPlanOutput,
+	OrganizeTaskStatus,
 	SdPath
 } from '@sd/ts-client';
 import {useEffect, useRef, useState, type KeyboardEvent} from 'react';
@@ -74,6 +75,7 @@ export interface OrganizeCommitDialogProps {
 	onCancel: () => void;
 	onConfirm: (input: OrganizeCommitInput) => void;
 	taskId: string;
+	taskStatus: OrganizeTaskStatus;
 }
 
 export function OrganizeCommitDialog({
@@ -81,7 +83,8 @@ export function OrganizeCommitDialog({
 	open,
 	onCancel,
 	onConfirm,
-	taskId
+	taskId,
+	taskStatus
 }: OrganizeCommitDialogProps) {
 	if (!open || !plan) return null;
 	const review = buildCommitReview(plan);
@@ -89,6 +92,7 @@ export function OrganizeCommitDialog({
 		<CommitReviewPanel
 			review={review}
 			taskId={taskId}
+			taskStatus={taskStatus}
 			onCancel={onCancel}
 			onConfirm={onConfirm}
 		/>
@@ -98,11 +102,13 @@ export function OrganizeCommitDialog({
 function CommitReviewPanel({
 	review,
 	taskId,
+	taskStatus,
 	onCancel,
 	onConfirm
 }: {
 	review: CommitReview;
 	taskId: string;
+	taskStatus: OrganizeTaskStatus;
 	onCancel: () => void;
 	onConfirm: (input: OrganizeCommitInput) => void;
 }) {
@@ -115,6 +121,7 @@ function CommitReviewPanel({
 		(!review.requiresPermanentDeleteConfirmation ||
 			permanentDeleteConfirmed) &&
 		(!review.requiresDriftConfirmation || driftConfirmed);
+	const canCommit = taskStatus === 'active';
 
 	useEffect(() => {
 		cancelRef.current?.focus();
@@ -255,6 +262,7 @@ function CommitReviewPanel({
 					<button
 						type="button"
 						disabled={
+							!canCommit ||
 							(!review.canCommit &&
 								!(
 									review.requiresDriftConfirmation &&

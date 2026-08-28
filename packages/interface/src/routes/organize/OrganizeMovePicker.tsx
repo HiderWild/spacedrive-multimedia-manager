@@ -1,14 +1,23 @@
-import type {SdPath, OrganizeTaskSummary} from '@sd/ts-client';
+import type {OrganizeTaskSummary, SdPath} from '@sd/ts-client';
 import {useState} from 'react';
 import {useLibraryMutation} from '../../contexts/SpacedriveContext';
-import {buildMoveDestinationRows, type LocationMoveDestination, type PinnedMoveDestination, type RecentMoveDestination} from './decision/moveDestinations';
-import {buildSetDecisionInput, conflictDialogModel, type OrganizeSelectionState} from './decision/contracts';
+import {
+	buildSetDecisionInput,
+	conflictDialogModel,
+	type OrganizeSelectionState
+} from './decision/contracts';
+import {
+	buildMoveDestinationRows,
+	type LocationMoveDestination,
+	type PinnedMoveDestination,
+	type RecentMoveDestination
+} from './decision/moveDestinations';
 
 export function OrganizeMovePicker(props: {
 	locations: LocationMoveDestination[];
 	recent?: RecentMoveDestination[];
 	pinned?: PinnedMoveDestination[];
-	task: Pick<OrganizeTaskSummary, 'id' | 'revision'>;
+	task: Pick<OrganizeTaskSummary, 'id' | 'revision' | 'status'>;
 	selection: OrganizeSelectionState;
 	onStale: () => void;
 	onApplied: () => void;
@@ -18,17 +27,30 @@ export function OrganizeMovePicker(props: {
 	const rows = buildMoveDestinationRows({
 		recent: props.recent ?? [],
 		locations: props.locations,
-		pinned: props.pinned ?? [],
+		pinned: props.pinned ?? []
 	});
 	const setDecision = useLibraryMutation('organize.set_decision');
-	const [confirmation, setConfirmation] = useState<ReturnType<typeof conflictDialogModel> | null>(null);
-	const [pendingDestination, setPendingDestination] = useState<SdPath | null>(null);
+	const [confirmation, setConfirmation] = useState<ReturnType<
+		typeof conflictDialogModel
+	> | null>(null);
+	const [pendingDestination, setPendingDestination] = useState<SdPath | null>(
+		null
+	);
+	const canDecide = props.task.status === 'active';
 
 	const chooseDestination = async (
 		destination: SdPath,
-		confirmationKind?: ReturnType<typeof conflictDialogModel>['kind'],
+		confirmationKind?: ReturnType<typeof conflictDialogModel>['kind']
 	) => {
-		const result = await setDecision.mutateAsync(buildSetDecisionInput(props.task.id, props.task.revision, props.selection, {Move: {destination}}, confirmationKind));
+		const result = await setDecision.mutateAsync(
+			buildSetDecisionInput(
+				props.task.id,
+				props.task.revision,
+				props.selection,
+				{Move: {destination}},
+				confirmationKind
+			)
+		);
 		if ('StaleRevision' in result) {
 			setConfirmation(null);
 			setPendingDestination(null);
@@ -52,17 +74,32 @@ export function OrganizeMovePicker(props: {
 			{rows.map((row) => (
 				<button
 					key={row.key}
-					disabled={row.kind === 'browse' && props.browseAvailable === false}
-					className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm hover:bg-app-hover"
-					onClick={() => row.kind === 'browse' ? props.onBrowse() : void chooseDestination(row.destination)}
+					disabled={
+						!canDecide ||
+						(row.kind === 'browse' &&
+							props.browseAvailable === false)
+					}
+					className="hover:bg-app-hover flex w-full items-center rounded-md px-3 py-2 text-left text-sm"
+					onClick={() =>
+						row.kind === 'browse'
+							? props.onBrowse()
+							: void chooseDestination(row.destination)
+					}
 					role="option"
 				>
 					<span>{row.name}</span>
 				</button>
 			))}
 			{confirmation && (
-				<div role="alertdialog" aria-label="Confirm move override" className="rounded-md border border-amber-500/50 p-3 text-sm text-amber-200">
-					<p>This move affects existing decisions and needs explicit confirmation.</p>
+				<div
+					role="alertdialog"
+					aria-label="Confirm move override"
+					className="rounded-md border border-amber-500/50 p-3 text-sm text-amber-200"
+				>
+					<p>
+						This move affects existing decisions and needs explicit
+						confirmation.
+					</p>
 					<ul className="mt-2 space-y-1 text-xs">
 						<li>Keep units: {confirmation.keepUnits}</li>
 						<li>Discard units: {confirmation.discardUnits}</li>
@@ -71,8 +108,25 @@ export function OrganizeMovePicker(props: {
 						<li>Affected bytes: {confirmation.affectedBytes}</li>
 					</ul>
 					<div className="mt-3 flex gap-2">
-						<button type="button" disabled={setDecision.isPending} onClick={confirmDestination} className="rounded bg-amber-600 px-2 py-1 text-xs text-white disabled:opacity-50">Confirm move</button>
-						<button type="button" disabled={setDecision.isPending} onClick={() => { setConfirmation(null); setPendingDestination(null); }} className="rounded border border-app-line px-2 py-1 text-xs">Cancel</button>
+						<button
+							type="button"
+							disabled={!canDecide || setDecision.isPending}
+							onClick={confirmDestination}
+							className="rounded bg-amber-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+						>
+							Confirm move
+						</button>
+						<button
+							type="button"
+							disabled={setDecision.isPending}
+							onClick={() => {
+								setConfirmation(null);
+								setPendingDestination(null);
+							}}
+							className="border-app-line rounded border px-2 py-1 text-xs"
+						>
+							Cancel
+						</button>
 					</div>
 				</div>
 			)}

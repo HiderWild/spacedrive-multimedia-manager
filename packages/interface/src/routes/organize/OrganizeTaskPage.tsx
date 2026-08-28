@@ -113,7 +113,7 @@ export function OrganizeTaskPage() {
 		createSelectionState()
 	);
 	const [scrollTop, setScrollTop] = useState(restoredOrganizeState.scrollTop);
-	const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
+	const [focusedItem, setFocusedItem] = useState<Model | null>(null);
 	const [movePickerOpen, setMovePickerOpen] = useState(false);
 	const [movePath, setMovePath] = useState('');
 	const [commitDialogOpen, setCommitDialogOpen] = useState(false);
@@ -167,12 +167,15 @@ export function OrganizeTaskPage() {
 			),
 		[children]
 	);
-	const focusedItem =
-		items.find((item) => item.uuid === focusedItemId) ?? null;
-	const focusedEntryUuid = focusedItem?.entry_uuid ?? '';
+	const focusedPath = focusedItem
+		? snapshotItemPath(
+				taskSummary?.root_path ?? '',
+				focusedItem.relative_path
+			)
+		: '';
 	const focusedFileQuery = useLibraryQuery(
-		{type: 'files.by_id', input: {file_id: focusedEntryUuid}},
-		{enabled: focusedEntryUuid.length > 0}
+		{type: 'files.by_path', input: {path: focusedPath}},
+		{enabled: focusedPath.length > 0}
 	);
 	const pinnedDestinations = useMemo(() => {
 		const layout = spaceLayoutQuery.data as SpaceLayout | undefined;
@@ -208,7 +211,7 @@ export function OrganizeTaskPage() {
 		setOrganizeViewMode(saved.viewMode);
 		setScrollTop(saved.scrollTop);
 		if (scrollRef.current) scrollRef.current.scrollTop = saved.scrollTop;
-		setFocusedItemId(null);
+		setFocusedItem(null);
 		setSelection(createSelectionState());
 	}, [activeTabId, getOrganizeState, organizeStateKey, taskId]);
 
@@ -267,7 +270,12 @@ export function OrganizeTaskPage() {
 				);
 	const select = (event: OrganizeSelectionEvent) => {
 		setSelection((current) => reduceSelection(current, event));
-		if ('itemId' in event && event.itemId) setFocusedItemId(event.itemId);
+		if ('itemId' in event && event.itemId) {
+			const item = items.find(
+				(candidate) => candidate.uuid === event.itemId
+			);
+			if (item) setFocusedItem(item);
+		}
 	};
 	const selectLasso = (itemIds: Set<string>) => {
 		setSelection((current) => ({
@@ -344,7 +352,7 @@ export function OrganizeTaskPage() {
 		if (next) {
 			setOrganizeFilter(next);
 			setSelection(createSelectionState());
-			setFocusedItemId(null);
+			setFocusedItem(null);
 			resetScroll();
 		}
 	};
@@ -353,7 +361,7 @@ export function OrganizeTaskPage() {
 		if (next) {
 			setOrganizeSort(next);
 			setSelection(createSelectionState());
-			setFocusedItemId(null);
+			setFocusedItem(null);
 			resetScroll();
 		}
 	};
@@ -362,7 +370,7 @@ export function OrganizeTaskPage() {
 		if (next) {
 			setOrganizeDirection(next);
 			setSelection(createSelectionState());
-			setFocusedItemId(null);
+			setFocusedItem(null);
 			resetScroll();
 		}
 	};
@@ -548,6 +556,7 @@ export function OrganizeTaskPage() {
 				plan={commitPlan.data}
 				open={commitDialogOpen}
 				taskId={taskId}
+				taskStatus={taskSummary.status}
 				onCancel={() => setCommitDialogOpen(false)}
 				onConfirm={(input) => {
 					setCommitDialogOpen(false);
@@ -607,7 +616,11 @@ export function OrganizeTaskPage() {
 						/>
 						<button
 							type="button"
-							disabled={!movePath.trim() || setDecision.isPending}
+							disabled={
+								taskSummary.status !== 'active' ||
+								!movePath.trim() ||
+								setDecision.isPending
+							}
 							onClick={() =>
 								void applyMove(
 									physicalDestination(
@@ -711,7 +724,7 @@ export function OrganizeTaskPage() {
 									if (item.kind === 'directory') {
 										setParentItemId(item.uuid);
 										setScrollTop(0);
-										setFocusedItemId(item.uuid);
+										setFocusedItem(item);
 										select({type: 'directoryChanged'});
 									}
 								}}
@@ -719,6 +732,7 @@ export function OrganizeTaskPage() {
 							>
 								<OrganizeItemThumbnail
 									item={item}
+									rootPath={taskSummary.root_path}
 									list={organizeViewMode === 'list'}
 								/>
 								<span className="truncate text-sm font-medium">
@@ -749,11 +763,25 @@ export function OrganizeTaskPage() {
 	);
 }
 
-function OrganizeItemThumbnail({item, list}: {item: Model; list: boolean}) {
-	const entryUuid = item.entry_uuid ?? '';
+function snapshotItemPath(rootPath: string, relativePath: string): string {
+	const root = rootPath.replace(/[\\/]+$/, '');
+	const relative = relativePath.replace(/^[/\\]+/, '').replace(/\//g, '\\');
+	return relative.length > 0 ? `${root}\\${relative}` : root;
+}
+
+function OrganizeItemThumbnail({
+	item,
+	rootPath,
+	list
+}: {
+	item: Model;
+	rootPath: string;
+	list: boolean;
+}) {
+	const filePath = snapshotItemPath(rootPath, item.relative_path);
 	const fileQuery = useLibraryQuery(
-		{type: 'files.by_id', input: {file_id: entryUuid}},
-		{enabled: entryUuid.length > 0, staleTime: 60_000}
+		{type: 'files.by_path', input: {path: filePath}},
+		{enabled: filePath.length > 0, staleTime: 60_000}
 	);
 	const file = fileQuery.data as File | undefined;
 	if (!file) {
