@@ -7,6 +7,7 @@ use sea_orm::{
 	TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use thiserror::Error;
@@ -554,7 +555,7 @@ pub struct DecisionRecord {
 	pub operation_state: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OrganizeTaskSummary {
 	pub id: Uuid,
 	pub name: String,
@@ -577,31 +578,31 @@ pub struct OrganizeTaskSummary {
 	pub completed_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OrganizeListInput {
 	pub statuses: Option<Vec<OrganizeTaskStatus>>,
 	pub cursor: Option<String>,
 	pub limit: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OrganizeListOutput {
 	pub tasks: Vec<OrganizeTaskSummary>,
 	pub next_cursor: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OrganizeGetInput {
 	pub task_id: Uuid,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OrganizeGetOutput {
 	pub task: OrganizeTaskSummary,
 	pub root_item_id: Uuid,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum OrganizeItemFilter {
 	All,
 	Unmarked,
@@ -615,7 +616,7 @@ pub enum OrganizeItemFilter {
 
 pub type SelectionFilter = OrganizeItemFilter;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum OrganizeItemSort {
 	Name,
 	Modified,
@@ -623,13 +624,13 @@ pub enum OrganizeItemSort {
 	Progress,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum OrganizeSortDirection {
 	Asc,
 	Desc,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OrganizeChildrenInput {
 	pub task_id: Uuid,
 	pub parent_item_id: Uuid,
@@ -640,7 +641,7 @@ pub struct OrganizeChildrenInput {
 	pub filter: OrganizeItemFilter,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OrganizeChildrenOutput {
 	pub revision: i64,
 	pub items: Vec<organize_task_item::Model>,
@@ -772,6 +773,30 @@ impl<'db> OrganizeRepository<'db> {
 		find_overlapping_active_on(self.db, root_path_key).await
 	}
 
+	/// Attaches the actual job id while the task is still waiting for its scan.
+	///
+	/// A fast job may finish before the action gets the receipt back, so a completed
+	/// task must not have its cleared job field reintroduced by this hand-off.
+	pub async fn attach_scan_job(&self, task_id: Uuid, job_id: JobId) -> Result<bool> {
+		let txn = self.db.begin().await?;
+		let task = organize_task::Entity::find_by_id(task_id)
+			.one(&txn)
+			.await?
+			.ok_or_else(|| {
+				OrganizeError::InvalidTaskState("organize task does not exist".into())
+			})?;
+		if task.status != task_status(OrganizeTaskStatus::Scanning) {
+			txn.rollback().await?;
+			return Ok(false);
+		}
+		let mut active: organize_task::ActiveModel = task.into();
+		active.scan_job_id = Set(Some(job_id.into()));
+		active.updated_at = Set(Utc::now());
+		active.update(&txn).await?;
+		txn.commit().await?;
+		Ok(true)
+	}
+
 	pub async fn replace_included_snapshot(
 		&self,
 		task_id: Uuid,
@@ -798,6 +823,87 @@ impl<'db> OrganizeRepository<'db> {
 		active.scan_issue_count = Set(totals.scan_issue_count);
 		active.pending_addition_count = Set(0);
 		active.status = Set(task_status(OrganizeTaskStatus::Active));
+		active.revision = Set(revision);
+		active.updated_at = Set(Utc::now());
+		active.update(&txn).await?;
+		txn.commit().await?;
+		Ok(revision)
+	}
+
+	/// Persists a filesystem scan after resolving parent indexes to SQLite ids.
+	///
+	/// The scan is inserted in preorder so every parent id is available before its
+	/// children. The tree rebuild computes authoritative intervals and aggregates
+	/// in the same transaction as task activation.
+	pub async fn persist_snapshot_scan(
+		&self,
+		task_id: Uuid,
+		_scan_device_slug: String,
+		scan: crate::ops::organize::snapshot::SnapshotScanResult,
+	) -> Result<i64> {
+		let txn = self.db.begin().await?;
+		let task = task_in_state(&txn, task_id, &[OrganizeTaskStatus::Scanning]).await?;
+		ensure_no_decisions(&txn, task_id).await?;
+		organize_task_item::Entity::delete_many()
+			.filter(organize_task_item::Column::TaskId.eq(task_id))
+			.exec(&txn)
+			.await?;
+
+		let now = Utc::now();
+		let mut row_ids = Vec::with_capacity(scan.items.len());
+		for item in scan.items {
+			let provisional_start = row_ids.len() as i64 * 2;
+			let parent_id = match item.parent_index {
+				Some(index) => Some(row_ids.get(index).copied().ok_or_else(|| {
+					OrganizeError::InvalidTree("snapshot parent index is invalid".into())
+				})?),
+				None => None,
+			};
+			let inserted = item_active_model(SnapshotItemDraft {
+				id: None,
+				uuid: item.uuid,
+				task_id,
+				parent_id,
+				entry_uuid: None,
+				relative_path: item.relative_path,
+				relative_path_key: item.relative_path_key,
+				name: item.name,
+				extension: item.extension,
+				kind: item.kind,
+				size_bytes: item.size_bytes,
+				aggregate_size_bytes: item.size_bytes,
+				modified_at_100ns: item.modified_at_100ns,
+				metadata_signature: item.metadata_signature,
+				tree_start: Some(provisional_start),
+				tree_end: Some(provisional_start + 1),
+				unit_count: Some(1),
+				membership_state: "included".into(),
+				external_state: "present".into(),
+				decision_kind: None,
+				move_destination: None,
+				operation_state: OrganizeOperationState::None,
+				last_error: None,
+				applied_at: None,
+				created_at: now,
+				updated_at: now,
+			})
+			.insert(&txn)
+			.await?;
+			row_ids.push(inserted.id);
+		}
+
+		let (total_entries, total_units, total_bytes) =
+			rebuild_included_tree(&txn, task_id).await?;
+		let revision = task.revision + 1;
+		let mut active: organize_task::ActiveModel = task.into();
+		active.total_entries = Set(total_entries);
+		active.total_units = Set(total_units);
+		active.total_bytes = Set(total_bytes);
+		active.scan_issue_count = Set(scan.totals.scan_issue_count);
+		active.pending_addition_count = Set(0);
+		active.status = Set(task_status(OrganizeTaskStatus::Active));
+		active.snapshot_version = Set(1);
+		active.scan_job_id = Set(None);
 		active.revision = Set(revision);
 		active.updated_at = Set(Utc::now());
 		active.update(&txn).await?;

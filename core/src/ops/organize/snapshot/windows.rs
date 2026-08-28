@@ -108,12 +108,38 @@ pub fn metadata_signature(metadata: &Metadata) -> String {
 	format!("{}:{}:{}", metadata.len(), modified, readonly(metadata))
 }
 
+/// Adds stable path and type context to the cheap metadata signature.
+pub fn metadata_signature_for(
+	relative_path_key: &str,
+	kind: OrganizeItemKind,
+	size_bytes: i64,
+	modified_at_100ns: i64,
+	extension: Option<&str>,
+) -> String {
+	format!(
+		"{}|{:?}|{}|{}|{}",
+		relative_path_key,
+		kind,
+		size_bytes,
+		modified_at_100ns,
+		extension.unwrap_or_default().to_lowercase()
+	)
+}
+
 fn scan_sync(root: &Path) -> Result<SnapshotScanResult, OrganizeError> {
 	let root_metadata = fs::symlink_metadata(root).map_err(|error| {
 		OrganizeError::InvalidPhysicalPath(format!("{}: {error}", root.display()))
 	})?;
 	let mut items = Vec::new();
-	walk(root, &root_metadata, None, String::new(), &mut items)?;
+	let mut scan_issue_count = 0;
+	walk(
+		root,
+		&root_metadata,
+		None,
+		String::new(),
+		&mut items,
+		&mut scan_issue_count,
+	)?;
 	let totals = SnapshotTotals {
 		total_entries: items.len() as i64,
 		total_units: items
@@ -121,7 +147,7 @@ fn scan_sync(root: &Path) -> Result<SnapshotScanResult, OrganizeError> {
 			.filter(|item| !matches!(item.kind, OrganizeItemKind::Directory))
 			.count() as i64,
 		total_bytes: items.iter().map(|item| item.size_bytes.max(0)).sum(),
-		scan_issue_count: 0,
+		scan_issue_count,
 	};
 	Ok(SnapshotScanResult { items, totals })
 }
@@ -132,64 +158,94 @@ fn walk(
 	parent_index: Option<usize>,
 	relative_path: String,
 	items: &mut Vec<SnapshotScanItem>,
+	scan_issue_count: &mut i64,
 ) -> Result<(), OrganizeError> {
 	let kind = classify(metadata);
 	let index = items.len();
-	let name = if relative_path.is_empty() {
-		path.file_name()
-			.and_then(|name| name.to_str())
-			.unwrap_or_default()
-			.to_string()
+	let name = path
+		.file_name()
+		.and_then(|name| name.to_str())
+		.unwrap_or_default()
+		.to_string();
+	let relative_path_key = normalize_relative_key(&relative_path);
+	let extension = path
+		.extension()
+		.and_then(|value| value.to_str())
+		.map(str::to_lowercase);
+	let size_bytes = if matches!(
+		kind,
+		OrganizeItemKind::Directory | OrganizeItemKind::ReparsePoint
+	) {
+		0
 	} else {
-		path.file_name()
-			.and_then(|name| name.to_str())
-			.unwrap_or_default()
-			.to_string()
+		metadata.len() as i64
 	};
+	let modified_at_100ns = modified_at_100ns(metadata);
 	items.push(SnapshotScanItem {
 		uuid: Uuid::new_v4(),
 		parent_index,
 		relative_path: relative_path.clone(),
-		relative_path_key: normalize_relative_key(&relative_path),
+		relative_path_key: relative_path_key.clone(),
 		name,
-		extension: path
-			.extension()
-			.and_then(|value| value.to_str())
-			.map(str::to_lowercase),
+		extension: extension.clone(),
 		kind,
-		size_bytes: if matches!(
+		size_bytes,
+		modified_at_100ns,
+		metadata_signature: metadata_signature_for(
+			&relative_path_key,
 			kind,
-			OrganizeItemKind::Directory | OrganizeItemKind::ReparsePoint
-		) {
-			0
-		} else {
-			metadata.len() as i64
-		},
-		modified_at_100ns: modified_at_100ns(metadata),
-		metadata_signature: metadata_signature(metadata),
+			size_bytes,
+			modified_at_100ns,
+			extension.as_deref(),
+		),
 	});
 
 	if !matches!(kind, OrganizeItemKind::Directory) {
 		return Ok(());
 	}
-	let mut entries = fs::read_dir(path)
-		.map_err(|error| {
-			OrganizeError::InvalidPhysicalPath(format!("{}: {error}", path.display()))
-		})?
-		.collect::<Result<Vec<_>, _>>()
-		.map_err(|error| {
-			OrganizeError::InvalidPhysicalPath(format!("{}: {error}", path.display()))
-		})?;
+	let mut entries = Vec::new();
+	let read_dir = match fs::read_dir(path) {
+		Ok(read_dir) => read_dir,
+		Err(error) if parent_index.is_none() && relative_path.is_empty() => {
+			return Err(OrganizeError::InvalidPhysicalPath(format!(
+				"{}: {error}",
+				path.display()
+			)))
+		}
+		Err(_) => {
+			items[index].kind = OrganizeItemKind::Unreadable;
+			*scan_issue_count += 1;
+			return Ok(());
+		}
+	};
+	for entry in read_dir {
+		match entry {
+			Ok(entry) => entries.push(entry),
+			Err(_) => {
+				*scan_issue_count += 1;
+				break;
+			}
+		}
+	}
 	entries.sort_by(|left, right| path_key_for_entry(left).cmp(&path_key_for_entry(right)));
 	for entry in entries {
 		let child_path = entry.path();
 		let child_metadata = match fs::symlink_metadata(&child_path) {
 			Ok(metadata) => metadata,
 			Err(error) => {
-				return Err(OrganizeError::InvalidPhysicalPath(format!(
-					"{}: {error}",
-					child_path.display()
-				)))
+				let child_relative = if relative_path.is_empty() {
+					entry_name(&entry)
+				} else {
+					format!("{}\\{}", relative_path, entry_name(&entry))
+				};
+				items.push(unreadable_item(
+					child_path,
+					Some(index),
+					child_relative,
+					format!("metadata unavailable: {error}"),
+				));
+				*scan_issue_count += 1;
+				continue;
 			}
 		};
 		let child_relative = if relative_path.is_empty() {
@@ -203,9 +259,37 @@ fn walk(
 			Some(index),
 			child_relative,
 			items,
+			scan_issue_count,
 		)?;
 	}
 	Ok(())
+}
+
+fn unreadable_item(
+	path: PathBuf,
+	parent_index: Option<usize>,
+	relative_path: String,
+	metadata_signature: String,
+) -> SnapshotScanItem {
+	SnapshotScanItem {
+		uuid: Uuid::new_v4(),
+		parent_index,
+		name: path
+			.file_name()
+			.and_then(|name| name.to_str())
+			.unwrap_or_default()
+			.to_string(),
+		relative_path_key: normalize_relative_key(&relative_path),
+		relative_path,
+		extension: path
+			.extension()
+			.and_then(|value| value.to_str())
+			.map(str::to_lowercase),
+		kind: OrganizeItemKind::Unreadable,
+		size_bytes: 0,
+		modified_at_100ns: 0,
+		metadata_signature,
+	}
 }
 
 fn classify(metadata: &Metadata) -> OrganizeItemKind {

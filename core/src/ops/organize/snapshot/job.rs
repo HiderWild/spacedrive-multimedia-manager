@@ -4,9 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Persistable input for a recursive metadata snapshot.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Job)]
 pub struct OrganizeSnapshotJob {
+	pub task_id: uuid::Uuid,
 	pub root_path: PathBuf,
+	pub device_slug: String,
 }
 
 /// Progress emitted while walking a snapshot.
@@ -54,9 +56,27 @@ impl JobHandler for OrganizeSnapshotJob {
 
 	async fn run(&mut self, ctx: JobContext<'_>) -> JobResult<Self::Output> {
 		ctx.check_interrupt().await?;
-		let result = scan_windows_snapshot(self.root_path.clone())
-			.await
-			.map_err(|error| JobError::execution(error.to_string()))?;
+		let result = match scan_windows_snapshot(self.root_path.clone()).await {
+			Ok(result) => result,
+			Err(error) => {
+				let message = error.to_string();
+				let _ = crate::ops::organize::repository::OrganizeRepository::new(ctx.library_db())
+					.fail_snapshot(self.task_id, message.clone())
+					.await;
+				return Err(JobError::execution(message));
+			}
+		};
+		if let Err(error) =
+			crate::ops::organize::repository::OrganizeRepository::new(ctx.library_db())
+				.persist_snapshot_scan(self.task_id, self.device_slug.clone(), result.clone())
+				.await
+		{
+			let message = error.to_string();
+			let _ = crate::ops::organize::repository::OrganizeRepository::new(ctx.library_db())
+				.fail_snapshot(self.task_id, message.clone())
+				.await;
+			return Err(JobError::execution(message));
+		}
 		ctx.progress(Progress::structured(SnapshotProgress {
 			current_path: self.root_path.display().to_string(),
 			entries_scanned: result.items.len(),

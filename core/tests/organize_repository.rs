@@ -12,6 +12,7 @@ use sd_core::ops::organize::repository::{
 	OrganizeRepositoryError, OrganizeSelectionInput, OrganizeSortDirection, SelectionFilter,
 	SnapshotItemDraft, SnapshotTotals,
 };
+use sd_core::ops::organize::snapshot::scan_windows_snapshot;
 use sea_orm::{
 	ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, PaginatorTrait,
 	QueryFilter, QueryOrder, Statement,
@@ -19,6 +20,43 @@ use sea_orm::{
 use sea_orm_migration::MigratorTrait;
 use tempfile::TempDir;
 use uuid::Uuid;
+
+#[cfg(windows)]
+#[tokio::test]
+async fn recursive_snapshot_persists_parent_ids_and_activates_task() {
+	let (temp_dir, db) = migrated_temp_db().await;
+	let root = temp_dir.path().join("album");
+	std::fs::create_dir(&root).expect("create snapshot root");
+	std::fs::create_dir(root.join("nested")).expect("create nested directory");
+	std::fs::write(root.join("nested/photo.jpg"), b"photo").expect("create photo");
+	let task_id = Uuid::new_v4();
+	let repo = OrganizeRepository::new(&db);
+	repo.insert_scanning_task(task(
+		task_id,
+		&root.to_string_lossy(),
+		OrganizeTaskStatus::Scanning,
+	))
+	.await
+	.expect("insert scanning task");
+
+	let scan = scan_windows_snapshot(&root)
+		.await
+		.expect("scan recursive snapshot");
+	assert_eq!(scan.totals.total_entries, 3);
+	assert_eq!(scan.totals.total_units, 1);
+	assert!(scan.items[1].parent_index.is_some());
+
+	let revision = repo
+		.persist_snapshot_scan(task_id, "device".into(), scan)
+		.await
+		.expect("persist recursive snapshot");
+	assert_eq!(revision, 1);
+	let detail = repo.get_task(task_id).await.expect("read active task");
+	assert_eq!(detail.task.status, OrganizeTaskStatus::Active);
+	assert_eq!(detail.task.total_entries, 3);
+	assert_eq!(detail.task.total_bytes, 5);
+	assert_eq!(detail.task.scan_job_id, None);
+}
 
 async fn migrated_temp_db() -> (TempDir, DatabaseConnection) {
 	let temp_dir = TempDir::new().expect("temporary database directory");

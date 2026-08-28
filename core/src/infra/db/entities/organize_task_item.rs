@@ -2,8 +2,9 @@
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, Type)]
 #[sea_orm(table_name = "organize_task_items")]
 pub struct Model {
 	#[sea_orm(primary_key)]

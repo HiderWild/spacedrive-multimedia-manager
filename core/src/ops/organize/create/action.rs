@@ -120,7 +120,7 @@ impl LibraryAction for OrganizeCreateAction {
 			name,
 			root_path: identity.display_path.to_string_lossy().into_owned(),
 			root_path_key: identity.path_key,
-			device_slug: identity.device_slug,
+			device_slug: identity.device_slug.clone(),
 			volume_id: None,
 			root_entry_uuid: None,
 			status: OrganizeTaskStatus::Scanning,
@@ -142,14 +142,40 @@ impl LibraryAction for OrganizeCreateAction {
 			.insert_scanning_task(draft)
 			.await
 		{
-			Ok(_) => Ok(OrganizeCreateOutcome::Created {
-				task_id,
-				status: OrganizeTaskStatus::Scanning,
-				snapshot_job: JobReceipt {
-					id: scan_job_id,
-					job_name: "organize.snapshot".into(),
-				},
-			}),
+			Ok(_) => {
+				let snapshot_job = match library
+					.jobs()
+					.dispatch(crate::ops::organize::snapshot::OrganizeSnapshotJob {
+						task_id,
+						root_path: identity.display_path,
+						device_slug: identity.device_slug,
+					})
+					.await
+				{
+					Ok(job) => job,
+					Err(error) => {
+						let _ = OrganizeRepository::new(library.db().conn())
+							.fail_snapshot(task_id, error.to_string())
+							.await;
+						return Err(ActionError::Job(error));
+					}
+				};
+				if let Err(error) = OrganizeRepository::new(library.db().conn())
+					.attach_scan_job(task_id, snapshot_job.id())
+					.await
+				{
+					let message = error.to_string();
+					let _ = OrganizeRepository::new(library.db().conn())
+						.fail_snapshot(task_id, message.clone())
+						.await;
+					return Err(ActionError::Database(message));
+				}
+				Ok(OrganizeCreateOutcome::Created {
+					task_id,
+					status: OrganizeTaskStatus::Scanning,
+					snapshot_job: snapshot_job.into(),
+				})
+			}
 			Err(crate::ops::organize::repository::OrganizeRepositoryError::Organize(
 				crate::ops::organize::error::OrganizeError::UnsafeTopology(message),
 			)) => {

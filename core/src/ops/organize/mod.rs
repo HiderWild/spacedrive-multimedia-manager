@@ -1,7 +1,10 @@
+pub mod create;
 pub mod error;
 pub mod model;
 pub mod path;
+pub mod query;
 pub mod repository;
+pub mod snapshot;
 pub mod tree;
 
 pub use error::OrganizeError;
