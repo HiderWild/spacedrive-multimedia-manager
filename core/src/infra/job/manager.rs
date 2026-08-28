@@ -108,8 +108,31 @@ impl JobManager {
 	where
 		J: Job + JobHandler + DynJob,
 	{
-		self.dispatch_with_priority_and_id(job_id, job, JobPriority::NORMAL, None)
+		self.dispatch_with_priority_and_id(job_id, job, JobPriority::NORMAL, None, None)
 			.await
+	}
+
+	/// Dispatch a child job using a caller-provided identity and persistent parent link.
+	///
+	/// The link lets restart recovery settle a parent before considering a destructive
+	/// child whose process-local handle was lost.
+	pub async fn dispatch_child_with_id<J>(
+		&self,
+		parent_job_id: JobId,
+		job_id: JobId,
+		job: J,
+	) -> JobResult<JobHandle>
+	where
+		J: Job + JobHandler + DynJob,
+	{
+		self.dispatch_with_priority_and_id(
+			job_id,
+			job,
+			JobPriority::NORMAL,
+			None,
+			Some(parent_job_id),
+		)
+		.await
 	}
 
 	/// Dispatch a job by name and parameters (useful for APIs)
@@ -565,7 +588,7 @@ impl JobManager {
 	where
 		J: Job + JobHandler + DynJob,
 	{
-		self.dispatch_with_priority_and_id(JobId::new(), job, priority, action_context)
+		self.dispatch_with_priority_and_id(JobId::new(), job, priority, action_context, None)
 			.await
 	}
 
@@ -575,6 +598,7 @@ impl JobManager {
 		job: J,
 		priority: JobPriority,
 		action_context: Option<ActionContext>,
+		parent_job_id: Option<JobId>,
 	) -> JobResult<JobHandle>
 	where
 		J: Job + JobHandler + DynJob,
@@ -624,7 +648,7 @@ impl JobManager {
 				priority: Set(priority.0),
 				progress_type: Set(None),
 				progress_data: Set(None),
-				parent_job_id: Set(None),
+				parent_job_id: Set(parent_job_id.map(|id| id.to_string())),
 				created_at: Set(Utc::now()),
 				started_at: Set(None),
 				completed_at: Set(None),
@@ -1358,6 +1382,14 @@ impl JobManager {
 		}))
 	}
 
+	/// Mark a persisted job terminal when restart recovery cannot prove that a
+	/// destructive child was not already executing.
+	pub async fn fail_persisted_job(&self, job_id: JobId, message: String) -> JobResult<()> {
+		self.db
+			.update_status_and_progress(job_id, JobStatus::Failed, None, Some(message))
+			.await
+	}
+
 	/// Resume interrupted jobs from the last run
 	async fn resume_interrupted_jobs(&self) -> JobResult<()> {
 		warn!(
@@ -1367,20 +1399,32 @@ impl JobManager {
 		info!("Checking for interrupted jobs to resume");
 
 		use sea_orm::{ColumnTrait, QueryFilter};
-		let interrupted = database::jobs::Entity::find()
+		let mut interrupted = database::jobs::Entity::find()
 			.filter(database::jobs::Column::Status.is_in([
 				JobStatus::Running.to_string(),
 				JobStatus::Paused.to_string(),
 			]))
 			.all(self.db.conn())
 			.await?;
+		// Reconcile parents before their children. A parent may safely converge a
+		// persisted child to Failed when its in-memory handle was lost; handling a
+		// child first could otherwise rerun a destructive operation after restart.
+		sort_interrupted_jobs_for_recovery(&mut interrupted);
 
 		warn!(
 			"DEBUG: Found {} interrupted jobs to resume",
 			interrupted.len()
 		);
-		for job_record in interrupted {
-			if let Ok(job_id) = job_record.id.parse::<Uuid>().map(JobId) {
+		for listed_record in interrupted {
+			if let Ok(job_id) = listed_record.id.parse::<Uuid>().map(JobId) {
+				// Earlier parent reconciliation can make a listed child terminal. Reload
+				// rather than resuming the stale snapshot captured before that change.
+				let Some(job_record) = self.db.get_job(job_id).await? else {
+					continue;
+				};
+				if !matches!(job_record.status.as_str(), "running" | "paused") {
+					continue;
+				}
 				warn!(
 					"DEBUG: Processing interrupted job {}: {} with status {}",
 					job_id, job_record.name, job_record.status
@@ -1397,13 +1441,14 @@ impl JobManager {
 					job_id,
 					job_record.state.len()
 				);
-				match REGISTRY.deserialize_job(&job_record.name, &job_record.state) {
+				let resume_state = resume_state_for_interrupted_job(&self.db, &job_record).await?;
+				match REGISTRY.deserialize_job(&job_record.name, &resume_state) {
 					Ok(erased_job) => {
 						warn!("DEBUG: Successfully deserialized job {}", job_id);
 						info!(
 							"RESUME_STATE_LOAD: Job {} successfully deserialized {} bytes of state",
 							job_id,
-							job_record.state.len()
+							resume_state.len()
 						);
 						// Create channels for the resumed job
 						let (status_tx, status_rx) = watch::channel(JobStatus::Paused);
@@ -1936,11 +1981,8 @@ impl JobManager {
 					None
 				};
 
-				Some((
-					job_record.name.clone(),
-					job_record.state.clone(),
-					action_context,
-				))
+				let resume_state = resume_state_for_interrupted_job(&self.db, &job_record).await?;
+				Some((job_record.name.clone(), resume_state, action_context))
 			}
 		};
 
@@ -2394,6 +2436,25 @@ impl JobManager {
 	}
 }
 
+async fn resume_state_for_interrupted_job(
+	db: &JobDb,
+	job_record: &database::jobs::Model,
+) -> JobResult<Vec<u8>> {
+	use database::checkpoint;
+
+	let checkpoint = checkpoint::Entity::find_by_id(job_record.id.clone())
+		.one(db.conn())
+		.await?;
+	Ok(checkpoint
+		.filter(|checkpoint| !checkpoint.checkpoint_data.is_empty())
+		.map(|checkpoint| checkpoint.checkpoint_data)
+		.unwrap_or_else(|| job_record.state.clone()))
+}
+
+fn sort_interrupted_jobs_for_recovery(records: &mut [database::jobs::Model]) {
+	records.sort_by_key(|record| record.parent_job_id.is_some());
+}
+
 /// Checkpoint handler that uses the job database
 struct DbCheckpointHandler {
 	db: Arc<JobDb>,
@@ -2441,3 +2502,67 @@ impl CheckpointHandler for DbCheckpointHandler {
 }
 
 use uuid::Uuid;
+
+#[cfg(test)]
+mod tests {
+	use super::{resume_state_for_interrupted_job, DbCheckpointHandler};
+	use crate::infra::job::{
+		context::CheckpointHandler,
+		database::{self, JobDb},
+		types::{JobId, JobStatus},
+	};
+	use chrono::Utc;
+	use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+	use std::sync::Arc;
+	use tempfile::tempdir;
+	use uuid::Uuid;
+
+	#[tokio::test]
+	async fn interrupted_resume_uses_checkpoint_state_over_initial_job_state() {
+		let data_dir = tempdir().unwrap();
+		let db = Arc::new(JobDb::new(
+			database::init_database(&data_dir.path().join("jobs.db"))
+				.await
+				.unwrap(),
+		));
+		let job_id = JobId(Uuid::from_u128(1));
+		let initial_state = vec![1];
+		let checkpoint_state = vec![2];
+
+		database::jobs::ActiveModel {
+			id: Set(job_id.to_string()),
+			name: Set("organize_commit".to_string()),
+			state: Set(initial_state.clone()),
+			status: Set(JobStatus::Paused.to_string()),
+			priority: Set(0),
+			progress_type: Set(None),
+			progress_data: Set(None),
+			parent_job_id: Set(None),
+			created_at: Set(Utc::now()),
+			started_at: Set(None),
+			completed_at: Set(None),
+			paused_at: Set(None),
+			error_message: Set(None),
+			warnings: Set(None),
+			non_critical_errors: Set(None),
+			metrics: Set(None),
+			action_context: Set(None),
+			action_type: Set(None),
+		}
+		.insert(db.conn())
+		.await
+		.unwrap();
+
+		DbCheckpointHandler { db: db.clone() }
+			.save_checkpoint(job_id, Some(checkpoint_state.clone()))
+			.await
+			.unwrap();
+
+		let record = db.get_job(job_id).await.unwrap().unwrap();
+		assert_eq!(
+			resume_state_for_interrupted_job(&db, &record).await.unwrap(),
+			checkpoint_state,
+			"the state sent to the resumed executor must be the checkpoint, not the dispatch-time state"
+		);
+	}
+}

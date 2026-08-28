@@ -212,9 +212,19 @@ impl OrganizeCommitJob {
 			};
 			let status = info.status;
 			if !status.is_terminal() {
-				return Err(JobError::execution(format!(
-					"active organize child job {child_id} is not terminal: {status:?}"
-				)));
+				let outcome = child_recovery_for_persisted_status(child_id, status);
+				ctx.library()
+					.jobs()
+					.fail_persisted_job(
+						child_id,
+						outcome.failure_message().unwrap_or_else(|| {
+							format!("child job {child_id} could not be safely recovered")
+						}),
+					)
+					.await?;
+				return self
+					.settle_reconciled_child(ctx, settlements, child_id, outcome)
+					.await;
 			}
 			status
 		};
@@ -281,7 +291,8 @@ impl OrganizeCommitJob {
 		let handle = ctx
 			.library()
 			.jobs()
-			.dispatch_with_id(
+			.dispatch_child_with_id(
+				ctx.id(),
 				child_id,
 				DeleteJob::permanent(SdPathBatch::new(vec![root.source.clone()]), true),
 			)
@@ -323,7 +334,7 @@ impl OrganizeCommitJob {
 		let handle = ctx
 			.library()
 			.jobs()
-			.dispatch_with_id(child_id, job)
+			.dispatch_child_with_id(ctx.id(), child_id, job)
 			.await
 			.map_err(|error| error.to_string())?;
 		let result = handle
@@ -451,6 +462,12 @@ fn child_settlement_for_status(child_id: JobId, status: Option<JobStatus>) -> Ch
 	}
 }
 
+fn child_recovery_for_persisted_status(child_id: JobId, status: JobStatus) -> ChildSettlement {
+	ChildSettlement::Failed(format!(
+		"child job {child_id} was {status:?} after restart and was not redispatched"
+	))
+}
+
 fn missing_checkpoint_settlement(
 	completed_root_ids: &[Uuid],
 	settlements: &[OperationSettlement],
@@ -475,8 +492,9 @@ impl From<OrganizeCommitOutput> for JobOutput {
 #[cfg(test)]
 mod tests {
 	use super::{
-		child_dispatch_id, child_settlement_for_status, child_succeeded,
-		missing_checkpoint_settlement, ChildDispatchKind, ChildSettlement, OperationSettlement,
+		child_dispatch_id, child_recovery_for_persisted_status, child_settlement_for_status,
+		child_succeeded, missing_checkpoint_settlement, ChildDispatchKind, ChildSettlement,
+		OperationSettlement,
 	};
 	use crate::infra::job::{types::JobId, JobStatus};
 	use crate::ops::organize::commit::{OrganizeCommitCheckpoint, OrganizeCommitPhase};
@@ -549,5 +567,19 @@ mod tests {
 				"child dispatch intent {child_id} has no persisted job record"
 			))
 		);
+	}
+
+	#[test]
+	fn persisted_non_terminal_child_is_failed_and_settled_without_redispatch() {
+		let child_id = JobId(Uuid::from_u128(4));
+
+		for status in [JobStatus::Queued, JobStatus::Running, JobStatus::Paused] {
+			assert_eq!(
+				child_recovery_for_persisted_status(child_id, status),
+				ChildSettlement::Failed(format!(
+					"child job {child_id} was {status:?} after restart and was not redispatched"
+				))
+			);
+		}
 	}
 }
