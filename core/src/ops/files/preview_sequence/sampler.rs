@@ -107,15 +107,15 @@ pub fn select_representatives(
 		.count();
 	if has_image && has_video && available_video > 3 {
 		let mut video_count = 0;
+		let selected_paths = selected
+			.iter()
+			.map(|candidate| candidate.normalized_path.as_str())
+			.collect::<std::collections::HashSet<_>>();
 		let mut image_replacements = branches
 			.values()
 			.flatten()
 			.filter(|candidate| candidate.media_kind == PreviewMediaKind::Image)
-			.filter(|candidate| {
-				!selected
-					.iter()
-					.any(|selected| selected.normalized_path == candidate.normalized_path)
-			})
+			.filter(|candidate| !selected_paths.contains(candidate.normalized_path.as_str()))
 			.cloned();
 		for item in &mut selected {
 			if item.media_kind == PreviewMediaKind::Video {
@@ -125,6 +125,15 @@ pub fn select_representatives(
 						*item = replacement.clone();
 					}
 				}
+				let mut retained_videos = 0;
+				selected.retain(|item| {
+					if item.media_kind == PreviewMediaKind::Video {
+						retained_videos += 1;
+						retained_videos <= 3
+					} else {
+						true
+					}
+				});
 			}
 		}
 		let mut retained_videos = 0;
