@@ -16,6 +16,8 @@ pub mod entry_closure;
 pub mod image_media_data;
 pub mod location;
 pub mod mime_type;
+pub mod organize_task;
+pub mod organize_task_item;
 pub mod user_metadata;
 
 // Tagging system
@@ -59,6 +61,8 @@ pub use entry_closure::Entity as EntryClosure;
 pub use image_media_data::Entity as ImageMediaData;
 pub use indexer_rule::Entity as IndexerRule;
 pub use location::Entity as Location;
+pub use organize_task::Entity as OrganizeTask;
+pub use organize_task_item::Entity as OrganizeTaskItem;
 pub use sidecar::Entity as Sidecar;
 pub use sidecar_availability::Entity as SidecarAvailability;
 pub use space::Entity as Space;
@@ -97,6 +101,8 @@ pub use entry_closure::ActiveModel as EntryClosureActive;
 pub use image_media_data::ActiveModel as ImageMediaDataActive;
 pub use indexer_rule::ActiveModel as IndexerRuleActive;
 pub use location::ActiveModel as LocationActive;
+pub use organize_task::ActiveModel as OrganizeTaskActive;
+pub use organize_task_item::ActiveModel as OrganizeTaskItemActive;
 pub use sidecar::ActiveModel as SidecarActive;
 pub use sidecar_availability::ActiveModel as SidecarAvailabilityActive;
 pub use space::ActiveModel as SpaceActive;
