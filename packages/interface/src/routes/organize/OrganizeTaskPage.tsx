@@ -2,7 +2,7 @@ import {ArrowLeft, CaretRight, FolderOpen} from '@phosphor-icons/react';
 import {useMemo, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
 import type {File, Model, SdPath} from '@sd/ts-client';
-import {useLibraryQuery} from '../../contexts/SpacedriveContext';
+import {useLibraryQuery, useLibraryMutation} from '../../contexts/SpacedriveContext';
 import {OrganizeDecisionBar} from './OrganizeDecisionBar';
 import {OrganizeGrid} from './OrganizeGrid';
 import {OrganizePreviewPane} from './OrganizePreviewPane';
@@ -13,7 +13,9 @@ import {useOrganizeTask} from './useOrganizeTask';
 import {createSelectionState, reduceSelection, type OrganizeSelectionEvent} from './selection';
 import type {OrganizeSelectionState} from './decision/contracts';
 import {buildSetDecisionInput} from './decision/contracts';
-import {useLibraryMutation} from '../../contexts/SpacedriveContext';
+import {OrganizeChangesPanel} from './OrganizeChangesPanel';
+import {OrganizeCommitDialog, buildCommitReview} from './OrganizeCommitDialog';
+import {OrganizeLifecycleDialogs} from './OrganizeLifecycleDialogs';
 
 export function OrganizeTaskPage() {
 	const {taskId = ''} = useParams();
@@ -25,7 +27,15 @@ export function OrganizeTaskPage() {
 	const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
 	const [movePickerOpen, setMovePickerOpen] = useState(false);
 	const [movePath, setMovePath] = useState('');
+	const [commitDialogOpen, setCommitDialogOpen] = useState(false);
 	const setDecision = useLibraryMutation('organize.set_decision');
+	const commit = useLibraryMutation('organize.commit');
+	const scanChanges = useLibraryMutation('organize.scan_changes');
+	const retrySnapshot = useLibraryMutation('organize.retry_snapshot');
+	const finish = useLibraryMutation('organize.finish');
+	const reopen = useLibraryMutation('organize.reopen');
+	const deleteTaskRecord = useLibraryMutation('organize.delete_task');
+	const commitPlan = useLibraryQuery({type: 'organize.commit_plan', input: {task_id: taskId, expected_revision: taskSummary?.revision ?? 0}}, {enabled: Boolean(taskSummary)});
 	const items = children?.items ?? [];
 	const projections = useMemo(() => new Map((children?.decision_projections ?? []).map((projection) => [projection.item_id, projection])), [children]);
 	const focusedItem = items.find((item) => item.uuid === focusedItemId) ?? null;
@@ -58,6 +68,7 @@ export function OrganizeTaskPage() {
 		setMovePickerOpen(false);
 		await refetch();
 	};
+	const refreshAfter = async (run: () => Promise<unknown>) => { await run(); await refetch(); };
 
 	return (
 		<main className="flex h-full min-h-0 flex-col text-ink">
@@ -66,6 +77,9 @@ export function OrganizeTaskPage() {
 				<div className="min-w-0 flex-1"><h1 className="truncate text-lg font-semibold">{taskSummary.name}</h1><p className="truncate text-xs text-ink-faint">{taskSummary.root_path}</p></div>
 				<div className="hidden min-w-[12rem] md:block"><OrganizeProgress progress={taskSummary.progress} /></div>
 			</header>
+			<OrganizeChangesPanel plan={commitPlan.data} />
+			<div className="flex flex-wrap items-center justify-between gap-2 border-b border-app-line px-4 py-2"><OrganizeLifecycleDialogs task={taskSummary} onScan={() => void refreshAfter(() => scanChanges.mutateAsync({task_id: taskId, expected_revision: taskSummary.revision}))} onRetrySnapshot={() => void refreshAfter(() => retrySnapshot.mutateAsync({task_id: taskId, expected_revision: taskSummary.revision}))} onFinish={() => { if (taskSummary.progress.unmarked_units > 0 && !window.confirm(`Finish with ${taskSummary.progress.unmarked_units} unmarked units?`)) return; void refreshAfter(() => finish.mutateAsync({task_id: taskId, expected_revision: taskSummary.revision, confirm_unmarked: taskSummary.progress.unmarked_units > 0})); }} onReopen={() => void refreshAfter(() => reopen.mutateAsync({task_id: taskId, expected_revision: taskSummary.revision}))} onDelete={() => { if (window.confirm('Delete this task record? Files will not be deleted.')) void refreshAfter(() => deleteTaskRecord.mutateAsync({task_id: taskId, expected_revision: taskSummary.revision})); }} /><button type="button" disabled={!commitPlan.data || !buildCommitReview(commitPlan.data).canCommit} onClick={() => setCommitDialogOpen(true)} className="rounded bg-accent px-3 py-1.5 text-xs text-white disabled:opacity-50">Review commit</button></div>
+			<OrganizeCommitDialog plan={commitPlan.data} open={commitDialogOpen} taskId={taskId} onCancel={() => setCommitDialogOpen(false)} onConfirm={(input) => { setCommitDialogOpen(false); void commit.mutateAsync(input).then(() => refetch()); }} />
 			<OrganizeDecisionBar task={taskSummary} selection={selection} progress={taskSummary.progress} onStale={() => { setSelection(createSelectionState()); void refetch(); }} onApplied={() => void refetch()} onChooseMove={() => setMovePickerOpen(true)} />
 			{movePickerOpen && <div className="border-b border-app-line bg-app-box/50 p-3"><div className="mb-2 flex items-center justify-between text-sm font-medium"><span>Move selected items to…</span><button type="button" onClick={() => setMovePickerOpen(false)} className="text-xs text-ink-faint hover:text-ink">Cancel</button></div><OrganizeMovePicker recent={recentDestinations} locations={locationDestinations} pinned={pinnedDestinations} task={taskSummary} selection={selection} onStale={() => { setSelection(createSelectionState()); void refetch(); }} onApplied={() => { setMovePickerOpen(false); void refetch(); }} onBrowse={() => undefined} /><div className="mt-2 flex gap-2"><input value={movePath} onChange={(event) => setMovePath(event.target.value)} placeholder="C:\\Sorted\\Keep" className="min-w-0 flex-1 rounded border border-app-line bg-app-box px-2 py-1.5 text-sm" /><button type="button" disabled={!movePath.trim() || setDecision.isPending} onClick={() => void applyMove(physicalDestination(moveDeviceSlug, movePath))} className="rounded bg-accent px-3 py-1.5 text-sm text-white disabled:opacity-50">Set destination</button></div></div>}
 			<div className="flex min-h-0 flex-1">

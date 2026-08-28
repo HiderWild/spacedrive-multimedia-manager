@@ -40,5 +40,11 @@ export function useOrganizeTask(taskId: string, parentItemId: string | null = nu
 export function useOrganizeTaskActions() {
 	return {
 		create: useLibraryMutation('organize.create'),
+		scanChanges: useLibraryMutation('organize.scan_changes'),
+		retrySnapshot: useLibraryMutation('organize.retry_snapshot'),
+		finish: useLibraryMutation('organize.finish'),
+		reopen: useLibraryMutation('organize.reopen'),
+		deleteTaskRecord: useLibraryMutation('organize.delete_task'),
+		commit: useLibraryMutation('organize.commit'),
 	};
 }
