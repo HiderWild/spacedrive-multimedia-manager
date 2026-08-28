@@ -97,12 +97,14 @@ impl JobHandler for OrganizeCommitJob {
 
 		if !self.plan.discard_roots.is_empty() {
 			self.checkpoint.phase = OrganizeCommitPhase::DeleteRoots;
-			for root in self
+			let pending_discard_roots = self
 				.plan
 				.discard_roots
 				.iter()
 				.filter(|root| !self.checkpoint.completed_root_ids.contains(&root.item_id))
 			.cloned()
+			.collect::<Vec<_>>();
+			for root in pending_discard_roots
 			{
 				self.checkpoint.delete_dispatched = true;
 				self.checkpoint_with(&ctx).await?;
