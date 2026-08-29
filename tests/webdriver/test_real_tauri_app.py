@@ -14,6 +14,7 @@ Usage:
   python tests/webdriver/test_real_tauri_app.py
 """
 
+import base64
 import json
 import shutil
 import tempfile
@@ -179,6 +180,17 @@ def open_organize_from_explorer(driver, origin: str, root: Path):
     wait_for_text(driver, "New organize task")
 
 
+def delete_task_record(driver, origin: str, task_id: str):
+    """Delete the task row created by this harness through the visible UI."""
+    driver.get(f"{origin}/organize/{task_id}")
+    find_clickable_by_text(driver, "Delete task record").click()
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(EC.alert_is_present())
+    driver.switch_to.alert.accept()
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: current.current_url.rstrip("/") == f"{origin}/organize"
+    )
+
+
 def test_app_connection():
     """Verify that a Tauri page is available on a supported origin."""
     print("\n[App Connection]")
@@ -245,6 +257,8 @@ def test_recursive_organize_task_vertical_flow():
     """Exercise the visible recursive organize task lifecycle end to end."""
     print("\n[Recursive Organize Task - Vertical Flow]")
     driver = connect_to_app()
+    origin = None
+    task_id = None
     root = Path(tempfile.mkdtemp(prefix="spacedrive-organize-task-"))
     # Keep the destination outside the source tree so the real commit preflight
     # does not reject the fixture as an unsafe move topology.
@@ -260,6 +274,14 @@ def test_recursive_organize_task_vertical_flow():
     moved = deeper / "move.txt"
     lasso = deeper / "lasso.txt"
     preserve = conflict_dir / "preserve.txt"
+    photo = root / "photo.png"
+    clip = deeper / "clip.mp4"
+    photo.write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+    )
+    clip.write_bytes(b"Spacedrive WebDriver video fixture")
     for path in (keep, discard, moved, lasso, preserve):
         path.write_text(path.name, encoding="utf-8")
 
@@ -283,6 +305,10 @@ def test_recursive_organize_task_vertical_flow():
         WebDriverWait(driver, UI_WAIT_SECONDS).until(
             lambda current: "/organize/" in current.current_url
         )
+        task_path = urlparse(driver.current_url).path.rstrip("/")
+        assert task_path.startswith("/organize/")
+        task_id = task_path.rsplit("/", 1)[-1]
+        assert task_id, "Created organize task URL did not contain a task id"
         wait_for_text(driver, "direct children")
         wait_for_text(driver, "nested")
         # The snapshot job is asynchronous. Decisions are disabled until the
@@ -420,6 +446,11 @@ def test_recursive_organize_task_vertical_flow():
         print("  Recursive task, nested navigation, decisions, lasso, conflict safety, reload, commit effects, drift gate, and lifecycle passed")
         print("  PASSED")
     finally:
+        if origin and task_id:
+            try:
+                delete_task_record(driver, origin, task_id)
+            except Exception as error:
+                print(f"  WARNING: task-record cleanup failed: {error}")
         quit_driver(driver)
         shutil.rmtree(root, ignore_errors=True)
         shutil.rmtree(destination, ignore_errors=True)
