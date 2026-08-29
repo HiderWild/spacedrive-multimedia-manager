@@ -19,7 +19,7 @@ import shutil
 import tempfile
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from selenium import webdriver
 from selenium.webdriver.common.action_chains import ActionChains
@@ -159,6 +159,26 @@ def detect_app_origin():
     return None
 
 
+def explorer_path_url(origin: str, root: Path) -> str:
+    """Build the Explorer route URL for a physical Windows directory."""
+    path = {
+        "Physical": {
+            "device_slug": "local",
+            "path": str(root),
+        }
+    }
+    encoded_path = quote(json.dumps(path, separators=(",", ":")), safe="")
+    return f"{origin}/explorer?path={encoded_path}"
+
+
+def open_organize_from_explorer(driver, origin: str, root: Path):
+    """Enter the organize task form through Explorer's PathBar action."""
+    driver.get(explorer_path_url(origin, root))
+    assert driver.current_url.startswith(f"{origin}/explorer")
+    find_clickable_by_text(driver, "Organize").click()
+    wait_for_text(driver, "New organize task")
+
+
 def test_app_connection():
     """Verify that a Tauri page is available on a supported origin."""
     print("\n[App Connection]")
@@ -246,8 +266,7 @@ def test_recursive_organize_task_vertical_flow():
     try:
         origin = detect_app_origin()
         assert origin, "No recognised Tauri app origin found"
-        driver.get(f"{origin}/organize")
-        wait_for_text(driver, "New organize task")
+        open_organize_from_explorer(driver, origin, root)
 
         device_input = driver.find_element(
             By.XPATH, "//label[contains(normalize-space(), 'Device')]/input"

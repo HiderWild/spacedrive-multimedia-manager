@@ -11,8 +11,9 @@ drives the real React UI, and asserts that:
 1. **App launches**: title `Spacedrive`, page served from the dev or packaged origin
 2. **Tauri runtime**: `window.__TAURI__`, `__TAURI_INTERNALS__`, and `core.invoke` are present
 3. **Daemon running**: `get_daemon_status` returns `is_running: true`
-4. **One real recursive task** is created from the `/organize` entry form for a
-   physical Windows directory and navigated through nested children.
+4. **One real recursive task** is created by opening the physical directory in
+   Explorer and using the PathBar's `Organize` action, then navigated through
+   nested children.
 5. **Visible decisions** cover Keep, Discard, Move, lasso selection, and a
    parent/descendant conflict handled by the real confirmation dialog.
 6. **Persistence and safety**: reload restores the task and decisions, and no
@@ -67,7 +68,8 @@ python tests/webdriver/test_real_tauri_app.py
                                               └──────────────┘
 ```
 
-The vertical test opens `/organize`, fills the visible device and Windows-folder
+The vertical test opens the physical temporary directory in Explorer, clicks the
+visible PathBar `Organize` action, fills the visible device and Windows-folder
 inputs, starts a real snapshot, and follows the redirect to `/organize/:taskId`.
 It uses only visible DOM controls and temporary files. Task state is verified
 through the route, rendered decision projections, commit review, disk state, and
@@ -88,8 +90,8 @@ lifecycle controls rather than an internal persistence format.
 - The current UI uses visible English labels such as `Start scan`, `Discard`,
   `Move…`, `Finish`, and `Reopen`; the harness does not alter localStorage or
   seed route/view state.
-- The entry step uses the current `/organize` task form. It does not yet drive
-  the Explorer path-bar or directory-context-menu entry required by ORG-INT-01.
+- The entry step drives the Explorer PathBar `Organize` action. The directory
+  context-menu variant is not separately exercised by this harness.
 - The move destination is entered through the visible path field. The native
   `Browse…` picker is an OS dialog and is not controllable through Selenium's
   WebView session.
