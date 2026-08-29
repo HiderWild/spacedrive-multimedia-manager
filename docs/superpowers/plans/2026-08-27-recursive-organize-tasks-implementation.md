@@ -2083,7 +2083,7 @@ git commit -m "refactor(organize): retire per-directory organize view"
 
 **Input/output and failure contract:** The harness owns its temporary directory and records created task UUIDs. Cleanup deletes only those task metadata rows and process-owned temporary files. Drift/failure assertions require zero unexpected deletion.
 
-- [ ] **Step 1: Add the RED vertical WebDriver scenario**
+- [x] **Step 1: Add the RED vertical WebDriver scenario**
 
 ```python
 def test_recursive_organize_task_flow(driver, origin):
