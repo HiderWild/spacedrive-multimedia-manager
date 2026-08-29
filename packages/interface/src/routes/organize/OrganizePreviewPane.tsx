@@ -11,9 +11,17 @@ import type {
 	SdPath
 } from '@sd/ts-client';
 import {useLibraryQuery} from '@sd/ts-client/hooks';
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState
+} from 'react';
 import {ContentRenderer} from '../../components/QuickPreview/ContentRenderer';
 import {DirectoryPreview} from '../../components/QuickPreview/DirectoryPreview';
+import {QuickPreviewModal} from '../../components/QuickPreview/QuickPreviewModal';
 import {File as FileComponent} from '../explorer/File';
 
 export interface OrganizePreviewPaneProps {
@@ -38,6 +46,43 @@ export function findAdjacentPreviewFile(
 	const index = files.findIndex((file) => file.id === currentFileId);
 	if (index < 0) return null;
 	return files[index + offset] ?? null;
+}
+
+export function getPreviewSequenceKeyTarget(
+	files: readonly File[],
+	currentFileId: string,
+	key: string
+): string | null {
+	if (key !== 'ArrowLeft' && key !== 'ArrowRight') return null;
+	const next = findAdjacentPreviewFile(
+		files,
+		currentFileId,
+		key === 'ArrowLeft' ? -1 : 1
+	);
+	return next?.id ?? currentFileId;
+}
+
+export function getFullPreviewFileId(file: File | null): string | null {
+	return file?.id ?? null;
+}
+
+function ReadOnlyContentPreview({file}: {file: File}) {
+	const containerRef = useRef<HTMLDivElement>(null);
+
+	useLayoutEffect(() => {
+		containerRef.current?.querySelector('video')?.pause();
+	}, [file.id]);
+
+	return (
+		<div ref={containerRef} className="h-full">
+			<ContentRenderer
+				key={file.id}
+				file={file}
+				videoKeyboardShortcutsEnabled={false}
+				videoWheelZoomEnabled={false}
+			/>
+		</div>
+	);
 }
 
 export function previewSequenceInput(
@@ -83,6 +128,9 @@ export function PreviewSequence({
 	const output: PreviewSequenceOutput | undefined = query.data;
 	const files = output?.files ?? [];
 	const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+	const [fullPreviewFileId, setFullPreviewFileId] = useState<string | null>(
+		null
+	);
 
 	useEffect(() => {
 		if (
@@ -92,6 +140,15 @@ export function PreviewSequence({
 			setSelectedFileId(files[0]?.id ?? null);
 		}
 	}, [files, selectedFileId]);
+
+	useEffect(() => {
+		if (
+			fullPreviewFileId &&
+			!files.some((file) => file.id === fullPreviewFileId)
+		) {
+			setFullPreviewFileId(null);
+		}
+	}, [files, fullPreviewFileId]);
 
 	const selectedFile =
 		files.find((file) => file.id === selectedFileId) ?? files[0] ?? null;
@@ -133,20 +190,45 @@ export function PreviewSequence({
 	}
 
 	return (
-		<div className="flex h-full min-h-0 flex-col">
+		<div
+			className="flex h-full min-h-0 flex-col outline-none"
+			tabIndex={0}
+			onKeyDown={(event) => {
+				if (!selectedFile) return;
+				const targetId = getPreviewSequenceKeyTarget(
+					files,
+					selectedFile.id,
+					event.key
+				);
+				if (targetId === null) return;
+				event.preventDefault();
+				if (targetId !== selectedFile.id) setSelectedFileId(targetId);
+			}}
+			aria-label="Folder media preview samples"
+		>
 			<div className="relative min-h-0 flex-1 bg-black">
 				{selectedFile ? (
-					<ContentRenderer
-						key={selectedFile.id}
-						file={selectedFile}
-						videoKeyboardShortcutsEnabled={false}
-						videoWheelZoomEnabled={false}
-					/>
+					<ReadOnlyContentPreview file={selectedFile} />
 				) : (
 					<div className="text-ink-dull flex h-full flex-col items-center justify-center gap-3 text-sm">
 						<FolderOpen size={32} />
 						<span>No image or video samples in this folder.</span>
 					</div>
+				)}
+				{selectedFile && (
+					<button
+						type="button"
+						className="absolute right-3 top-3 rounded-md bg-black/70 px-3 py-2 text-xs text-white transition hover:bg-black"
+						onClick={() =>
+							setFullPreviewFileId(
+								getFullPreviewFileId(selectedFile)
+							)
+						}
+						aria-label={`Open full preview for ${selectedFile.name}`}
+						data-organize-open-full-preview={selectedFile.id}
+					>
+						Open full preview
+					</button>
 				)}
 				{selectedFile && files.length > 1 && (
 					<>
@@ -194,6 +276,13 @@ export function PreviewSequence({
 					output?.candidate_budget_exhausted ?? false
 				)}
 			/>
+			{fullPreviewFileId && (
+				<QuickPreviewModal
+					fileId={fullPreviewFileId}
+					isOpen
+					onClose={() => setFullPreviewFileId(null)}
+				/>
+			)}
 		</div>
 	);
 }
@@ -297,14 +386,7 @@ export function OrganizePreviewPane({
 						itemId={selectedItemId ?? selectedFile.id}
 					/>
 				) : (
-					<div className="h-full bg-black">
-						<ContentRenderer
-							key={selectedFile.id}
-							file={selectedFile}
-							videoKeyboardShortcutsEnabled={false}
-							videoWheelZoomEnabled={false}
-						/>
-					</div>
+					<ReadOnlyContentPreview file={selectedFile} />
 				)}
 			</div>
 			<div className="border-app-line text-ink-faint flex shrink-0 items-center gap-2 border-t px-3 py-2 text-xs">

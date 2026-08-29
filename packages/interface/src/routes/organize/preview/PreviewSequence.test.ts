@@ -2,6 +2,8 @@ import type { File, SdPath } from "@sd/ts-client";
 import { describe, expect, test } from "bun:test";
 import {
 	findAdjacentPreviewFile,
+	getPreviewSequenceKeyTarget,
+	getFullPreviewFileId,
 	previewSequenceInput,
 	previewSequenceLabel,
 } from "../OrganizePreviewPane";
@@ -39,6 +41,23 @@ describe("organize preview sequence", () => {
 		expect(findAdjacentPreviewFile(files, "b", 1)?.id).toBe("c");
 		expect(findAdjacentPreviewFile(files, "a", -1)).toBeNull();
 		expect(findAdjacentPreviewFile(files, "c", 1)).toBeNull();
+	});
+
+	test("uses focused arrow keys to move only within the bounded sample set", () => {
+		const files = [makeFile("a"), makeFile("b"), makeFile("c")];
+
+		expect(getPreviewSequenceKeyTarget(files, "b", "ArrowLeft")).toBe("a");
+		expect(getPreviewSequenceKeyTarget(files, "b", "ArrowRight")).toBe("c");
+		expect(getPreviewSequenceKeyTarget(files, "a", "ArrowLeft")).toBe("a");
+		expect(getPreviewSequenceKeyTarget(files, "c", "ArrowRight")).toBe("c");
+		expect(getPreviewSequenceKeyTarget(files, "b", "Enter")).toBeNull();
+	});
+
+	test("opens the currently selected sample through the full-preview file contract", () => {
+		const sample = makeFile("sample");
+
+		expect(getFullPreviewFileId(sample)).toBe("sample");
+		expect(getFullPreviewFileId(null)).toBeNull();
 	});
 
 	test("builds the task manifest query input without live recursive options", () => {
