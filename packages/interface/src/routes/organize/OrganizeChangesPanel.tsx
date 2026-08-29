@@ -1,12 +1,16 @@
 import type {
 	OrganizeAcceptChangesOutcome,
+	OrganizeChangesOutput,
 	OrganizeCommitPlanOutput,
 	OrganizeTaskSummary
 } from '@sd/ts-client';
+import {useSpacedriveClient} from '@sd/ts-client/hooks';
+import {useInfiniteQuery} from '@tanstack/react-query';
 import {useMemo, useState} from 'react';
 import {useLibraryMutation} from '../../contexts/SpacedriveContext';
 import {
 	buildAcceptChangesInput,
+	mergeOrganizeChangeItems,
 	partitionOrganizeChanges,
 	type OrganizeChangeItem
 } from './decision/changeSelection';
@@ -28,6 +32,27 @@ export function OrganizeChangesPanel({
 	onApplied
 }: OrganizeChangesPanelProps) {
 	const acceptChanges = useLibraryMutation('organize.accept_changes');
+	const client = useSpacedriveClient();
+	const changes = useInfiniteQuery<OrganizeChangesOutput, Error>({
+		queryKey: ['organize.changes', client.getCurrentLibraryId(), task.id, task.revision],
+		enabled: task.id.length > 0,
+		initialPageParam: null as string | null,
+		queryFn: ({pageParam}) =>
+			client.execute('query:organize.changes', {
+				task_id: task.id,
+				cursor: pageParam,
+				limit: 200
+			}) as Promise<OrganizeChangesOutput>,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined
+	});
+	const pagedItems = useMemo(
+		() => changes.data?.pages.flatMap((page) => page.items) ?? [],
+		[changes.data]
+	);
+	const allChangeItems = useMemo(
+		() => mergeOrganizeChangeItems([items, pagedItems]),
+		[items, pagedItems]
+	);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [confirmation, setConfirmation] = useState<
 		| Extract<
@@ -36,7 +61,10 @@ export function OrganizeChangesPanel({
 		  >['ConfirmationRequired']
 		| null
 	>(null);
-	const changeItems = useMemo(() => partitionOrganizeChanges(items), [items]);
+	const changeItems = useMemo(
+		() => partitionOrganizeChanges(allChangeItems),
+		[allChangeItems]
+	);
 	const selectedChanges = useMemo(
 		() => ({
 			additions: changeItems.additions.filter((id) => selected.has(id)),
@@ -49,7 +77,7 @@ export function OrganizeChangesPanel({
 	if (!plan)
 		return <p className="text-ink-dull text-sm">Loading commit plan…</p>;
 	const review = buildCommitReview(plan);
-	const selectableItems = items.filter(
+	const selectableItems = allChangeItems.filter(
 		(item) =>
 			item.membership_state === 'pending_addition' ||
 			item.external_state === 'changed' ||
@@ -142,12 +170,31 @@ export function OrganizeChangesPanel({
 					))}
 				</div>
 			)}
+			{changes.hasNextPage && (
+				<button
+					type="button"
+					disabled={changes.isFetchingNextPage}
+					onClick={() => void changes.fetchNextPage()}
+					className="border-app-line mt-2 rounded border px-3 py-1.5 text-xs disabled:opacity-50"
+				>
+					{changes.isFetchingNextPage ? 'Loading more changes…' : 'Load more changes'}
+				</button>
+			)}
+			{changes.error && (
+				<p className="mt-2 text-amber-300">
+					Unable to load all task changes. Loaded items can still be reviewed.
+				</p>
+			)}
+			{changes.isLoading && selectableItems.length === 0 && (
+				<p className="mt-2 text-ink-faint">Loading task changes…</p>
+			)}
 			{selectableItems.length === 0 &&
+				!changes.isLoading &&
+				!changes.error &&
 				(plan.pending_addition_count > 0 ||
 					plan.changed_or_missing_roots.length > 0) && (
 					<p className="mt-2 text-amber-300">
-						Change details are not available for this directory
-						page. Refresh the task to load visible items.
+						No task change details were returned. Refresh the task and try again.
 					</p>
 				)}
 			{selectedCount > 0 && (

@@ -1,6 +1,7 @@
 import {describe, expect, test} from 'bun:test';
 import {
 	buildAcceptChangesInput,
+	mergeOrganizeChangeItems,
 	partitionOrganizeChanges,
 	type OrganizeChangeItem,
 } from '../decision/changeSelection';
@@ -15,6 +16,25 @@ const item = (overrides: Partial<OrganizeChangeItem>): OrganizeChangeItem => ({
 });
 
 describe('organize change selection', () => {
+	test('merges paged recursive changes without dropping or duplicating IDs', () => {
+		const pages = [
+			[
+				item({uuid: 'nested-addition', membership_state: 'pending_addition'}),
+				item({uuid: 'nested-changed', external_state: 'changed'}),
+			],
+			[
+				item({uuid: 'nested-missing', external_state: 'missing'}),
+				item({uuid: 'nested-changed', external_state: 'changed'}),
+			],
+		];
+
+		expect(partitionOrganizeChanges(mergeOrganizeChangeItems(pages))).toEqual({
+			additions: ['nested-addition'],
+			changed: ['nested-changed'],
+			missing: ['nested-missing'],
+		});
+	});
+
 	test('partitions pending additions, changed items, and missing items', () => {
 		expect(
 			partitionOrganizeChanges([

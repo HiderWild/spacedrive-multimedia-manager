@@ -11,6 +11,18 @@ export interface OrganizeChangeSelection {
 	missing: string[];
 }
 
+export function mergeOrganizeChangeItems(
+	pages: readonly (readonly OrganizeChangeItem[])[],
+): OrganizeChangeItem[] {
+	const byId = new Map<string, OrganizeChangeItem>();
+	for (const page of pages) {
+		for (const item of page) {
+			if (!byId.has(item.uuid)) byId.set(item.uuid, item);
+		}
+	}
+	return [...byId.values()];
+}
+
 export function partitionOrganizeChanges(
 	items: readonly OrganizeChangeItem[],
 ): OrganizeChangeSelection {

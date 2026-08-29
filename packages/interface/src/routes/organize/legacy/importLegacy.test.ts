@@ -71,7 +71,7 @@ function fakeApi(overrides: Partial<LegacyImportApi> = {}): LegacyImportApi {
 		createTask: async () => ({Created: {task_id: 'task-1', status: 'scanning', snapshot_job: {id: 'job-1', job_name: 'organize.snapshot'}}}),
 		waitForJob: async () => undefined,
 		getTask: async () => taskOutput(),
-		listChildren: async () => ({revision: 1, items: [], decision_projections: [], next_cursor: null, matching_child_count: 0}),
+		listChildren: async () => ({revision: 1, items: [], decision_projections: [], breadcrumb: [], next_cursor: null, matching_child_count: 0}),
 		setDecision: async (input) => ({Applied: {revision: input.expected_revision + 1, task_summary: taskSummary(input.expected_revision + 1), affected_roots: []}}),
 		archiveLegacyState: async (): Promise<void> => {},
 		...overrides,
@@ -105,6 +105,7 @@ describe('legacy organize import boundary', () => {
 					model('move-item', 'move.jpg'),
 				],
 				decision_projections: [],
+				breadcrumb: [],
 				next_cursor: null,
 				matching_child_count: 2,
 			}),
@@ -151,7 +152,7 @@ describe('legacy organize import boundary', () => {
 				missing: {itemId: 'legacy-missing', path: 'C:/Photos/missing.jpg', name: 'missing.jpg', kind: 'File', decision: 'discard', updatedAt: 'now'},
 			}),
 			fakeApi({
-				listChildren: async () => ({revision: 1, items: [model('keep-item', 'keep.jpg')], decision_projections: [], next_cursor: null, matching_child_count: 1}),
+				listChildren: async () => ({revision: 1, items: [model('keep-item', 'keep.jpg')], decision_projections: [], breadcrumb: [], next_cursor: null, matching_child_count: 1}),
 				archiveLegacyState: async (): Promise<void> => { archived = true; },
 			}),
 		);

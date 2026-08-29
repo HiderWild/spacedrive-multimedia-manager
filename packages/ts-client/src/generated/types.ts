@@ -3507,9 +3507,15 @@ export type OrganizeAcceptChangesInput = { task_id: string; expected_revision: n
 
 export type OrganizeAcceptChangesOutcome = { Applied: { revision: number } } | { ConfirmationRequired: { discard_units: number; move_units: number; affected_bytes: number; conflicting_roots: string[] } } | { StaleRevision: { current_revision: number } };
 
+export type OrganizeBreadcrumbItem = { item_id: string; name: string; relative_path: string };
+
+export type OrganizeChangesInput = { task_id: string; cursor: string | null; limit: number };
+
+export type OrganizeChangesOutput = { revision: number; items: Model[]; next_cursor: string | null; matching_item_count: number };
+
 export type OrganizeChildrenInput = { task_id: string; parent_item_id: string; cursor: string | null; limit: number; sort: OrganizeItemSort; direction: OrganizeSortDirection; filter: OrganizeItemFilter };
 
-export type OrganizeChildrenOutput = { revision: number; items: Model[]; decision_projections: OrganizeItemDecisionProjection[]; next_cursor: string | null; matching_child_count: number };
+export type OrganizeChildrenOutput = { revision: number; items: Model[]; decision_projections: OrganizeItemDecisionProjection[]; breadcrumb: OrganizeBreadcrumbItem[]; next_cursor: string | null; matching_child_count: number };
 
 export type OrganizeCommitBlockReason = { TaskNotActive: { status: OrganizeTaskStatus } } | { PendingAdditions: { count: number } } | { ChangedOrMissing: { item_ids: string[] } } | { CurrentSubtreeDrift: { item_ids: string[] } } | { UnsafeTopology: { conflicts: OrganizeTopologyConflict[] } } | "NoPhysicalOperations";
 
@@ -6009,6 +6015,7 @@ export type LibraryQuery =
   |  { type: 'locations.suggested'; input: SuggestedLocationsQueryInput; output: SuggestedLocationsOutput }
   |  { type: 'locations.validate_path'; input: ValidateLocationPathInput; output: ValidateLocationPathOutput }
   |  { type: 'media.derivativeStatus'; input: DerivativeStatusInput; output: DerivativeStatusOutput }
+  |  { type: 'organize.changes'; input: OrganizeChangesInput; output: OrganizeChangesOutput }
   |  { type: 'organize.children'; input: OrganizeChildrenInput; output: OrganizeChildrenOutput }
   |  { type: 'organize.commit_plan'; input: OrganizeCommitPlanInput; output: OrganizeCommitPlanOutput }
   |  { type: 'organize.get'; input: OrganizeGetInput; output: OrganizeGetOutput }
@@ -6175,6 +6182,7 @@ export const WIRE_METHODS = {
     'locations.suggested': 'query:locations.suggested',
     'locations.validate_path': 'query:locations.validate_path',
     'media.derivativeStatus': 'query:media.derivativeStatus',
+    'organize.changes': 'query:organize.changes',
     'organize.children': 'query:organize.children',
     'organize.commit_plan': 'query:organize.commit_plan',
     'organize.get': 'query:organize.get',

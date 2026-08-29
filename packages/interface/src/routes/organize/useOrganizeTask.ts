@@ -72,6 +72,7 @@ export function useOrganizeTask(
 				decision_projections: children.data.pages.flatMap(
 					(page) => page.decision_projections
 				),
+				breadcrumb: children.data.pages[0].breadcrumb,
 				next_cursor:
 					children.data.pages[children.data.pages.length - 1]
 						.next_cursor

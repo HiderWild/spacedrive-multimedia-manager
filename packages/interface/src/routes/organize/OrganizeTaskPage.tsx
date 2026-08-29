@@ -157,6 +157,7 @@ export function OrganizeTaskPage() {
 		{enabled: Boolean(task?.root_item_id)}
 	);
 	const items = children?.items ?? [];
+	const breadcrumb = children?.breadcrumb ?? [];
 	const projections = useMemo(
 		() =>
 			new Map(
@@ -278,6 +279,7 @@ export function OrganizeTaskPage() {
 		}
 	};
 	const selectLasso = (itemIds: Set<string>) => {
+		if (itemIds.size === 0) setFocusedItem(null);
 		setSelection((current) => ({
 			kind: 'items',
 			itemIds,
@@ -667,22 +669,31 @@ export function OrganizeTaskPage() {
 					<div className="text-ink-faint mb-3 flex items-center gap-2 text-xs">
 						<FolderOpen size={15} />
 						<span>{items.length} direct children</span>
-						{parentItemId && (
-							<>
+						{breadcrumb.map((crumb, index) => (
+							<span key={crumb.item_id} className="flex items-center gap-2">
 								<CaretRight size={13} />
 								<button
 									type="button"
 									onClick={() => {
-										setParentItemId(null);
+										setParentItemId(
+											crumb.item_id === task.root_item_id
+												? null
+												: crumb.item_id
+										);
 										setScrollTop(0);
+										setFocusedItem(null);
 										select({type: 'directoryChanged'});
 									}}
-									className="hover:text-ink"
+									className={
+										index === breadcrumb.length - 1
+											? 'text-ink font-medium'
+											: 'hover:text-ink'
+									}
 								>
-									Back to task root
+									{crumb.name}
 								</button>
-							</>
-						)}
+							</span>
+						))}
 						<span className="ml-auto">
 							Recursive progress is included above
 						</span>

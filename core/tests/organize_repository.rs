@@ -8,10 +8,10 @@ use sd_core::ops::organize::model::{
 };
 use sd_core::ops::organize::repository::{
 	ChangeScanResult, DecisionTransactionRequest, NewOrganizeTask, OrganizeAcceptChangesInput,
-	OrganizeAcceptChangesOutcome, OrganizeChildrenInput, OrganizeDecisionOutcome,
-	OrganizeItemFilter, OrganizeItemSort, OrganizeListInput, OrganizeRepository,
-	OrganizeRepositoryError, OrganizeSelectionInput, OrganizeSortDirection, SelectionFilter,
-	SnapshotItemDraft, SnapshotTotals,
+	OrganizeAcceptChangesOutcome, OrganizeChangesInput, OrganizeChildrenInput,
+	OrganizeDecisionOutcome, OrganizeItemFilter, OrganizeItemSort, OrganizeListInput,
+	OrganizeRepository, OrganizeRepositoryError, OrganizeSelectionInput, OrganizeSortDirection,
+	SelectionFilter, SnapshotItemDraft, SnapshotTotals,
 };
 use sd_core::ops::organize::snapshot::scan_windows_snapshot;
 use sea_orm::{
@@ -684,6 +684,8 @@ async fn direct_children_paging_is_stable_and_filters_exclusions() {
 		.await
 		.expect("read first child page");
 	assert_eq!(page.items.len(), 1);
+	assert_eq!(page.breadcrumb.len(), 1);
+	assert_eq!(page.breadcrumb[0].item_id, root_id);
 	let next = repo
 		.children(OrganizeChildrenInput {
 			task_id,
@@ -1925,6 +1927,89 @@ async fn children_cursor_is_opaque_and_binds_query_metadata() {
 		invalid_revision,
 		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree(_))
 	));
+}
+
+#[tokio::test]
+async fn changes_query_returns_recursive_items_in_stable_cursor_pages() {
+	let (_temp_dir, db) = migrated_temp_db().await;
+	let repo = OrganizeRepository::new(&db);
+	let task_id = Uuid::new_v4();
+	let root_id = Uuid::new_v4();
+	let changed_id = Uuid::new_v4();
+	let missing_id = Uuid::new_v4();
+	repo.insert_scanning_task(task(task_id, r"C:\Changes", OrganizeTaskStatus::Scanning))
+		.await
+		.expect("insert changes task");
+	let mut root = item(task_id, root_id, None, "");
+	root.id = Some(1);
+	root.tree_start = Some(0);
+	root.tree_end = Some(4);
+	root.unit_count = Some(3);
+	let mut changed = item(task_id, changed_id, Some(1), "nested\\changed.jpg");
+	changed.id = Some(2);
+	changed.kind = OrganizeItemKind::File;
+	changed.tree_start = Some(1);
+	changed.tree_end = Some(2);
+	let mut missing = item(task_id, missing_id, Some(1), "nested\\missing.jpg");
+	missing.id = Some(3);
+	missing.kind = OrganizeItemKind::File;
+	missing.tree_start = Some(2);
+	missing.tree_end = Some(3);
+	let mut stable = item(task_id, Uuid::new_v4(), Some(1), "nested\\stable.jpg");
+	stable.id = Some(4);
+	stable.kind = OrganizeItemKind::File;
+	stable.tree_start = Some(3);
+	stable.tree_end = Some(4);
+	repo.replace_included_snapshot(
+		task_id,
+		vec![root, changed, missing, stable],
+		SnapshotTotals {
+			total_entries: 4,
+			total_units: 3,
+			total_bytes: 0,
+			scan_issue_count: 0,
+		},
+	)
+	.await
+	.expect("insert changes tree");
+	let addition = item(task_id, Uuid::new_v4(), None, "z-added.jpg");
+	repo.store_change_scan(
+		task_id,
+		ChangeScanResult {
+			additions: vec![addition],
+			changed_ids: vec![changed_id],
+			missing_ids: vec![missing_id],
+		},
+	)
+	.await
+	.expect("store changes");
+
+	let first = repo
+		.changes(OrganizeChangesInput {
+			task_id,
+			cursor: None,
+			limit: 2,
+		})
+		.await
+		.expect("read first changes page");
+	assert_eq!(first.items.len(), 2);
+	assert_eq!(first.matching_item_count, 3);
+	assert_eq!(first.items[0].relative_path, "nested\\changed.jpg");
+	assert_eq!(first.items[1].relative_path, "nested\\missing.jpg");
+	let cursor = first.next_cursor.expect("changes next cursor");
+	assert!(!cursor.contains('|'));
+
+	let second = repo
+		.changes(OrganizeChangesInput {
+			task_id,
+			cursor: Some(cursor),
+			limit: 200,
+		})
+		.await
+		.expect("read second changes page");
+	assert_eq!(second.items.len(), 1);
+	assert_eq!(second.items[0].relative_path, "z-added.jpg");
+	assert_eq!(second.next_cursor, None);
 }
 
 #[tokio::test]

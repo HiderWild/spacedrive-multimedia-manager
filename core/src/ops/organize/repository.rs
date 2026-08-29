@@ -726,12 +726,35 @@ pub struct OrganizeChildrenInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct OrganizeBreadcrumbItem {
+	pub item_id: Uuid,
+	pub name: String,
+	pub relative_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OrganizeChildrenOutput {
 	pub revision: i64,
 	pub items: Vec<organize_task_item::Model>,
 	pub decision_projections: Vec<OrganizeItemDecisionProjection>,
+	pub breadcrumb: Vec<OrganizeBreadcrumbItem>,
 	pub next_cursor: Option<String>,
 	pub matching_child_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct OrganizeChangesInput {
+	pub task_id: Uuid,
+	pub cursor: Option<String>,
+	pub limit: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct OrganizeChangesOutput {
+	pub revision: i64,
+	pub items: Vec<organize_task_item::Model>,
+	pub next_cursor: Option<String>,
+	pub matching_item_count: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -1226,6 +1249,7 @@ impl<'db> OrganizeRepository<'db> {
 			.into_iter()
 			.filter(|item| selection_filter_matches(item, &all_items, input.filter))
 			.collect::<Vec<_>>();
+		let breadcrumb = build_breadcrumb(&all_items, &parent, &task.name)?;
 		let matching_child_count = children.len() as u64;
 		let limit = input.limit.clamp(1, 200) as usize;
 		let mut children = children;
@@ -1298,8 +1322,83 @@ impl<'db> OrganizeRepository<'db> {
 			revision,
 			items: page,
 			decision_projections,
+			breadcrumb,
 			next_cursor,
 			matching_child_count,
+		})
+	}
+
+	/// Returns every pending or externally changed task item in stable cursor pages.
+	///
+	/// Change acceptance is task-scoped, so this query deliberately ignores the current
+	/// directory view. The revision-bound cursor prevents a page sequence from mixing
+	/// results across a new scan.
+	pub async fn changes(&self, input: OrganizeChangesInput) -> Result<OrganizeChangesOutput> {
+		let task = organize_task::Entity::find_by_id(input.task_id)
+			.one(self.db)
+			.await?
+			.ok_or_else(|| {
+				OrganizeError::InvalidTaskState("organize task does not exist".into())
+			})?;
+		let cursor = input
+			.cursor
+			.as_deref()
+			.map(parse_change_cursor)
+			.transpose()?;
+		if let Some(cursor) = &cursor {
+			if cursor.revision != task.revision || cursor.task_id != input.task_id {
+				return Err(OrganizeError::InvalidTree(
+					"change cursor does not match query".into(),
+				)
+				.into());
+			}
+		}
+		let mut items = organize_task_item::Entity::find()
+			.filter(organize_task_item::Column::TaskId.eq(input.task_id))
+			.all(self.db)
+			.await?
+			.into_iter()
+			.filter(|item| {
+				item.membership_state == "pending_addition"
+					|| item.external_state == "changed"
+					|| item.external_state == "missing"
+			})
+			.collect::<Vec<_>>();
+		items.sort_by(|left, right| {
+			left.relative_path_key
+				.cmp(&right.relative_path_key)
+				.then_with(|| left.uuid.cmp(&right.uuid))
+		});
+		let matching_item_count = items.len() as u64;
+		let start_index = cursor
+			.as_ref()
+			.map(|cursor| {
+				items
+					.iter()
+					.position(|item| {
+						(item.relative_path_key.as_str(), item.uuid)
+							> (cursor.relative_path_key.as_str(), cursor.item_id)
+					})
+					.unwrap_or(items.len())
+			})
+			.unwrap_or(0);
+		let limit = input.limit.clamp(1, 200) as usize;
+		let end_index = (start_index + limit).min(items.len());
+		let page = items[start_index..end_index].to_vec();
+		let next_cursor = (end_index < items.len()).then(|| {
+			let item = page.last().expect("non-empty changes page has next cursor");
+			encode_change_cursor(&ChangeCursor {
+				revision: task.revision,
+				task_id: input.task_id,
+				relative_path_key: item.relative_path_key.clone(),
+				item_id: item.uuid,
+			})
+		});
+		Ok(OrganizeChangesOutput {
+			revision: task.revision,
+			items: page,
+			next_cursor,
+			matching_item_count,
 		})
 	}
 
@@ -2188,6 +2287,42 @@ async fn selection_ids<C: sea_orm::ConnectionTrait>(
 	}
 }
 
+fn build_breadcrumb(
+	all_items: &[organize_task_item::Model],
+	parent: &organize_task_item::Model,
+	task_name: &str,
+) -> Result<Vec<OrganizeBreadcrumbItem>> {
+	let by_id = all_items
+		.iter()
+		.map(|item| (item.id, item))
+		.collect::<HashMap<_, _>>();
+	let mut seen = HashSet::new();
+	let mut breadcrumb = Vec::new();
+	let mut current = Some(parent);
+	while let Some(item) = current {
+		if !seen.insert(item.id) {
+			return Err(OrganizeError::InvalidTree("breadcrumb contains a cycle".into()).into());
+		}
+		breadcrumb.push(OrganizeBreadcrumbItem {
+			item_id: item.uuid,
+			name: if item.relative_path.is_empty() {
+				task_name.to_string()
+			} else {
+				item.name.clone()
+			},
+			relative_path: item.relative_path.clone(),
+		});
+		current = match item.parent_id {
+			Some(parent_id) => Some(by_id.get(&parent_id).copied().ok_or_else(|| {
+				OrganizeError::InvalidTree("breadcrumb parent is missing".into())
+			})?),
+			None => None,
+		};
+	}
+	breadcrumb.reverse();
+	Ok(breadcrumb)
+}
+
 fn selection_filter_matches(
 	item: &organize_task_item::Model,
 	all_items: &[organize_task_item::Model],
@@ -2225,6 +2360,14 @@ struct ChildCursor {
 	modified_at_100ns: i64,
 	size_bytes: i64,
 	progress: i64,
+	item_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ChangeCursor {
+	revision: i64,
+	task_id: Uuid,
+	relative_path_key: String,
 	item_id: Uuid,
 }
 
@@ -2292,6 +2435,18 @@ fn parse_child_cursor(cursor: &str) -> Result<ChildCursor> {
 }
 
 fn encode_child_cursor(cursor: &ChildCursor) -> String {
+	encode_opaque(cursor)
+}
+
+fn parse_change_cursor(cursor: &str) -> Result<ChangeCursor> {
+	serde_json::from_slice(&decode_opaque(cursor)?).map_err(|_| {
+		OrganizeRepositoryError::Organize(OrganizeError::InvalidTree(
+			"invalid change cursor".into(),
+		))
+	})
+}
+
+fn encode_change_cursor(cursor: &ChangeCursor) -> String {
 	encode_opaque(cursor)
 }
 
