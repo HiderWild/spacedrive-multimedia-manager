@@ -59,7 +59,7 @@ export function FileInspector({file}: FileInspectorProps) {
 	const {t} = useTranslation('explorer');
 	const platform = usePlatform();
 	const [activeTab, setActiveTab] = useState('overview');
-	const isDev = import.meta.env.DEV;
+	const isDev = Boolean(import.meta.env.DEV);
 
 	// Extract parent directory for pathScope to enable reactive sidecar updates
 	const getParentPath = (): SdPath | undefined => {
