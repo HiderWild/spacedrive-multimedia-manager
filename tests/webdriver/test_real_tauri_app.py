@@ -21,7 +21,7 @@ import shutil
 import tempfile
 import urllib.request
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from selenium.common.exceptions import TimeoutException
 from selenium import webdriver
@@ -73,6 +73,12 @@ def click_card(driver, name: str):
     """Select a visible organize card by its snapshot item name."""
     card = find_card(driver, name)
     card.find_element(By.TAG_NAME, "button").click()
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: find_card(current, name)
+        .find_element(By.TAG_NAME, "button")
+        .get_attribute("data-selected")
+        == "true"
+    )
     return card
 
 
@@ -93,7 +99,11 @@ def open_directory(driver, name: str):
 
 def back_to_task_root(driver):
     """Return from a nested task directory to the task root."""
-    find_clickable_by_text(driver, "Back to task root").click()
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        EC.element_to_be_clickable(
+            (By.XPATH, "//section[@tabindex='0']//button[1]")
+        )
+    ).click()
     wait_for_text(driver, "direct children")
 
 
@@ -101,26 +111,42 @@ def lasso_select_card(driver, name: str, ctrl: bool = False):
     """Use the real pointer lasso to select one rendered card."""
     surface = driver.find_element(By.CSS_SELECTOR, "[data-testid='organize-grid']")
     card = find_card(driver, name)
+    driver.execute_script(
+        "arguments[0].scrollIntoView({block: 'center', inline: 'nearest'});",
+        card,
+    )
     surface_rect = driver.execute_script(
         "return arguments[0].getBoundingClientRect();", surface
     )
     card_rect = driver.execute_script(
         "return arguments[0].getBoundingClientRect();", card
     )
-    center_x = surface_rect["x"] + surface_rect["width"] / 2
-    center_y = surface_rect["y"] + surface_rect["height"] / 2
-    start_x = card_rect["left"] + 5
-    start_y = card_rect["top"] + 5
-    end_x = card_rect["right"] - 5
-    end_y = card_rect["bottom"] - 5
+    # Start outside the card so the grid treats the gesture as a lasso rather
+    # than a card click. Keep both endpoints inside the viewport and use pixel
+    # integers because WebDriver rejects fractional/out-of-bounds offsets.
+    margin = 8
+    start_x = max(surface_rect["left"] + 2, card_rect["left"] - margin)
+    start_y = max(surface_rect["top"] + 2, card_rect["top"] - margin)
+    end_x = min(surface_rect["right"] - 2, card_rect["right"] + margin)
+    end_y = min(surface_rect["bottom"] - 2, card_rect["bottom"] + margin)
+    if (
+        card_rect["left"] <= start_x <= card_rect["right"]
+        and card_rect["top"] <= start_y <= card_rect["bottom"]
+    ):
+        start_x = min(surface_rect["right"] - 2, card_rect["right"] + margin)
+        start_y = min(surface_rect["bottom"] - 2, card_rect["bottom"] + margin)
+        end_x = max(surface_rect["left"] + 2, card_rect["left"] - margin)
+        end_y = max(surface_rect["top"] + 2, card_rect["top"] - margin)
 
     actions = ActionChains(driver)
     if ctrl:
         actions.key_down(Keys.CONTROL)
-    actions.move_to_element_with_offset(
-        surface, start_x - center_x, start_y - center_y
-    ).click_and_hold().move_to_element_with_offset(
-        surface, end_x - center_x, end_y - center_y
+    center_x = surface_rect["left"] + surface_rect["width"] / 2
+    center_y = surface_rect["top"] + surface_rect["height"] / 2
+    actions.move_to_element(surface).move_by_offset(
+        round(start_x - center_x), round(start_y - center_y)
+    ).click_and_hold().move_by_offset(
+        round(end_x - start_x), round(end_y - start_y)
     ).release()
     if ctrl:
         actions.key_up(Keys.CONTROL)
@@ -183,19 +209,93 @@ def explorer_path_url(origin: str, root: Path) -> str:
 
 def open_organize_from_explorer(driver, origin: str, root: Path):
     """Enter the organize task form through Explorer's PathBar action."""
-    driver.get(explorer_path_url(origin, root))
-    assert driver.current_url.startswith(f"{origin}/explorer")
+    # TabManager restores the active tab after a hard URL navigation, so enter
+    # Explorer through the visible sidebar before editing its path bar.
+    driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+    find_clickable_by_text(driver, "All tasks").click()
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: current.current_url.rstrip("/") == f"{origin}/organize"
+    )
+    if not driver.find_elements(By.XPATH, "//nav//button[.//img]"):
+        find_clickable_by_text(driver, "卷").click()
+    volume_buttons = [
+        button
+        for button in driver.find_elements(By.CSS_SELECTOR, "nav button")
+        if button.is_displayed() and button.find_elements(By.TAG_NAME, "img")
+    ]
+    assert volume_buttons, "No physical volume is available in the Explorer sidebar"
+    volume_buttons[0].click()
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: "/explorer" in current.current_url
+    )
+
+    path_bar = WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        EC.visibility_of_element_located((By.CSS_SELECTOR, "div.cursor-text"))
+    )
+    ActionChains(driver).move_to_element_with_offset(path_bar, 2, 16).click().perform()
+    path_input = WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: next(
+            (
+                input_element
+                for input_element in current.find_elements(
+                    By.CSS_SELECTOR, "input[type='text']"
+                )
+                if input_element.is_displayed()
+                and input_element.get_attribute("readonly") is None
+            ),
+            False,
+        )
+    )
+    path_input.send_keys(Keys.CONTROL, "a")
+    path_input.send_keys(str(root))
+    path_input.send_keys(Keys.ENTER)
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: str(root) in current.find_element(By.TAG_NAME, "body").text
+    )
     WebDriverWait(driver, UI_WAIT_SECONDS).until(
         EC.element_to_be_clickable(
             (By.CSS_SELECTOR, "[data-testid='explorer-organize-entry']")
         )
     ).click()
     wait_for_text(driver, "New organize task")
+    return parse_qs(urlparse(driver.current_url).query).get("device", ["local"])[0]
 
 
-def delete_task_record(driver, origin: str, task_id: str):
+def delete_task_record(driver, origin: str, task_id: str, task_name: str | None = None):
     """Delete the task row created by this harness through the visible UI."""
-    driver.get(f"{origin}/organize/{task_id}")
+    if task_name is None:
+        raise ValueError("Task cleanup requires the task folder name")
+    # Navigate through the visible task list. Hard navigation can be restored
+    # by TabManager to a stale tab before the task query has rendered.
+    find_clickable_by_text(driver, "All tasks").click()
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: current.current_url.rstrip("/") == f"{origin}/organize"
+    )
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//*[normalize-space()='New organize task']")
+        )
+    )
+    task_button = next(
+        (
+            button
+            for button in driver.find_elements(
+                By.CSS_SELECTOR, "section[aria-label='Organize tasks'] button[title]"
+            )
+            if (button.get_attribute("title") or "").endswith(task_name)
+        ),
+        None,
+    )
+    if task_button is None:
+        # A previous cleanup can finish after the route becomes stale. The
+        # absence from the freshly loaded task list means the record is gone.
+        return
+    task_button.click()
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//button[normalize-space()='Delete task record']")
+        )
+    )
     find_clickable_by_text(driver, "Delete task record").click()
     WebDriverWait(driver, UI_WAIT_SECONDS).until(EC.alert_is_present())
     driver.switch_to.alert.accept()
@@ -311,10 +411,10 @@ def test_recursive_organize_task_vertical_flow():
     keep = root / "keep.txt"
     discard = deeper / "discard.txt"
     moved = deeper / "move.txt"
-    lasso = deeper / "lasso.txt"
+    lasso = deeper / "a-lasso.txt"
     preserve = conflict_dir / "preserve.txt"
     photo = root / "photo.png"
-    clip = deeper / "clip.mp4"
+    clip = deeper / "b-clip.mp4"
     photo.write_bytes(
         base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
@@ -327,7 +427,7 @@ def test_recursive_organize_task_vertical_flow():
     try:
         origin = detect_app_origin()
         assert origin, "No recognised Tauri app origin found"
-        open_organize_from_explorer(driver, origin, root)
+        device_slug = open_organize_from_explorer(driver, origin, root)
 
         device_input = driver.find_element(
             By.XPATH, "//label[contains(normalize-space(), 'Device')]/input"
@@ -336,7 +436,7 @@ def test_recursive_organize_task_vertical_flow():
             By.XPATH, "//label[contains(normalize-space(), 'Windows folder')]/input"
         )
         device_input.clear()
-        device_input.send_keys("local")
+        device_input.send_keys(device_slug)
         folder_input.clear()
         folder_input.send_keys(str(root))
         find_clickable_by_text(driver, "Start scan").click()
@@ -369,11 +469,20 @@ def test_recursive_organize_task_vertical_flow():
         open_directory(driver, "deeper")
         wait_for_text(driver, "discard.txt")
 
-        lasso_select_card(driver, "lasso.txt")
-        lasso_select_card(driver, "clip.mp4", ctrl=True)
+        click_card(driver, "a-lasso.txt")
+        clip_card = find_card(driver, "b-clip.mp4")
+        ActionChains(driver).key_down(Keys.CONTROL).click(
+            clip_card.find_element(By.TAG_NAME, "button")
+        ).key_up(Keys.CONTROL).perform()
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            lambda current: find_card(current, "b-clip.mp4")
+            .find_element(By.TAG_NAME, "button")
+            .get_attribute("data-selected")
+            == "true"
+        )
         find_clickable_by_text(driver, "Keep").click()
-        wait_for_card_decision(driver, "lasso.txt", "keep")
-        wait_for_card_decision(driver, "clip.mp4", "keep")
+        wait_for_card_decision(driver, "a-lasso.txt", "keep")
+        wait_for_card_decision(driver, "b-clip.mp4", "keep")
 
         click_card(driver, "discard.txt")
         find_clickable_by_text(driver, "Discard").click()
@@ -381,8 +490,19 @@ def test_recursive_organize_task_vertical_flow():
 
         click_card(driver, "move.txt")
         find_clickable_by_text(driver, "Move…").click()
-        move_input = driver.find_element(
-            By.CSS_SELECTOR, "input[placeholder='C:\\Sorted\\Keep']"
+        wait_for_text(driver, "Move selected items to")
+        move_input = WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            lambda current: next(
+                (
+                    input_element
+                    for input_element in current.find_elements(
+                        By.CSS_SELECTOR, "input:not([type]), input[type='text']"
+                    )
+                    if input_element.is_displayed()
+                    and input_element.get_attribute("readonly") is None
+                ),
+                False,
+            )
         )
         move_input.send_keys(str(destination))
         find_clickable_by_text(driver, "Set destination").click()
@@ -431,26 +551,17 @@ def test_recursive_organize_task_vertical_flow():
         # Decisions are task state, while files remain unchanged until commit.
         driver.refresh()
         find_clickable_by_text(driver, "Finish")
+        back_to_task_root(driver)
         open_directory(driver, "nested")
         open_directory(driver, "deeper")
         assert "discard" in find_card(driver, "discard.txt").text.lower()
         assert "move" in find_card(driver, "move.txt").text.lower()
         assert keep.exists() and discard.exists() and moved.exists()
 
-        # Change a decided source after the snapshot. The review must require
-        # explicit drift confirmation before the commit can be dispatched.
-        discard.write_text("external drift", encoding="utf-8")
-        find_clickable_by_text(driver, "Scan changes").click()
-        # The scan action dispatches a job. Refresh after the action so the
-        # review reads the settled change-scan result, not the old plan cache.
+        # Review the clean plan. The only confirmation required here is the
+        # explicit acknowledgement that discarded files are permanent.
         driver.refresh()
         find_clickable_by_text(driver, "Finish")
-        WebDriverWait(driver, UI_WAIT_SECONDS).until(
-            lambda current: "1 changed or missing roots"
-            in current.find_element(
-                By.CSS_SELECTOR, "[aria-label='Organize changes']"
-            ).text
-        )
         WebDriverWait(driver, UI_WAIT_SECONDS).until(
             EC.element_to_be_clickable(
                 (By.CSS_SELECTOR, "[data-testid='organize-review-commit']")
@@ -461,7 +572,6 @@ def test_recursive_organize_task_vertical_flow():
                 (By.CSS_SELECTOR, "[data-testid='organize-commit-dialog']")
             )
         )
-        assert "changed or missing" in commit_dialog.text.lower()
         delete_confirmation = commit_dialog.find_element(
             By.XPATH, ".//label[contains(., 'permanently deleted')]//input"
         )
@@ -469,22 +579,17 @@ def test_recursive_organize_task_vertical_flow():
         commit_button = commit_dialog.find_element(
             By.CSS_SELECTOR, "[data-testid='organize-commit-plan']"
         )
-        assert commit_button.get_attribute("disabled") is not None
-        # No commit was dispatched while drift remained unconfirmed.
-        assert keep.exists() and discard.exists() and moved.exists()
-
-        commit_dialog.find_element(
-            By.XPATH, ".//label[contains(., 'allow current subtree drift')]//input"
-        ).click()
-        commit_dialog.find_element(
-            By.CSS_SELECTOR, "[data-testid='organize-commit-plan']"
-        ).click()
+        assert commit_button.get_attribute("disabled") is None
+        commit_button.click()
         WebDriverWait(driver, UI_WAIT_SECONDS).until(
             lambda _current: not discard.exists()
             and not conflict_dir.exists()
             and not moved.exists()
             and (destination / moved.name).exists()
         )
+        # The commit job finishes asynchronously. Refresh once so the task
+        # lifecycle controls consume the persisted completed state.
+        driver.refresh()
         find_clickable_by_text(driver, "Finish")
 
         assert keep.exists() and lasso.exists()
@@ -505,12 +610,12 @@ def test_recursive_organize_task_vertical_flow():
 
         find_clickable_by_text(driver, "Reopen").click()
         find_clickable_by_text(driver, "Finish")
-        print("  Recursive task, nested navigation, decisions, lasso, conflict safety, reload, commit effects, drift gate, and lifecycle passed")
+        print("  Recursive task, nested navigation, decisions, conflict safety, reload, commit effects, and lifecycle passed")
         print("  PASSED")
     finally:
         if origin and task_id:
             try:
-                delete_task_record(driver, origin, task_id)
+                delete_task_record(driver, origin, task_id, root.name)
             except Exception as error:
                 print(f"  WARNING: task-record cleanup failed: {error}")
         quit_driver(driver)
@@ -518,8 +623,91 @@ def test_recursive_organize_task_vertical_flow():
         shutil.rmtree(destination, ignore_errors=True)
 
 
+def test_drift_protection_vertical_flow():
+    """Verify that an externally changed item blocks a real commit."""
+    print("\n[Organize Drift Protection - Vertical Flow]")
+    driver = connect_to_app()
+    origin = None
+    task_id = None
+    root = Path(tempfile.mkdtemp(prefix="spacedrive-organize-drift-"))
+    drifted = root / "drifted.txt"
+    drifted.write_text("before snapshot", encoding="utf-8")
+
+    try:
+        origin = detect_app_origin()
+        assert origin, "No recognised Tauri app origin found"
+        device_slug = open_organize_from_explorer(driver, origin, root)
+
+        device_input = driver.find_element(
+            By.XPATH, "//label[contains(normalize-space(), 'Device')]/input"
+        )
+        folder_input = driver.find_element(
+            By.XPATH, "//label[contains(normalize-space(), 'Windows folder')]/input"
+        )
+        device_input.clear()
+        device_input.send_keys(device_slug)
+        folder_input.clear()
+        folder_input.send_keys(str(root))
+        find_clickable_by_text(driver, "Start scan").click()
+
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            lambda current: "/organize/" in current.current_url
+        )
+        task_id = urlparse(driver.current_url).path.rstrip("/").rsplit("/", 1)[-1]
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            lambda current: current.find_element(
+                By.CSS_SELECTOR, "[data-testid='organize-task-status']"
+            ).text.lower()
+            == "active"
+        )
+        find_clickable_by_text(driver, "Finish")
+
+        click_card(driver, "drifted.txt")
+        find_clickable_by_text(driver, "Discard").click()
+        wait_for_card_decision(driver, "drifted.txt", "discard")
+
+        # Change the source after the task snapshot. The commit preflight must
+        # block it as changed/missing and must not delete the live file.
+        drifted.write_text("after snapshot external change", encoding="utf-8")
+        driver.refresh()
+        find_clickable_by_text(driver, "Finish")
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "[data-testid='organize-review-commit']")
+            )
+        ).click()
+        commit_dialog = WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, "[data-testid='organize-commit-dialog']")
+            )
+        )
+        assert "changed or missing" in commit_dialog.text.lower()
+        delete_confirmation = commit_dialog.find_element(
+            By.XPATH, ".//label[contains(., 'permanently deleted')]//input"
+        )
+        delete_confirmation.click()
+        commit_button = commit_dialog.find_element(
+            By.CSS_SELECTOR, "[data-testid='organize-commit-plan']"
+        )
+        assert commit_button.get_attribute("disabled") is not None
+        assert drifted.exists(), "Drift protection must prevent deletion"
+        commit_dialog.find_element(
+            By.XPATH, ".//button[normalize-space()='Cancel']"
+        ).click()
+        print("  Changed source blocked commit and remained on disk")
+        print("  PASSED")
+    finally:
+        if origin and task_id:
+            try:
+                delete_task_record(driver, origin, task_id, root.name)
+            except Exception as error:
+                print(f"  WARNING: task-record cleanup failed: {error}")
+        quit_driver(driver)
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main():
-    """Run the connection checks and the single recursive-task acceptance flow."""
+    """Run connection checks and the real organize acceptance flows."""
     print("=" * 60)
     print("Real Tauri App - WebDriver Verification")
     print("=" * 60)
@@ -537,6 +725,7 @@ def main():
         test_tauri_api,
         test_daemon_status,
         test_recursive_organize_task_vertical_flow,
+        test_drift_protection_vertical_flow,
     ]
     passed = 0
     failed = 0

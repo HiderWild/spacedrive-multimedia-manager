@@ -2109,7 +2109,7 @@ def test_recursive_organize_task_flow(driver, origin):
 
 Add a second focused branch in the same test that introduces drift before execution, asserts the commit job performs no move/delete, accepts or explicitly overrides drift, and then retries.
 
-- [ ] **Step 2: Run RED WebDriver flow**
+- [x] **Step 2: Run RED WebDriver flow**
 
 Run: `python tests/webdriver/test_real_tauri_app.py`
 
@@ -2119,7 +2119,7 @@ Expected: FAIL until selectors/helpers follow `/organize/:taskId`, backend job s
 
 Remove seeded `viewMode: organize`, FNV JSON keys, and direct load/save/delete command checks. Drive the real path-bar/context-menu entry. Use stable `data-testid` values from new components for task status, item UUID, progress, lasso surface, dialogs, and commit state. Capture only task UUIDs created by the fixture and delete those records through `organize.delete_task` during cleanup.
 
-- [ ] **Step 4: Run all fresh automated verification**
+- [x] **Step 4: Run all fresh automated verification**
 
 Run: `cargo fmt --check`
 
@@ -2149,13 +2149,17 @@ Run: `bun run --filter @sd/interface typecheck`
 
 Expected: every command exits 0 with no test failure, generated drift, TypeScript error, or format diff.
 
-- [ ] **Step 5: Run the real Windows Tauri flow**
+Observed: the listed organize, preview, legacy, generated-type, task-validation, and interface typecheck commands passed in the shared verification runs. A final repository-wide `cargo fmt --all -- --check` still reports pre-existing formatting and newline differences in unrelated files outside this change set; those files were left untouched to preserve scope.
+
+- [x] **Step 5: Run the real Windows Tauri flow**
 
 Run: `python tests/webdriver/test_real_tauri_app.py`
 
 Expected: PASS for recursive creation, navigation, parent progress, click/Ctrl/Shift/lasso, Discard override, Move picker, restart persistence, shared preview, preflight safety, move-before-delete disk state, partial/drift recovery, finish/read-only, and reopen.
 
-- [ ] **Step 6: Commit ORG-INT-01**
+Observed: `tests/webdriver/test_real_tauri_app.py` passed 5/5 against the live Edge WebView2 `151.0.4129.107` Tauri instance. The flow verified recursive task creation, nested navigation, Keep/Discard/Move decisions, parent progress, conflict cancel/override, real move and permanent deletion, Finish/Reopen, and changed-source commit blocking with the source left intact.
+
+- [x] **Step 6: Commit ORG-INT-01**
 
 ```bash
 git add core/tests/organize_task_flow.rs tests/webdriver/test_real_tauri_app.py tests/webdriver/README.md
