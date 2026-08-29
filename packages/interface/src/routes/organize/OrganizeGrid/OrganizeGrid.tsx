@@ -16,6 +16,22 @@ import {
 } from '../selection';
 import {gridColumnCount, virtualRowCount} from '../virtualization';
 
+export function gridLayoutWidth(
+	measuredWidth: number | undefined,
+	fallbackWidth: number
+): number {
+	return measuredWidth && measuredWidth > 0
+		? measuredWidth
+		: Math.max(0, fallbackWidth);
+}
+
+export function shouldClearBlankSelection(
+	isBlank: boolean,
+	isModified: boolean
+): boolean {
+	return isBlank && !isModified;
+}
+
 export interface OrganizeGridItem {
 	item: Model;
 	projection?: OrganizeItemDecisionProjection;
@@ -62,7 +78,22 @@ export function OrganizeGrid({
 	scrollContainerRef,
 	renderItem
 }: OrganizeGridProps) {
-	const columns = gridColumnCount(width, minimumCardWidth, gap);
+	const surfaceRef = useRef<HTMLDivElement>(null);
+	const [measuredWidth, setMeasuredWidth] = useState<number>();
+	useEffect(() => {
+		const surface = surfaceRef.current;
+		if (!surface || typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver(([entry]) => {
+			const nextWidth = entry?.contentRect.width ?? 0;
+			setMeasuredWidth((currentWidth) =>
+				currentWidth === nextWidth ? currentWidth : nextWidth
+			);
+		});
+		observer.observe(surface);
+		return () => observer.disconnect();
+	}, []);
+	const layoutWidth = gridLayoutWidth(measuredWidth, width);
+	const columns = gridColumnCount(layoutWidth, minimumCardWidth, gap);
 	const rows = virtualRowCount(items.length, columns);
 	const rowVirtualizer = useVirtualizer({
 		count: rows,
@@ -76,7 +107,6 @@ export function OrganizeGrid({
 	useEffect(() => {
 		if (virtualRows.at(-1)?.index === rows - 1) onEndReached?.();
 	}, [onEndReached, rows, virtualRows]);
-	const surfaceRef = useRef<HTMLDivElement>(null);
 	const lassoRef = useRef<LassoState | null>(null);
 	const [lasso, setLasso] = useState<LassoState | null>(null);
 	const suppressClickRef = useRef(false);
@@ -240,10 +270,21 @@ export function OrganizeGrid({
 			onPointerUp={endLasso}
 			onPointerCancel={endLasso}
 			onClickCapture={(event) => {
-				if (!suppressClickRef.current) return;
-				event.preventDefault();
-				event.stopPropagation();
-				suppressClickRef.current = false;
+				if (suppressClickRef.current) {
+					event.preventDefault();
+					event.stopPropagation();
+					suppressClickRef.current = false;
+					return;
+				}
+				const target = event.target as Element | null;
+				const clickedItem = target?.closest?.('[data-organize-item-id]');
+				if (
+					shouldClearBlankSelection(
+						!clickedItem,
+						event.ctrlKey || event.metaKey
+					)
+				)
+					onLassoSelectionChange(new Set());
 			}}
 			style={{
 				position: 'relative',
