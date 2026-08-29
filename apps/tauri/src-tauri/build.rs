@@ -120,7 +120,10 @@ fn main() {
 		);
 	}
 
-	if release_bundle {
+	// Windows needs the generated common-controls manifest even for debug runs;
+	// without it, comctl32 resolves the v6-only TaskDialogIndirect import against
+	// the legacy v5 API set and the executable fails before `main` starts.
+	if release_bundle || cfg!(target_os = "windows") {
 		tauri_build::build();
 	} else {
 		println!("cargo:warning=Skipping Tauri resource processing outside a release bundle");

@@ -183,6 +183,8 @@ export function OrganizeGrid({
 
 	const beginLasso = (event: ReactPointerEvent<HTMLDivElement>) => {
 		if (event.button !== 0 || !event.isPrimary) return;
+		if ((event.target as Element | null)?.closest?.('[data-organize-item-id]'))
+			return;
 		const current: LassoState = {
 			startX: event.clientX,
 			startY: event.clientY,

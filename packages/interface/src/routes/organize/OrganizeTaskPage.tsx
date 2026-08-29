@@ -238,6 +238,29 @@ export function OrganizeTaskPage() {
 		updateOrganizeState
 	]);
 
+	const changeItems = changeItemsQuery.data?.items ?? [];
+	const changeProjections = useMemo(
+		() =>
+			new Map(
+				(changeItemsQuery.data?.decision_projections ?? []).map(
+					(projection) => [projection.item_id, projection]
+				)
+			),
+		[changeItemsQuery.data]
+	);
+	const recentDestinations = useMemo<RecentMoveDestination[]>(
+		() =>
+			changeItems.flatMap((item) => {
+				const destination = changeProjections.get(
+					item.uuid
+				)?.move_destination;
+				return destination
+					? [{destination, updated_at: item.updated_at}]
+					: [];
+			}),
+		[changeItems, changeProjections]
+	);
+
 	if (isLoading)
 		return (
 			<div className="text-ink-dull flex h-full items-center justify-center text-sm">
@@ -294,28 +317,6 @@ export function OrganizeTaskPage() {
 			: 'local';
 	const locationDestinations = mapLocationsToMoveDestinations(
 		locationsQuery.data?.locations ?? []
-	);
-	const changeItems = changeItemsQuery.data?.items ?? [];
-	const changeProjections = useMemo(
-		() =>
-			new Map(
-				(changeItemsQuery.data?.decision_projections ?? []).map(
-					(projection) => [projection.item_id, projection]
-				)
-			),
-		[changeItemsQuery.data]
-	);
-	const recentDestinations = useMemo<RecentMoveDestination[]>(
-		() =>
-			changeItems.flatMap((item) => {
-				const destination = changeProjections.get(
-					item.uuid
-				)?.move_destination;
-				return destination
-					? [{destination, updated_at: item.updated_at}]
-					: [];
-			}),
-		[changeItems, changeProjections]
 	);
 	const applyMove = async (destination: SdPath) => {
 		const result = await setDecision.mutateAsync(
