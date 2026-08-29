@@ -13,9 +13,9 @@
 		"paths": {
 			"~/*": ["./src/*"],
 			"@spacebot/api-client": [
-				"../../../spacebot/packages/api-client/src/index.ts"
+				"../../apps/tauri/stubs/spacebot-api-client.ts"
 			],
-			"@spacebot/api-client/*": ["../../../spacebot/packages/api-client/src/*"]
+			"@spacebot/api-client/*": ["../../apps/tauri/stubs/*"]
 		},
 		"types": ["@react-three/fiber", "bun"]
 	},

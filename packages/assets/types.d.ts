@@ -5,6 +5,16 @@ declare module "@sd/assets/icons/*.png" {
 	export default value;
 }
 
+declare module "*.png" {
+	const value: string;
+	export default value;
+}
+
+declare module "*.jpg" {
+	const value: string;
+	export default value;
+}
+
 declare module "@sd/assets/icons/*.jpg" {
 	const value: number;
 	export default value;

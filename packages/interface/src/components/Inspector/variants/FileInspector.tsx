@@ -28,7 +28,7 @@ import {getIcon} from '@sd/assets/util';
 import {getContentKind, type File, type SdPath} from '@sd/ts-client';
 import {toast} from '@spacedrive/primitives';
 import clsx from 'clsx';
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useJobsContext} from '../../../components/JobManager/hooks/JobsContext';
 import {TagSelectorButton} from '../../../components/Tags';
@@ -59,7 +59,7 @@ export function FileInspector({file}: FileInspectorProps) {
 	const {t} = useTranslation('explorer');
 	const platform = usePlatform();
 	const [activeTab, setActiveTab] = useState('overview');
-	const isDev = import.meta.env.DEV === 'true';
+	const isDev = import.meta.env.DEV;
 
 	// Extract parent directory for pathScope to enable reactive sidecar updates
 	const getParentPath = (): SdPath | undefined => {

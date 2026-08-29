@@ -17,12 +17,36 @@ export const apiClient = {
 			}
 		}
 	},
-	listPortalConversations: async () => ({ conversations: [] }),
-	portalHistory: async () => [],
-	channelMessages: async () => ({ items: [], has_more: false }),
-	portalSend: async () => {},
-	createPortalConversation: async () => ({ conversation: { id: 'stub' } }),
-	listWorkers: async () => ({ workers: [] }),
+	listPortalConversations: async (
+		_agentId: string,
+		_includeArchived?: boolean,
+		_limit?: number
+	): Promise<{conversations: PortalConversationSummary[]}> => ({
+		conversations: []
+	}),
+	portalHistory: async (
+		_agentId: string,
+		_conversationId: string,
+		_limit?: number
+	): Promise<PortalHistoryMessage[]> => [],
+	channelMessages: async (
+		_conversationId: string,
+		_limit?: number
+	): Promise<{items: TimelineItem[]; has_more: boolean}> => ({
+		items: [],
+		has_more: false
+	}),
+	portalSend: async (_request: Record<string, unknown>): Promise<void> => {},
+	createPortalConversation: async (_request: {
+		agentId: string;
+		title?: string | null;
+	}): Promise<PortalConversationResponse> => ({
+		conversation: {id: 'stub'}
+	}),
+	listWorkers: async (_options: {
+		agentId: string;
+		limit?: number;
+	}): Promise<{workers: WorkerListItem[]}> => ({workers: []}),
 	workerDetail: async (_agentId: string, workerId: string) => ({
 		id: workerId,
 		task: 'Spacebot unavailable',
@@ -32,18 +56,31 @@ export const apiClient = {
 		result: null,
 		transcript: []
 	}),
-	cancelProcess: async () => ({}),
+	cancelProcess: async (_request: Record<string, unknown>) => ({}),
 	updateWorker: async () => {},
 	getWorkerStatus: async () => ({ status: 'unavailable' }),
 	getTimeline: async () => ({ items: [] }),
-	listTasks: async () => ({ tasks: [] }),
-	updateTask: async () => {},
-	deleteTask: async () => {},
+	listTasks: async (
+		_agentId: string,
+		_limit?: number
+	): Promise<{tasks: Task[]}> => ({tasks: []}),
+	updateTask: async (
+		_taskNumber: number,
+		_request: UpdateTaskRequest
+	): Promise<void> => {},
+	deleteTask: async (_taskNumber: number): Promise<void> => {},
 	createTtsProfile: async () => {},
-	ttsProfiles: async () => [],
-	ttsGenerate: async () => new ArrayBuffer(0),
+	ttsProfiles: async (_agentId: string): Promise<TtsProfile[]> => [],
+	ttsGenerate: async (
+		_text: string,
+		_options?: Record<string, unknown>
+	): Promise<ArrayBuffer> => new ArrayBuffer(0),
 	synthesizeSpeech: async () => new ArrayBuffer(0),
-	webChatSendAudio: async () =>
+	webChatSendAudio: async (
+		_agentId: string,
+		_sessionId: string,
+		_blob: Blob
+	): Promise<Response> =>
 		new Response(null, {
 			status: 503,
 			statusText: 'Spacebot is not available'
@@ -120,6 +157,7 @@ export type PortalConversationSummary = {
 	title?: string;
 	created_at?: string;
 	message_count?: number;
+	last_message_preview?: string;
 };
 
 export type PortalHistoryMessage = {
@@ -131,20 +169,26 @@ export type PortalHistoryMessage = {
 
 export type Task = {
 	id: string;
-	task_number?: number;
+	task_number: number;
 	title: string;
 	status: string;
 	priority?: string;
 	description?: string;
-	subtasks?: Array<{
+	subtasks: Array<{
 		title: string;
 		completed: boolean;
 	}>;
 	assignee?: string;
+	owner_agent_id: string | null;
+	assigned_agent_id: string | null;
+	metadata: Record<string, unknown>;
+	created_by: string;
+	created_at: string;
+	updated_at: string;
 };
 
 export type UpdateTaskRequest = {
-	taskId: string;
+	taskId?: string;
 	title?: string;
 	status?: string;
 	priority?: string;
