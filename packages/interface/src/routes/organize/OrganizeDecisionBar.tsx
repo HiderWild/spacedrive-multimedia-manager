@@ -60,6 +60,7 @@ export function OrganizeDecisionBar(props: {
 		<section
 			className="border-app-line space-y-3 border-b p-3"
 			aria-label="Organize decisions"
+			data-testid="organize-decision-bar"
 		>
 			<OrganizeProgress progress={props.progress} />
 			<div className="flex flex-wrap gap-2">
@@ -100,6 +101,7 @@ export function OrganizeDecisionBar(props: {
 			{confirmation && (
 				<div
 					role="alertdialog"
+					data-testid="organize-decision-conflict"
 					className="space-y-2 rounded-md border border-amber-500/40 p-3"
 				>
 					<p>

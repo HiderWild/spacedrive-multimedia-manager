@@ -316,6 +316,7 @@ export function OrganizeGrid({
 						{rowItems.map((entry) => (
 							<div
 								key={entry.item.uuid}
+								data-testid="organize-item"
 								data-organize-item-id={entry.item.uuid}
 							>
 								{renderItem(entry)}
@@ -344,6 +345,7 @@ function DirectoryProgress({
 	const fraction = total > 0 ? Math.min(1, processed / total) : 0;
 	return (
 		<div
+			data-testid="organize-directory-progress"
 			data-organize-directory-progress
 			aria-label={`${processed} of ${total} processed`}
 		>

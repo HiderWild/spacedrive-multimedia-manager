@@ -124,6 +124,7 @@ export function OrganizeChangesPanel({
 		<section
 			className="border-app-line bg-app-box/20 border-b px-4 py-2 text-xs"
 			aria-label="Organize changes"
+			data-testid="organize-changes-panel"
 		>
 			<div className="text-ink-dull flex flex-wrap gap-x-4 gap-y-1">
 				<span>Revision {review.revision}</span>

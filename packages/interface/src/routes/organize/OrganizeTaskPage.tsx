@@ -382,7 +382,10 @@ export function OrganizeTaskPage() {
 	};
 
 	return (
-		<main className="text-ink flex h-full min-h-0 flex-col">
+		<main
+			className="text-ink flex h-full min-h-0 flex-col"
+			data-testid="organize-task-page"
+		>
 			<header className="border-app-line flex shrink-0 items-center gap-3 border-b px-4 py-3">
 				<button
 					type="button"
@@ -399,6 +402,12 @@ export function OrganizeTaskPage() {
 					<p className="text-ink-faint truncate text-xs">
 						{taskSummary.root_path}
 					</p>
+					<span
+						data-testid="organize-task-status"
+						className="text-ink-faint text-xs"
+					>
+						{taskSummary.status}
+					</span>
 				</div>
 				<div className="hidden min-w-[12rem] md:block">
 					<OrganizeProgress progress={taskSummary.progress} />
@@ -545,6 +554,7 @@ export function OrganizeTaskPage() {
 				/>
 				<button
 					type="button"
+					data-testid="organize-review-commit"
 					disabled={
 						!commitPlan.data || taskSummary.status !== 'active'
 					}

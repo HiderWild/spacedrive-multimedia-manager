@@ -16,15 +16,18 @@ Usage:
 
 import base64
 import json
+import re
 import shutil
 import tempfile
 import urllib.request
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
+from selenium.common.exceptions import TimeoutException
 from selenium import webdriver
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -59,7 +62,7 @@ def find_card(driver, name: str):
         EC.presence_of_element_located(
             (
                 By.XPATH,
-                "//div[@data-organize-item-id]"
+                "//div[@data-testid='organize-item'][@data-organize-item-id]"
                 f"[.//span[normalize-space()='{name}']]",
             )
         )
@@ -94,7 +97,7 @@ def back_to_task_root(driver):
     wait_for_text(driver, "direct children")
 
 
-def lasso_select_card(driver, name: str):
+def lasso_select_card(driver, name: str, ctrl: bool = False):
     """Use the real pointer lasso to select one rendered card."""
     surface = driver.find_element(By.CSS_SELECTOR, "[data-testid='organize-grid']")
     card = find_card(driver, name)
@@ -111,11 +114,17 @@ def lasso_select_card(driver, name: str):
     end_x = card_rect["right"] - 5
     end_y = card_rect["bottom"] - 5
 
-    ActionChains(driver).move_to_element_with_offset(
+    actions = ActionChains(driver)
+    if ctrl:
+        actions.key_down(Keys.CONTROL)
+    actions.move_to_element_with_offset(
         surface, start_x - center_x, start_y - center_y
     ).click_and_hold().move_to_element_with_offset(
         surface, end_x - center_x, end_y - center_y
-    ).release().perform()
+    ).release()
+    if ctrl:
+        actions.key_up(Keys.CONTROL)
+    actions.perform()
 
     WebDriverWait(driver, UI_WAIT_SECONDS).until(
         lambda current: find_card(current, name)
@@ -176,7 +185,11 @@ def open_organize_from_explorer(driver, origin: str, root: Path):
     """Enter the organize task form through Explorer's PathBar action."""
     driver.get(explorer_path_url(origin, root))
     assert driver.current_url.startswith(f"{origin}/explorer")
-    find_clickable_by_text(driver, "Organize").click()
+    WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        EC.element_to_be_clickable(
+            (By.CSS_SELECTOR, "[data-testid='explorer-organize-entry']")
+        )
+    ).click()
     wait_for_text(driver, "New organize task")
 
 
@@ -189,6 +202,32 @@ def delete_task_record(driver, origin: str, task_id: str):
     WebDriverWait(driver, UI_WAIT_SECONDS).until(
         lambda current: current.current_url.rstrip("/") == f"{origin}/organize"
     )
+
+
+def directory_processed_units(driver, name: str) -> int:
+    """Read processed units from a rendered directory progress projection."""
+    progress = find_card(driver, name).find_element(
+        By.CSS_SELECTOR, "[data-testid='organize-directory-progress']"
+    )
+    match = re.match(r"(\d+) of \d+ processed", progress.get_attribute("aria-label") or "")
+    assert match, f"Missing directory progress for {name!r}"
+    return int(match.group(1))
+
+
+def wait_for_directory_progress(driver, name: str, minimum: int):
+    """Wait until a directory projection reports at least the requested progress."""
+    return WebDriverWait(driver, UI_WAIT_SECONDS).until(
+        lambda current: directory_processed_units(current, name) >= minimum
+    )
+
+
+def accept_finish_confirmation(driver):
+    """Finish the task and accept the unmarked-items confirmation when shown."""
+    find_clickable_by_text(driver, "Finish").click()
+    try:
+        WebDriverWait(driver, 2).until(EC.alert_is_present()).accept()
+    except TimeoutException:
+        pass
 
 
 def test_app_connection():
@@ -309,8 +348,15 @@ def test_recursive_organize_task_vertical_flow():
         assert task_path.startswith("/organize/")
         task_id = task_path.rsplit("/", 1)[-1]
         assert task_id, "Created organize task URL did not contain a task id"
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            lambda current: current.find_element(
+                By.CSS_SELECTOR, "[data-testid='organize-task-status']"
+            ).text.lower()
+            == "active"
+        )
         wait_for_text(driver, "direct children")
         wait_for_text(driver, "nested")
+        initial_nested_processed = directory_processed_units(driver, "nested")
         # The snapshot job is asynchronous. Decisions are disabled until the
         # active task state is rendered by the lifecycle controls.
         find_clickable_by_text(driver, "Finish")
@@ -324,8 +370,10 @@ def test_recursive_organize_task_vertical_flow():
         wait_for_text(driver, "discard.txt")
 
         lasso_select_card(driver, "lasso.txt")
+        lasso_select_card(driver, "clip.mp4", ctrl=True)
         find_clickable_by_text(driver, "Keep").click()
         wait_for_card_decision(driver, "lasso.txt", "keep")
+        wait_for_card_decision(driver, "clip.mp4", "keep")
 
         click_card(driver, "discard.txt")
         find_clickable_by_text(driver, "Discard").click()
@@ -340,9 +388,13 @@ def test_recursive_organize_task_vertical_flow():
         find_clickable_by_text(driver, "Set destination").click()
         wait_for_card_decision(driver, "move.txt", "move")
 
+        back_to_task_root(driver)
+        wait_for_directory_progress(
+            driver, "nested", initial_nested_processed + 1
+        )
+
         # Establish a Keep descendant, then exercise the real parent conflict
         # dialog once with Cancel and once with Confirm override.
-        back_to_task_root(driver)
         open_directory(driver, "nested")
         open_directory(driver, "conflict-dir")
         click_card(driver, "preserve.txt")
@@ -353,7 +405,9 @@ def test_recursive_organize_task_vertical_flow():
         click_card(driver, "conflict-dir")
         find_clickable_by_text(driver, "Discard").click()
         conflict_dialog = WebDriverWait(driver, UI_WAIT_SECONDS).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, "[role='alertdialog']"))
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, "[data-testid='organize-decision-conflict']")
+            )
         )
         conflict_dialog.find_element(
             By.XPATH, ".//button[normalize-space()='Cancel']"
@@ -365,7 +419,9 @@ def test_recursive_organize_task_vertical_flow():
         click_card(driver, "conflict-dir")
         find_clickable_by_text(driver, "Discard").click()
         conflict_dialog = WebDriverWait(driver, UI_WAIT_SECONDS).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, "[role='alertdialog']"))
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, "[data-testid='organize-decision-conflict']")
+            )
         )
         conflict_dialog.find_element(
             By.XPATH, ".//button[normalize-space()='Confirm override']"
@@ -395,9 +451,15 @@ def test_recursive_organize_task_vertical_flow():
                 By.CSS_SELECTOR, "[aria-label='Organize changes']"
             ).text
         )
-        find_clickable_by_text(driver, "Review commit").click()
+        WebDriverWait(driver, UI_WAIT_SECONDS).until(
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "[data-testid='organize-review-commit']")
+            )
+        ).click()
         commit_dialog = WebDriverWait(driver, UI_WAIT_SECONDS).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, "[role='dialog']"))
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, "[data-testid='organize-commit-dialog']")
+            )
         )
         assert "changed or missing" in commit_dialog.text.lower()
         delete_confirmation = commit_dialog.find_element(
@@ -405,7 +467,7 @@ def test_recursive_organize_task_vertical_flow():
         )
         delete_confirmation.click()
         commit_button = commit_dialog.find_element(
-            By.XPATH, ".//button[normalize-space()='Commit plan']"
+            By.CSS_SELECTOR, "[data-testid='organize-commit-plan']"
         )
         assert commit_button.get_attribute("disabled") is not None
         # No commit was dispatched while drift remained unconfirmed.
@@ -415,7 +477,7 @@ def test_recursive_organize_task_vertical_flow():
             By.XPATH, ".//label[contains(., 'allow current subtree drift')]//input"
         ).click()
         commit_dialog.find_element(
-            By.XPATH, ".//button[normalize-space()='Commit plan']"
+            By.CSS_SELECTOR, "[data-testid='organize-commit-plan']"
         ).click()
         WebDriverWait(driver, UI_WAIT_SECONDS).until(
             lambda _current: not discard.exists()
@@ -431,7 +493,7 @@ def test_recursive_organize_task_vertical_flow():
         assert not moved.exists()
         assert (destination / moved.name).exists()
 
-        find_clickable_by_text(driver, "Finish").click()
+        accept_finish_confirmation(driver)
         WebDriverWait(driver, UI_WAIT_SECONDS).until(
             lambda current: len(
                 current.find_elements(By.XPATH, "//button[normalize-space()='Reopen']")

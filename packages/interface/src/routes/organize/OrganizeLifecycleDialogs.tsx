@@ -16,7 +16,7 @@ export function handleOrganizeOutcome(outcome: OrganizeFinishOutcome, effects: {
 
 export function OrganizeLifecycleDialogs({task, onScan, onRetrySnapshot, onFinish, onReopen, onDelete}: {task: OrganizeTaskSummary; onScan: () => void; onRetrySnapshot: () => void; onFinish: () => void; onReopen: () => void; onDelete: () => void}) {
 	const capabilities = taskCapabilities(task);
-	return <div className="flex flex-wrap gap-2" aria-label="Organize lifecycle">
+	return <div className="flex flex-wrap gap-2" aria-label="Organize lifecycle" data-testid="organize-lifecycle">
 		{capabilities.scan && <button type="button" onClick={onScan} className="rounded border border-app-line px-2 py-1 text-xs">Scan changes</button>}
 		{capabilities.retrySnapshot && <button type="button" onClick={onRetrySnapshot} className="rounded border border-app-line px-2 py-1 text-xs">Retry snapshot</button>}
 		{capabilities.finish && <button type="button" onClick={onFinish} className="rounded border border-app-line px-2 py-1 text-xs">Finish</button>}

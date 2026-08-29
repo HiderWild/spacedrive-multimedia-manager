@@ -183,6 +183,7 @@ function CommitReviewPanel({
 			<div
 				ref={dialogRef}
 				role="dialog"
+				data-testid="organize-commit-dialog"
 				aria-modal="true"
 				aria-labelledby="organize-commit-title"
 				tabIndex={-1}
@@ -285,6 +286,7 @@ function CommitReviewPanel({
 					</button>
 					<button
 						type="button"
+						data-testid="organize-commit-plan"
 						disabled={
 							!canCommit ||
 							(!review.canCommit &&

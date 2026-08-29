@@ -539,7 +539,12 @@ export function PathBar({path, devices, onNavigate}: PathBarProps) {
 				)}
 			</motion.div>
 			{'Physical' in path && (
-				<Button size="sm" variant="outline" onClick={navigateToOrganize}>
+				<Button
+					data-testid="explorer-organize-entry"
+					size="sm"
+					variant="outline"
+					onClick={navigateToOrganize}
+				>
 					{t('viewModes.organize')}
 				</Button>
 			)}
