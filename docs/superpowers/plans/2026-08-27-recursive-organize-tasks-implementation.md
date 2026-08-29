@@ -2115,7 +2115,7 @@ Run: `python tests/webdriver/test_real_tauri_app.py`
 
 Expected: FAIL until selectors/helpers follow `/organize/:taskId`, backend job status, new confirmations, and SQLite task cleanup rather than old JSON commands.
 
-- [ ] **Step 3: Replace old harness assumptions**
+- [x] **Step 3: Replace old harness assumptions**
 
 Remove seeded `viewMode: organize`, FNV JSON keys, and direct load/save/delete command checks. Drive the real path-bar/context-menu entry. Use stable `data-testid` values from new components for task status, item UUID, progress, lasso surface, dialogs, and commit state. Capture only task UUIDs created by the fixture and delete those records through `organize.delete_task` during cleanup.
 
